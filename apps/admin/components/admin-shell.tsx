@@ -134,6 +134,12 @@ const groups: Array<{ label: string; items: NavItem[] }> = [
         permission: "products.manage",
       },
       {
+        label: "Branch Catalog",
+        href: "/branch-catalog",
+        icon: Store,
+        permission: "products.manage",
+      },
+      {
         label: "Categories",
         href: "/categories",
         icon: Tags,

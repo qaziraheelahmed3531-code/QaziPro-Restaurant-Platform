@@ -35,15 +35,6 @@ export async function getGeoapifyJson<T>(pathname: string, params: Record<string
   }
 }
 
-export function getRestaurantCoordinates() {
-  const latitude = Number(process.env.ITALIAN_PIZZA_LAT)
-  const longitude = Number(process.env.ITALIAN_PIZZA_LON)
-  if (!process.env.ITALIAN_PIZZA_LAT?.trim() || !process.env.ITALIAN_PIZZA_LON?.trim() || !isCoordinate(latitude, -90, 90) || !isCoordinate(longitude, -180, 180)) {
-    throw new GeoapifyServiceError("Restaurant coordinates are not configured.", "not-configured")
-  }
-  return { latitude, longitude }
-}
-
 export function isCoordinate(value: number, minimum: number, maximum: number) {
   return Number.isFinite(value) && value >= minimum && value <= maximum
 }

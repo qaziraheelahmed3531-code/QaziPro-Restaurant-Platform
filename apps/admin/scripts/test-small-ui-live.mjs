@@ -1,5 +1,7 @@
 // Reversible browser acceptance test for the compact navigation and storefront boot skeleton.
 import assert from "node:assert/strict"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { randomUUID } from "node:crypto"
 import { createClient } from "@supabase/supabase-js"
 import { createServerClient } from "@supabase/ssr"
@@ -31,7 +33,7 @@ try{
   await admin.waitForFunction(()=>document.querySelector(".admin-sidebar")?.getBoundingClientRect().width<=82)
   const compact=await admin.evaluate(()=>({sidebar:document.querySelector(".admin-sidebar")?.getBoundingClientRect().width,labelDisplay:getComputedStyle(document.querySelector(".admin-nav a>span")).display,contentLeft:document.querySelector(".admin-main")?.getBoundingClientRect().left}))
   assert.ok(compact.sidebar>=70&&compact.sidebar<=82);assert.equal(compact.labelDisplay,"none");assert.ok(compact.contentLeft<=82)
-  await admin.screenshot({path:"C:/Users/Qazi Raheel/AppData/Local/Temp/italian-pizza-sidebar-collapsed.png",fullPage:false})
+  await admin.screenshot({path:join(tmpdir(),"qazipro-sidebar-collapsed.png"),fullPage:false})
   await admin.getByRole("button",{name:"Expand navigation",exact:true}).click();await admin.locator(".admin-shell.is-sidebar-collapsed").waitFor({state:"detached"});assert.deepEqual(adminErrors,[])
   await adminContext.close()
 
@@ -40,7 +42,7 @@ try{
   const customer=await customerContext.newPage(),customerErrors=[];customer.on("pageerror",error=>customerErrors.push(error.message))
   await customer.goto("http://localhost:3000",{waitUntil:"domcontentloaded",timeout:90000})
   const boot=customer.locator(".storefront-skeleton.is-boot-overlay");await boot.waitFor({state:"visible",timeout:5000})
-  await customer.screenshot({path:"C:/Users/Qazi Raheel/AppData/Local/Temp/italian-pizza-startup-skeleton.png",fullPage:false})
+  await customer.screenshot({path:join(tmpdir(),"qazipro-startup-skeleton.png"),fullPage:false})
   assert.equal(await boot.locator(".storefront-skeleton__logo").count(),1);assert.equal(await boot.locator(".storefront-skeleton__location").count(),1);assert.equal(await boot.locator(".storefront-skeleton__hero").count(),1);assert.equal(await boot.locator(".storefront-skeleton__search").count(),1);assert.equal(await boot.locator(".storefront-skeleton__banner").count(),1);assert.equal(await boot.locator(".storefront-skeleton__products article").count(),4)
   await boot.waitFor({state:"detached",timeout:5000});await customer.locator(".home-page").waitFor({timeout:30000});assert.equal(await customer.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(customerErrors,[])
   await customer.goto("http://localhost:3000/orders",{waitUntil:"domcontentloaded",timeout:90000});assert.equal(await customer.locator(".storefront-skeleton.is-boot-overlay").count(),0)

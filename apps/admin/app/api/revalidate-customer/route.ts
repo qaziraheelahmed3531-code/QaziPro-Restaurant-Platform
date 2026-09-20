@@ -13,7 +13,8 @@ export async function POST() {
   try {
     const response = await fetch(new URL("/api/revalidate", customerUrl), {
       method: "POST",
-      headers: { Authorization: `Bearer ${secret}` },
+      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ businessId: context.businessId, branchId: context.activeBranchId }),
       cache: "no-store",
     })
     return NextResponse.json({ ok: response.ok, revalidated: response.ok }, { status: response.ok ? 200 : 502 })

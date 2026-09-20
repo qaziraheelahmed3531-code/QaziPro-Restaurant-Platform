@@ -237,6 +237,7 @@ export function App() {
     [cash, setCash] = useState("");
   const [customizing, setCustomizing] = useState<CatalogProduct | null>(null),
     [chosen, setChosen] = useState<Record<string, string[]>>({}),
+    [chosenVariantId,setChosenVariantId]=useState<string|null>(null),
     [receipt, setReceipt] = useState<LocalOrder | null>(null),
     [replacing, setReplacing] = useState<LocalOrder | null>(null),
     [replacementReason, setReplacementReason] = useState(
@@ -680,6 +681,7 @@ export function App() {
     p: { id: string; name: string; price: number },
     selections: CartLine["selections"],
     kind: "product" | "deal" = "product",
+    variant?: {id:string;name:string;price:number},
   ) =>
     setCart((current) => [
       ...current,
@@ -688,13 +690,15 @@ export function App() {
         itemKind: kind,
         productId: p.id,
         name: p.name,
-        unitBasePrice: p.price,
+        unitBasePrice: p.price + (variant?.price??0),
         quantity: 1,
         selections,
+        variantId:variant?.id,
+        variantName:variant?.name,
       },
     ]);
   const addProduct = (p: CatalogProduct) => {
-    if (!p.groups.length) {
+    if (!p.groups.length && !p.variants.length) {
       addLine(p, []);
       return;
     }
@@ -708,6 +712,7 @@ export function App() {
         ]),
       ),
     );
+    setChosenVariantId(p.variants.find(variant=>variant.isDefault)?.id??p.variants[0]?.id??null)
     setCustomizing(p);
   };
   const confirmCustom = () => {
@@ -728,7 +733,9 @@ export function App() {
       setMessage("Choose all required options.");
       return;
     }
-    addLine(customizing, selections);
+    const variant=customizing.variants.find(item=>item.id===chosenVariantId)
+    if(customizing.variants.length&&!variant){setMessage("Choose a product variant.");return}
+    addLine(customizing, selections,"product",variant);
     setCustomizing(null);
   };
   const resetSale = () => {
@@ -1480,6 +1487,8 @@ export function App() {
           product={customizing}
           chosen={chosen}
           setChosen={setChosen}
+          chosenVariantId={chosenVariantId}
+          setChosenVariantId={setChosenVariantId}
           close={() => setCustomizing(null)}
           confirm={confirmCustom}
         />
@@ -1852,6 +1861,7 @@ function Cart({
           <article key={line.lineId}>
             <div>
               <strong>{line.name}</strong>
+              {line.variantName && <small>Variant: {line.variantName}</small>}
               {line.selections.length > 0 && (
                 <small>
                   {line.selections.map((x) => x.optionName).join(" · ")}
@@ -2151,12 +2161,16 @@ function Customize({
   product,
   chosen,
   setChosen,
+  chosenVariantId,
+  setChosenVariantId,
   close,
   confirm,
 }: {
   product: CatalogProduct;
   chosen: Record<string, string[]>;
   setChosen: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
+  chosenVariantId: string | null;
+  setChosenVariantId: (value: string) => void;
   close: () => void;
   confirm: () => void;
 }) {
@@ -2172,6 +2186,7 @@ function Customize({
             <X />
           </button>
         </header>
+        {product.variants.length > 0 && <fieldset><legend>Variant <b>Required</b></legend>{product.variants.map((variant) => <label key={variant.id}><input type="radio" name="product-variant" checked={chosenVariantId === variant.id} onChange={() => setChosenVariantId(variant.id)} /><span>{variant.name}</span><b>{variant.price ? `+ ${money(variant.price)}` : "Base price"}</b></label>)}</fieldset>}
         {product.groups.map((group) => (
           <fieldset key={group.id}>
             <legend>
@@ -2323,6 +2338,7 @@ function ReceiptDocument({
               <strong>
                 {item.quantity}× {item.name}
               </strong>
+              {item.variantName && <small>Variant: {item.variantName}</small>}
               {item.selections.map((selection) => (
                 <small key={`${selection.groupId}-${selection.optionId}`}>
                   {selection.groupName}: {selection.optionName}

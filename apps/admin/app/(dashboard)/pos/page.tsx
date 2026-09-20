@@ -35,6 +35,7 @@ export default async function Page({
     );
   const [
     posSections,
+    productOverrides,
     products,
     deals,
     assignments,
@@ -54,13 +55,17 @@ export default async function Page({
       .eq("is_active", true)
       .order("sort_order"),
     supabase
+      .from("branch_product_overrides")
+      .select("product_id,is_available,price_override,pos_visible,stock_available,sort_order")
+      .eq("business_id", context.businessId)
+      .eq("branch_id", branch.id),
+    supabase
       .from("products")
       .select(
-        "id,name,sku,category_id,pos_section_id,base_price,sale_price,is_available,product_images(url,is_primary)",
+        "id,name,sku,category_id,pos_section_id,base_price,sale_price,is_available,product_images(url,is_primary),product_variants(id,name,price_adjustment,is_default,is_active,sort_order)",
       )
       .eq("business_id", context.businessId)
       .eq("is_active", true)
-      .eq("is_available", true)
       .order("sort_order"),
     supabase
       .from("deals")
@@ -141,7 +146,7 @@ export default async function Page({
       supabase
         .from("orders")
         .select(
-          "id,order_number,created_at,total,customer_name,customer_phone,order_notes,status,channel,branch_id,pos_order_replacements(id),order_items(id,product_id,deal_id,product_name,quantity,unit_base_price,order_item_modifiers(modifier_group_id,modifier_option_id,group_name,option_name,price_adjustment))",
+          "id,order_number,created_at,total,customer_name,customer_phone,order_notes,status,channel,branch_id,pos_order_replacements(id),order_items(id,product_id,deal_id,variant_id,variant_name,product_name,quantity,unit_base_price,order_item_modifiers(modifier_group_id,modifier_option_id,group_name,option_name,price_adjustment))",
         )
         .eq("id", params.replace)
         .eq("business_id", context.businessId)
@@ -170,6 +175,17 @@ export default async function Page({
       replacementError = `This order's ${replacementWindowMinutes}-minute replacement window has expired.`;
     else replacementOrder = data as unknown as PosReplacementOrder;
   }
+  const overrides = new Map((productOverrides.data ?? []).map((row) => [row.product_id, row]));
+  const branchProducts = (products.data ?? []).flatMap((product) => {
+    const override = overrides.get(product.id);
+    if (override?.pos_visible === false) return [];
+    return [{
+      ...product,
+      is_available: (override?.is_available ?? product.is_available) && (override?.stock_available ?? true),
+      sale_price: override?.price_override ?? product.sale_price,
+      branch_sort_order: override?.sort_order ?? 2147483647,
+    }];
+  }).sort((first, second) => first.branch_sort_order - second.branch_sort_order);
   return (
     <>
       {replacementError && (
@@ -201,7 +217,7 @@ export default async function Page({
         phone={business.data?.phone ?? null}
         branch={branch}
         posSections={posSections.data ?? []}
-        products={(products.data ?? []).map((product) => ({
+        products={branchProducts.map((product) => ({
           ...product,
           product_images: product.product_images.map((image) => ({
             ...image,

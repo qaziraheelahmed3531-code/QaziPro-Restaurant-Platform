@@ -4,9 +4,11 @@ begin;
 insert into auth.users(id,email,email_confirmed_at) values
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','location-owner@example.test',now()),
  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','location-cashier@example.test',now());
-insert into public.staff_memberships(business_id,user_id,role) values
- ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','OWNER'),
- ('11111111-1111-4111-8111-111111111111','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','CASHIER');
+insert into public.staff_memberships(business_id,user_id,branch_id,role) values
+ ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',null,'OWNER'),
+ ('11111111-1111-4111-8111-111111111111','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','22222222-2222-4222-8222-222222222222','CASHIER');
+insert into public.staff_membership_branches(membership_id,business_id,branch_id)
+select id,business_id,branch_id from public.staff_memberships where user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 do $$ declare target uuid; begin
  select id into target from public.delivery_areas where slug='hamlet-colony' limit 1;
  if (select boundary_type from public.delivery_areas where id=target)<>'LOCALITY_MATCH' then raise exception 'Existing area was assigned a fabricated boundary'; end if;
@@ -41,7 +43,7 @@ do $$ declare selections jsonb; sale jsonb; begin
    cross join lateral (select m.id from public.modifier_options m where m.modifier_group_id=g.id and m.is_active order by m.is_default desc,m.sort_order limit g.min_selections) selected
    where assignment.product_id='40000000-0000-4000-8000-000000000001' and g.is_active
  ) chosen;
- sale:=public.create_order_authoritative(jsonb_build_object('branchId','22222222-2222-4222-8222-222222222222','serviceMode','DELIVERY','customerName','Location QA','customerPhone','03000000000','deliveryAddress','Synthetic QA address','deliveryAreaId',(select id from public.delivery_areas where slug='hamlet-colony' limit 1),'distanceKm',7,'latitude',33.2,'longitude',72.2,'locationSource','MAP_PIN','items',jsonb_build_array(jsonb_build_object('productId','40000000-0000-4000-8000-000000000001','quantity',1,'modifiers',selections))),null);
+ sale:=public.create_order_authoritative(jsonb_build_object('idempotencyKey','qa-location-order-0001','branchId','22222222-2222-4222-8222-222222222222','serviceMode','DELIVERY','customerName','Location QA','customerPhone','03000000000','deliveryAddress','Synthetic QA address','deliveryAreaId',(select id from public.delivery_areas where slug='hamlet-colony' limit 1),'distanceKm',7,'latitude',33.2,'longitude',72.2,'locationSource','MAP_PIN','items',jsonb_build_array(jsonb_build_object('productId','40000000-0000-4000-8000-000000000001','quantity',1,'modifiers',selections))),null);
  if not exists(select 1 from public.orders where id=(sale->>'id')::uuid and location_source='MAP_PIN' and latitude=33.2 and longitude=72.2 and delivery_fee=200) then raise exception 'Order source, pin or existing fee rule changed'; end if;
 end $$;
 rollback;

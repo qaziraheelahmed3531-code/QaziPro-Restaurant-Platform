@@ -1,0 +1,64 @@
+name: Production foundation
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  applications:
+    name: Lint and build applications
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-publishable-key
+      CUSTOMER_APP_URL: http://127.0.0.1:3000
+      ADMIN_APP_URL: http://127.0.0.1:3001
+      REVALIDATION_SECRET: ci-revalidation-secret
+      QAZIPRO_PLATFORM_DOMAIN: qazipro.example
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build:customer
+      - run: npm run build:admin
+      - run: npm run build:backend
+      - run: npm run build:desktop
+
+  database:
+    name: Migrations, lint and RLS regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.117.0
+      - run: supabase start
+      - run: supabase db reset --local
+      - run: supabase db lint --local --level warning --fail-on error
+      - name: Run SQL regression and isolation suites
+        shell: bash
+        run: |
+          for test_file in supabase/tests/*.sql; do
+            echo "::group::$test_file"
+            psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+              -v ON_ERROR_STOP=1 -f "$test_file"
+            echo "::endgroup::"
+          done
+      - if: always()
+        run: supabase stop --no-backup

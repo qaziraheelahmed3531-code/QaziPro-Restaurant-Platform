@@ -79,7 +79,9 @@ export async function POST(request: Request) {
   if (
     !body ||
     typeof body.email !== "string" ||
-    typeof body.branchId !== "string" ||
+    !Array.isArray(body.branchIds) ||
+    body.branchIds.length > 100 ||
+    body.branchIds.some((value: unknown) => !validUuid(value)) ||
     ![
       "OWNER",
       "MANAGER",
@@ -127,26 +129,38 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   const db = await createClient();
-  if (context.assignedBranchId && body.branchId !== context.assignedBranchId)
+  const branchIds = Array.from(new Set(body.branchIds as string[]));
+  if (body.role !== "OWNER" && branchIds.length === 0)
+    return NextResponse.json(
+      { error: "Select at least one active branch." },
+      { status: 400 },
+    );
+  if (
+    context.role !== "OWNER" &&
+    branchIds.some((id) => !context.allowedBranchIds.includes(id))
+  )
     return NextResponse.json(
       { error: "You can invite staff only to your assigned restaurant." },
       { status: 403 },
     );
-  const branchResult = await db
+  let branchQuery = db
     .from("branches")
     .select("id,name,restaurant_name,city,formatted_address,address")
-    .eq("id", body.branchId)
     .eq("business_id", context.businessId)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (!branchResult.data)
+    .eq("is_active", true);
+  if (branchIds.length) branchQuery = branchQuery.in("id", branchIds);
+  const branchResult = await branchQuery.order("sort_order");
+  if (
+    body.role !== "OWNER" &&
+    (branchResult.data?.length ?? 0) !== branchIds.length
+  )
     return NextResponse.json(
       { error: "Select an active restaurant before inviting staff." },
       { status: 400 },
     );
-  const { data, error } = await db.rpc("save_staff_by_email", {
+  const { data, error } = await db.rpc("save_staff_by_email_v2", {
     p_business_id: context.businessId,
-    p_branch_id: body.branchId,
+    p_branch_ids: branchIds,
     p_email: body.email,
     p_role: body.role,
     p_active: body.active,
@@ -189,15 +203,16 @@ export async function POST(request: Request) {
       .select("logo_url,primary_color")
       .eq("business_id", context.businessId)
       .maybeSingle();
-    const branch = branchResult.data;
+    const branch = branchResult.data?.[0];
     const invitationReturnUrl = new URL("/auth/invite", appUrl);
     invitationReturnUrl.searchParams.set("business", context.businessId);
-    invitationReturnUrl.searchParams.set("branch", branch.id);
+    if (branch) invitationReturnUrl.searchParams.set("branch", branch.id);
     const linkOptions = {
       redirectTo: invitationReturnUrl.toString(),
       data: {
         staff_business_id: context.businessId,
-        staff_branch_id: branch.id,
+        staff_branch_id: branch?.id ?? null,
+        staff_branch_ids: branchIds,
       },
     };
     let linkType: "invite" | "magiclink" = "invite";
@@ -224,15 +239,15 @@ export async function POST(request: Request) {
     acceptUrl.searchParams.set("token_hash", tokenHash);
     acceptUrl.searchParams.set("type", linkType);
     acceptUrl.searchParams.set("business", context.businessId);
-    acceptUrl.searchParams.set("branch", branch.id);
+    if (branch) acceptUrl.searchParams.set("branch", branch.id);
     const restaurantName =
-      branch.restaurant_name || branch.name || context.businessName;
-    const branchLabel = `${restaurantName}${branch.city ? ` — ${branch.city}` : ""}`;
+      branch?.restaurant_name || branch?.name || context.businessName;
+    const branchLabel = body.role === "OWNER" ? "All branches" : `${restaurantName}${branch?.city ? ` — ${branch.city}` : ""}`;
     const delivery = await sendStaffInvitationEmail({
       recipient: data.email,
       restaurantName,
       branchLabel,
-      branchAddress: branch.formatted_address || branch.address,
+      branchAddress: branch?.formatted_address || branch?.address,
       role: body.role,
       permissionCount: body.role === "OWNER" ? 0 : body.permissions.length,
       acceptUrl: acceptUrl.toString(),

@@ -86,6 +86,13 @@ export type ProductModifierGroup = {
   options: ProductOption[]
 }
 
+export type ProductVariant = {
+  id: string
+  name: string
+  priceDelta: number
+  isDefault: boolean
+}
+
 export type Product = {
   id: string
   name: string
@@ -99,6 +106,7 @@ export type Product = {
   image: string
   tags?: string[]
   modifierGroups?: ProductModifierGroup[]
+  variants?: ProductVariant[]
 }
 
 export type Deal = {
@@ -194,6 +202,8 @@ export type StorefrontSnapshot = {
   products: Product[]
   deals: Deal[]
   deliveryAreas: LocationArea[]
+  availableBranches: Array<{ id: string; slug: string; name: string; city: string; formattedAddress: string | null }>
+  resolutionError?: "TENANT_NOT_FOUND" | "BRANCH_REQUIRED" | "BRANCH_NOT_FOUND" | "CONFIGURATION_MISSING"
 }
 
 export type Branch = {
@@ -213,6 +223,8 @@ export type CartLine = {
   quantity: number
   options: string[]
   modifierSelections?: Array<{ groupId: string; optionId: string }>
+  variantId?: string
+  variantName?: string
   image: string
 }
 

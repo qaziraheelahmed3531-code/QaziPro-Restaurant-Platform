@@ -28,3 +28,11 @@ export async function assertCustomerMutationAllowed(businessId: string, scope: "
   const restriction = await getCurrentCustomerRestriction(businessId)
   if ((scope === "access" && restriction?.prevent_storefront_access) || (scope === "order" && restriction?.prevent_new_orders)) throw new Error("This account is currently restricted.")
 }
+
+export async function assertCustomerIdentityAllowed(businessId: string, identity: { id:string;email:string|null } | null, scope: "order" | "access" = "order") {
+  if (!identity) return assertCustomerMutationAllowed(businessId,scope)
+  const filters=[`auth_user_id.eq.${identity.id}`]
+  if(identity.email)filters.push(`normalized_email.eq.${identity.email}`)
+  const {data}=await createAdminClient().from("customer_restrictions").select("prevent_storefront_access,prevent_new_orders").eq("business_id",businessId).eq("is_active",true).eq("status","BLOCKED").or(filters.join(",")).limit(1).maybeSingle()
+  if ((scope === "access" && data?.prevent_storefront_access) || (scope === "order" && data?.prevent_new_orders)) throw new Error("This account is currently restricted.")
+}

@@ -4,7 +4,7 @@ import Link from "next/link"
 import { AppLoader } from "@italian-pizza/shared/app-loader"
 import { useRouter } from "next/navigation"
 import { Coins, Home, LocateFixed, LoaderCircle, MapPin, Plus, Store } from "lucide-react"
-import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from "react"
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
 
 import { LocationMap } from "@/components/location/location-map"
 import { useCheckoutLocation } from "@/lib/location/use-checkout-location"
@@ -124,6 +124,7 @@ function AddressAutocompleteInput({
 export function CheckoutPage() {
   const app = useApp()
   const router = useRouter()
+  const checkoutAttemptId = useRef<string | null>(null)
   const [payment, setPayment] = useState<"cod" | "online">("cod")
   const [placing, setPlacing] = useState(false)
   const [address, setAddress] = useState<AddressDraft>(emptyAddress)
@@ -191,8 +192,10 @@ export function CheckoutPage() {
       const customerPhone = String(formData.get("phone") ?? "").trim()
       let orderId: string
       if (app.storefront.orderPersistence === "database" && app.storefront.branch.id) {
+        checkoutAttemptId.current ??= crypto.randomUUID()
         const coordinates = app.orderType === "delivery" ? addressCoordinates : undefined
         orderId = await createRemoteOrder({
+          idempotencyKey: checkoutAttemptId.current,
           branchId: app.storefront.branch.id,
           serviceMode: app.orderType === "pickup" ? "PICKUP" : "DELIVERY",
           paymentMethod: "CASH_ON_DELIVERY",
@@ -207,7 +210,7 @@ export function CheckoutPage() {
           longitude: coordinates?.longitude,
           promoCode: app.promoCode,
           loyaltyCoinsToRedeem: redeemCoins,
-          items: app.cart.map((item) => ({ itemKind: item.itemKind ?? "product", productId: item.productId, quantity: item.quantity, modifiers: item.modifierSelections ?? [] })),
+          items: app.cart.map((item) => ({ itemKind: item.itemKind ?? "product", productId: item.productId, variantId: item.variantId, quantity: item.quantity, modifiers: item.modifierSelections ?? [] })),
         })
       } else if (app.storefront.orderPersistence === "local-demo") {
         const order = createLocalOrder({ items: app.cart, subtotal: app.subtotal, discount: app.discount, deliveryFee: app.deliveryFee, total: app.total, deliveryAddress, areaLabel: app.selectedArea?.label ?? null, serviceMode: app.orderType, paymentMethod: "cod", customerName, customerPhone })

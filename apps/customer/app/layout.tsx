@@ -12,6 +12,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { BlockedAccount } from "@/components/account/blocked-account";
 import { getStorefrontSnapshot } from "@/lib/storefront/server";
 import { getCurrentCustomerRestriction } from "@/lib/restrictions/server";
+import { BranchSelector } from "@/components/location/branch-selector";
 import "./globals.css";
 import "./location-v5.css";
 import "./storefront-finish.css";
@@ -77,7 +78,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <head>{storefront.business.fontStylesheetUrl && <link rel="stylesheet" href={storefront.business.fontStylesheetUrl} />}</head>
       <body suppressHydrationWarning className="min-h-full flex flex-col" style={theme}>
         <DesktopPosAuthBridge />
-        {restriction?.prevent_storefront_access ? <BlockedAccount restaurantName={restaurantName} contactHref={contactHref}/> : <AppProvider storefront={storefront}>
+        {!storefront.branch.id ? <BranchSelector storefront={storefront}/> : restriction?.prevent_storefront_access ? <BlockedAccount restaurantName={restaurantName} contactHref={contactHref}/> : <AppProvider storefront={storefront}>
           <StorefrontBootSkeleton />
           <StorefrontRefresh businessId={storefront.business.id ?? ""} branchId={storefront.branch.id ?? ""}/>
           {children}

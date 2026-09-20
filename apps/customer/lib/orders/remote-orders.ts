@@ -25,7 +25,7 @@ type ApiOrder = {
   branches?: { name?: string; address?: string | null; formatted_address?: string | null; latitude?: number | null; longitude?: number | null } | Array<{ name?: string; address?: string | null; formatted_address?: string | null; latitude?: number | null; longitude?: number | null }> | null
   location_snapshot?: { restaurantName?:string;branchName?:string;branchAddress?:string;branchCity?:string;deliveryAreaName?:string;deliveryCity?:string;customerAddress?:string;restaurantLatitude?:number;restaurantLongitude?:number } | null
   rider_live_locations?: {latitude:number;longitude:number;accuracy_m:number|null;heading:number|null;is_active:boolean;recorded_at:string;updated_at:string} | Array<{latitude:number;longitude:number;accuracy_m:number|null;heading:number|null;is_active:boolean;recorded_at:string;updated_at:string}> | null
-  order_items?: Array<{ id: string; product_id?: string | null; deal_id?: string | null; product_name: string; quantity: number; unit_price: number; order_item_modifiers?: Array<{ group_name: string; option_name: string }> }>
+  order_items?: Array<{ id: string; product_id?: string | null; deal_id?: string | null; product_name: string; variant_id?: string | null; variant_name?: string | null; quantity: number; unit_price: number; order_item_modifiers?: Array<{ group_name: string; option_name: string }> }>
 }
 
 function status(value: string): LocalOrderStatus {
@@ -52,7 +52,9 @@ export function normalizeApiOrder(order: ApiOrder): LocalOrder {
     name: item.product_name,
     unitPrice: Number(item.unit_price),
     quantity: Number(item.quantity),
-    options: (item.order_item_modifiers ?? []).map((modifier) => `${modifier.group_name}: ${modifier.option_name}`),
+    options: [...(item.variant_name ? [`Variant: ${item.variant_name}`] : []), ...(item.order_item_modifiers ?? []).map((modifier) => `${modifier.group_name}: ${modifier.option_name}`)],
+    variantId: item.variant_id ?? undefined,
+    variantName: item.variant_name ?? undefined,
     image: "/images/products/cart-item-placeholder.svg",
   }))
   return {

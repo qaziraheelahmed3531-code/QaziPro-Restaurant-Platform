@@ -50,14 +50,18 @@ async function authorized(request: Request, branchId: string) {
   const [membership, permissions] = await Promise.all([
     db
       .from("staff_memberships")
-      .select("id,branch_id")
+      .select("id,branch_id,role,staff_membership_branches(branch_id)")
       .eq("user_id", userData.user.id)
       .eq("business_id", branch.business_id)
       .eq("is_active", true),
     db.rpc("effective_permissions", { p_business_id: branch.business_id }),
   ]);
-  const assigned = membership.data?.some(
-    (row) => !row.branch_id || row.branch_id === branchId,
+  const assigned = membership.data?.some((row) =>
+    row.role === "OWNER" ||
+    row.branch_id === branchId ||
+    (row.staff_membership_branches ?? []).some(
+      (assignment: { branch_id: string }) => assignment.branch_id === branchId,
+    ),
   );
   const grants = new Set((permissions.data ?? []) as string[]);
   if (
@@ -84,7 +88,7 @@ export async function GET(request: Request) {
   const { data, error } = await access.db
     .from("orders")
     .select(
-      "id,order_number,token_number,service_mode,operational_order_type,status,payment_method,payment_status,payment_reference,customer_name,customer_phone,customer_email,delivery_area_name,delivery_address,delivery_instructions,subtotal,discount,delivery_fee,total,created_at,updated_at,order_notes,table_reference,order_items(id,product_name,quantity,unit_base_price,unit_modifier_price,unit_price,line_total,order_item_modifiers(group_name,option_name,price_adjustment))",
+      "id,order_number,token_number,service_mode,operational_order_type,status,payment_method,payment_status,payment_reference,customer_name,customer_phone,customer_email,delivery_area_name,delivery_address,delivery_instructions,subtotal,discount,tax,delivery_fee,total,created_at,updated_at,order_notes,table_reference,order_items(id,product_name,variant_id,variant_name,quantity,unit_base_price,unit_modifier_price,unit_price,line_total,order_item_modifiers(group_name,option_name,price_adjustment))",
     )
     .eq("business_id", access.businessId)
     .eq("branch_id", branchId)

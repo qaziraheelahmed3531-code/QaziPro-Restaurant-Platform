@@ -11,11 +11,11 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',true);
 do $$ declare b uuid:='11111111-1111-4111-8111-111111111111'; snapshot jsonb; ids uuid[]; draft jsonb; invoice_id uuid; inv jsonb; result uuid; denied boolean:=false;
 begin
- perform public.save_staff_by_email(b,'CASHIER@example.test','CASHIER',true,array['pos.use','orders.read','receipts.print']);
- perform public.save_staff_by_email(b,'products@example.test','MANAGER',true,array['products.manage']);
- perform public.save_staff_by_email(b,'invite@example.test','KITCHEN',true,array['kds.use']);
+ perform public.save_staff_by_email(b,'22222222-2222-4222-8222-222222222222','CASHIER@example.test','CASHIER',true,array['pos.use','orders.read','receipts.print']);
+ perform public.save_staff_by_email(b,'22222222-2222-4222-8222-222222222222','products@example.test','MANAGER',true,array['products.manage']);
+ perform public.save_staff_by_email(b,'22222222-2222-4222-8222-222222222222','invite@example.test','KITCHEN',true,array['kds.use']);
  if (select status from public.staff_invitations where email='invite@example.test')<>'PENDING' then raise exception 'Pending invitation failed'; end if;
- begin perform public.save_staff_by_email(b,'owner@example.test','OWNER',false,array[]::text[]); exception when sqlstate '22023' then denied:=true; end;
+ begin perform public.save_staff_by_email(b,'22222222-2222-4222-8222-222222222222','owner@example.test','OWNER',false,array[]::text[]); exception when sqlstate '22023' then denied:=true; end;
  if not denied then raise exception 'Last owner was deactivated'; end if;
  snapshot:=public.content_order(b,'categories');
  select array_agg((e->>'id')::uuid order by n desc) into ids from jsonb_array_elements(snapshot) with ordinality v(e,n);
@@ -57,7 +57,7 @@ begin
  update public.products set name='Unauthorized' where business_id=b; get diagnostics changed=row_count;
  if changed<>0 then raise exception 'Cashier changed product via RLS'; end if;
  if public.can_manage_media('product-images',b::text||'/products/test.png') then raise exception 'Cashier upload permitted'; end if;
- begin perform public.save_staff_by_email(b,'cashier@example.test','OWNER',true,array[]::text[]); exception when insufficient_privilege then denied:=true; end;
+ begin perform public.save_staff_by_email(b,'22222222-2222-4222-8222-222222222222','cashier@example.test','OWNER',true,array[]::text[]); exception when insufficient_privilege then denied:=true; end;
  if not denied then raise exception 'Cashier escalated role'; end if;
  if (select count(*) from public.payment_transactions where business_id=b)<>0 then raise exception 'Cashier read denied payments'; end if;
 end $$;

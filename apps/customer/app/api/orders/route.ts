@@ -2,17 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { createOrder, currentUserId, listCustomerOrders, type OrderInput } from "@/lib/orders/server"
 import { getStorefrontSnapshot } from "@/lib/storefront/server"
-
-const attempts = new Map<string, { count: number; resetsAt: number }>()
-
-function allowed(request: NextRequest) {
-  const now = Date.now()
-  const key = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local"
-  const current = attempts.get(key)
-  if (!current || current.resetsAt <= now) { attempts.set(key, { count: 1, resetsAt: now + 60_000 }); return true }
-  current.count += 1
-  return current.count <= 10
-}
+import { consumeRateLimit } from "@/lib/api/v1"
 
 export async function GET() {
   try {
@@ -24,11 +14,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  if (!allowed(request)) return NextResponse.json({ ok: false, error: "Too many order attempts. Please wait a minute and retry." }, { status: 429 })
   try {
     const raw = await request.text()
     if (raw.length > 100_000) return NextResponse.json({ ok: false, error: "Order request is too large." }, { status: 413 })
     const input = JSON.parse(raw) as OrderInput
+    if (!await consumeRateLimit(request,"checkout",10,60,input.branchId??"unresolved")) return NextResponse.json({ ok: false, error: "Too many order attempts. Please wait a minute and retry." }, { status: 429 })
     const order = await createOrder(input, await getStorefrontSnapshot())
     return NextResponse.json({ ok: true, order }, { status: 201, headers: { "Cache-Control": "private, no-store" } })
   } catch (error) {

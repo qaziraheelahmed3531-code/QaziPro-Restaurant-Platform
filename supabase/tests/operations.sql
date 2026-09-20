@@ -9,11 +9,13 @@ insert into auth.users(id) values
  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc'),
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'),
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2');
-insert into public.staff_memberships(business_id,user_id,role) values
- ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','OWNER'),
- ('11111111-1111-4111-8111-111111111111','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','CASHIER'),
- ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','KITCHEN'),
- ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','MANAGER');
+insert into public.staff_memberships(business_id,user_id,branch_id,role) values
+ ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',null,'OWNER'),
+ ('11111111-1111-4111-8111-111111111111','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','22222222-2222-4222-8222-222222222222','CASHIER'),
+ ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','22222222-2222-4222-8222-222222222222','KITCHEN'),
+ ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','22222222-2222-4222-8222-222222222222','MANAGER');
+insert into public.staff_membership_branches(membership_id,business_id,branch_id)
+select id,business_id,branch_id from public.staff_memberships where role<>'OWNER';
 insert into public.ingredients(id,business_id,branch_id,name,unit,current_stock,minimum_stock,cost_per_unit)
 values('dddddddd-dddd-4ddd-8ddd-dddddddddddd','11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','QA Flour','kg',10,2,100);
 insert into public.recipes(business_id,product_id,ingredient_id,quantity)

@@ -196,8 +196,6 @@ type AppContextValue = AppState & {
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
-const storageKey = "italian-pizza-demo-state-v2"
-
 function safePersistedState(value: unknown): PersistedState {
   const saved = value && typeof value === "object" ? value as Partial<PersistedState> : {}
   return {
@@ -220,6 +218,7 @@ function sameCoordinates(first: Coordinates | null, second: Coordinates) {
 }
 
 export function AppProvider({ children, storefront }: { children: ReactNode; storefront: StorefrontSnapshot }) {
+  const storageKey = `qazipro-storefront-v3:${storefront.business.id ?? "unresolved"}:${storefront.branch.id ?? "unresolved"}`
   const deliveryPolicyKey=JSON.stringify({branch:storefront.branch.id,origin:[storefront.branch.originLatitude,storefront.branch.originLongitude],free:storefront.branch.freeDistanceKm,rate:storefront.branch.extraKmRate,maximum:storefront.branch.maximumDistanceKm,areas:storefront.deliveryAreas})
   const [state, dispatch] = useReducer(reducer, initialState)
   const pathname = usePathname()
@@ -251,7 +250,7 @@ export function AppProvider({ children, storefront }: { children: ReactNode; sto
       window.localStorage.removeItem(storageKey)
       dispatch({ type: "hydrate", payload: safePersistedState(null), locationInvalidated:true })
     }
-  }, [storefront.branch.id, storefront.branch.city, storefront.branch.locationRevision, storefront.deliveryAreas])
+  }, [storageKey, storefront.branch.id, storefront.branch.city, storefront.branch.locationRevision, storefront.deliveryAreas])
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -302,7 +301,7 @@ export function AppProvider({ children, storefront }: { children: ReactNode; sto
     } catch {
       // The ordering demo remains usable when browser storage is unavailable.
     }
-  }, [state.cart, state.coordinates, state.deliveryQuote, state.hydrated, state.locationSource, state.orderType, state.promoCode, state.promoDiscount, state.selectedAreaId,storefront.branch.city,storefront.branch.id,storefront.branch.locationRevision])
+  }, [storageKey,state.cart, state.coordinates, state.deliveryQuote, state.hydrated, state.locationSource, state.orderType, state.promoCode, state.promoDiscount, state.selectedAreaId,storefront.branch.city,storefront.branch.id,storefront.branch.locationRevision])
 
   const addCartLine = useCallback((line: Omit<CartLine, "lineId">) => {
     dispatch({ type: "add", line: { ...line, lineId: crypto.randomUUID() } })

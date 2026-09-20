@@ -7,12 +7,13 @@ import { validateDeliveryPoint, validateRouteDistance } from "@/lib/location/val
 import { getDrivingRoute } from "@/lib/geoapify/routing"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient as createSessionClient, isSupabaseConfigured } from "@/lib/supabase/server"
-import { assertCustomerMutationAllowed } from "@/lib/restrictions/server"
+import { assertCustomerIdentityAllowed } from "@/lib/restrictions/server"
 import type { StorefrontSnapshot } from "@/types"
 import { asQuantity, isUuid, normalizeText } from "@italian-pizza/shared/commerce"
 
-type InputItem = { itemKind?: "product" | "deal"; productId: string; quantity: number; modifiers?: Array<{ groupId: string; optionId: string }> }
+type InputItem = { itemKind?: "product" | "deal"; productId: string; variantId?: string; quantity: number; modifiers?: Array<{ groupId: string; optionId: string }> }
 export type OrderInput = {
+  idempotencyKey: string
   branchId: string
   serviceMode: "DELIVERY" | "PICKUP"
   paymentMethod: "CASH_ON_DELIVERY"
@@ -57,20 +58,23 @@ async function currentCustomerIdentity() {
 
 const boundedText = normalizeText
 
-export async function createOrder(input: OrderInput, storefront: StorefrontSnapshot) {
-  if (storefront.business.id) await assertCustomerMutationAllowed(storefront.business.id)
+type CustomerIdentity = { id:string;email:string|null }
+
+export async function createOrder(input: OrderInput, storefront: StorefrontSnapshot, suppliedIdentity?: CustomerIdentity) {
+  if (storefront.business.id) await assertCustomerIdentityAllowed(storefront.business.id,suppliedIdentity??null)
   if (storefront.source !== "database" || !storefront.branch.id || input.branchId !== storefront.branch.id) throw new Error("Ordering backend is not ready for this branch.")
   if (!isUuid(input.branchId)) throw new Error("Branch selection is invalid.")
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(input.idempotencyKey??"")) throw new Error("A valid checkout idempotency key is required.")
   if (!Array.isArray(input.items) || input.items.length < 1 || input.items.length > 50) throw new Error("Your cart is empty or too large.")
   if (!boundedText(input.customerName, 120) || !boundedText(input.customerPhone, 40)) throw new Error("Name and phone are required.")
   const items = input.items.map((item) => {
     const quantity = asQuantity(item.quantity)
-    if (!isUuid(item.productId) || quantity === null) throw new Error("A cart item is invalid.")
+    if (!isUuid(item.productId) || quantity === null || (item.variantId && !isUuid(item.variantId))) throw new Error("A cart item is invalid.")
     const modifiers = Array.isArray(item.modifiers) ? item.modifiers.slice(0, 30).map((modifier) => {
       if (!isUuid(modifier.groupId) || !isUuid(modifier.optionId)) throw new Error("A customization selection is invalid.")
       return { groupId: modifier.groupId, optionId: modifier.optionId }
     }) : []
-    return { itemKind: item.itemKind === "deal" ? "deal" as const : "product" as const, productId: item.productId, quantity, modifiers }
+    return { itemKind: item.itemKind === "deal" ? "deal" as const : "product" as const, productId: item.productId, variantId: item.variantId, quantity, modifiers }
   })
 
   let distanceKm: number | undefined
@@ -86,11 +90,12 @@ export async function createOrder(input: OrderInput, storefront: StorefrontSnaps
     validateRouteDistance(distanceKm, storefront)
   }
 
-  const customer = await currentCustomerIdentity()
+  const customer = suppliedIdentity ?? await currentCustomerIdentity()
   const customerId = customer.id
   const loyaltyCoinsToRedeem = input.loyaltyCoinsToRedeem ?? 0
   if (!Number.isInteger(loyaltyCoinsToRedeem) || loyaltyCoinsToRedeem < 0 || loyaltyCoinsToRedeem > 1_000_000) throw new Error("Choose a valid number of loyalty coins.")
   const payload = {
+    idempotencyKey: boundedText(input.idempotencyKey, 128),
     branchId: input.branchId,
     serviceMode: input.serviceMode,
     paymentMethod: "CASH_ON_DELIVERY",
@@ -116,8 +121,8 @@ export async function createOrder(input: OrderInput, storefront: StorefrontSnaps
   return data
 }
 
-export async function listCustomerOrders() {
-  const customerId = await currentUserId()
+export async function listCustomerOrders(identity?: CustomerIdentity) {
+  const customerId = identity?.id ?? await currentUserId()
   if (!customerId) return []
   const { data, error } = await createAdminClient().from("orders").select(orderSelect).eq("customer_id", customerId).order("created_at", { ascending: false }).limit(100)
   if (error) throw new Error(error.message)

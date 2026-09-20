@@ -63,6 +63,7 @@ type RawProduct = {
   sale_price: number | null;
   is_available: boolean;
   product_images: Array<{ url: string; is_primary: boolean }>;
+  product_variants: Array<{id:string;name:string;price_adjustment:number;is_default:boolean;is_active:boolean;sort_order:number}>;
 };
 type Product = RawProduct & { price: number; groups: Group[] };
 type Deal = {
@@ -87,6 +88,8 @@ type CartLine = {
   quantity: number;
   selections: Selection[];
   itemKind?: "product" | "deal";
+  variantId?: string;
+  variantName?: string;
 };
 type PosResult = {
   id: string;
@@ -130,6 +133,8 @@ export type PosReplacementOrder = {
     product_id: string | null;
     deal_id: string | null;
     product_name: string;
+    variant_id?: string | null;
+    variant_name?: string | null;
     quantity: number;
     unit_base_price: number;
     order_item_modifiers: Array<{
@@ -254,6 +259,8 @@ export function PosTerminal({
         productId: line.product_id ?? line.deal_id ?? "",
         itemKind: line.deal_id ? "deal" : "product",
         name: line.product_name,
+        variantId: line.variant_id ?? undefined,
+        variantName: line.variant_name ?? undefined,
         unitPrice: line.unit_base_price,
         quantity: line.quantity,
         selections: line.order_item_modifiers.flatMap((item) =>
@@ -272,6 +279,7 @@ export function PosTerminal({
   );
   const [editing, setEditing] = useState<Product | null>(null);
   const [selected, setSelected] = useState<Selection[]>([]);
+  const [selectedVariantId,setSelectedVariantId]=useState<string|null>(null);
   const [cash, setCash] = useState("");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [paymentCode, setPaymentCode] = useState(
@@ -433,7 +441,8 @@ export function PosTerminal({
   }, [checkoutOpen, editing]);
   const openProduct = (product: Product) => {
     if (!product.is_available) return;
-    if (!product.groups.length) {
+    const variants=(product.product_variants??[]).filter(variant=>variant.is_active).sort((a,b)=>a.sort_order-b.sort_order)
+    if (!product.groups.length && !variants.length) {
       setCart((rows) => [
         ...rows,
         {
@@ -449,6 +458,7 @@ export function PosTerminal({
       return;
     }
     setEditing(product);
+    setSelectedVariantId(variants.find(variant=>variant.is_default)?.id??variants[0]?.id??null)
     setSelected(
       product.groups.flatMap((group) =>
         group.modifier_options
@@ -499,7 +509,9 @@ export function PosTerminal({
         productId: editing.id,
         itemKind: "product",
         name: editing.name,
-        unitPrice: editing.price,
+        unitPrice: editing.price + Number(editing.product_variants?.find(variant=>variant.id===selectedVariantId)?.price_adjustment??0),
+        variantId: selectedVariantId??undefined,
+        variantName: editing.product_variants?.find(variant=>variant.id===selectedVariantId)?.name,
         quantity: 1,
         selections: selected,
       },
@@ -637,6 +649,7 @@ export function PosTerminal({
       items: cart.map((line) => ({
         itemKind: line.itemKind ?? "product",
         productId: line.productId,
+        variantId: line.variantId,
         quantity: line.quantity,
         modifiers: line.selections.map((item) => ({
           groupId: item.groupId,
@@ -683,7 +696,7 @@ export function PosTerminal({
     const persisted = await createClient()
       .from("orders")
       .select(
-        "subtotal,discount,delivery_fee,tax,total,created_at,order_items(product_name,quantity,unit_price,order_item_modifiers(group_name,option_name))",
+        "subtotal,discount,delivery_fee,tax,total,created_at,order_items(product_name,variant_name,quantity,unit_price,order_item_modifiers(group_name,option_name))",
       )
       .eq("id", result.id)
       .single();
@@ -713,9 +726,9 @@ export function PosTerminal({
             name: line.product_name,
             quantity: line.quantity,
             unitPrice: line.unit_price,
-            options: line.order_item_modifiers.map(
+            options: [...(line.variant_name ? [`Variant: ${line.variant_name}`] : []), ...line.order_item_modifiers.map(
               (option) => `${option.group_name}: ${option.option_name}`,
-            ),
+            )],
           }))
         : cart.map((line) => ({
             name: line.name,
@@ -723,7 +736,7 @@ export function PosTerminal({
             unitPrice:
               line.unitPrice +
               line.selections.reduce((sum, item) => sum + item.price, 0),
-            options: line.selections.map((item) => item.label),
+            options: [...(line.variantName ? [`Variant: ${line.variantName}`] : []),...line.selections.map((item) => item.label)],
           })),
       footer:
         printSettings?.receipt_footer ??
@@ -1109,6 +1122,7 @@ export function PosTerminal({
               <article key={line.lineId}>
                 <div>
                   <strong>{line.name}</strong>
+                  {line.variantName && <small>Variant: {line.variantName}</small>}
                   {line.selections.map((item) => (
                     <small key={item.optionId}>{item.label}</small>
                   ))}
@@ -1510,6 +1524,7 @@ export function PosTerminal({
                 </button>
               </header>
               <div className="modifier-groups">
+                {Boolean(editing.product_variants?.filter(variant=>variant.is_active).length) && <fieldset><legend>Variant <small>Required</small></legend>{editing.product_variants.filter(variant=>variant.is_active).sort((a,b)=>a.sort_order-b.sort_order).map(variant=><button key={variant.id} className={selectedVariantId===variant.id?"is-selected":""} onClick={()=>setSelectedVariantId(variant.id)}><i>{selectedVariantId===variant.id&&<Check/>}</i><span>{variant.name}</span><b>{variant.price_adjustment?`+ ${formatPkr(variant.price_adjustment)}`:"Base price"}</b></button>)}</fieldset>}
                 {editing.groups.map((group) => (
                   <fieldset key={group.id}>
                     <legend>

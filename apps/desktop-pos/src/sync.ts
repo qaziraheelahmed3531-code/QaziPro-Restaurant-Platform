@@ -52,7 +52,7 @@ export async function availableBranches() {
   if (claim.error) throw claim.error;
   const memberships = await supabase
     .from("staff_memberships")
-    .select("business_id,branch_id")
+    .select("business_id,branch_id,role,staff_membership_branches(branch_id)")
     .eq("user_id", user.id)
     .eq("is_active", true);
   if (memberships.error) throw memberships.error;
@@ -99,7 +99,7 @@ export async function availableBranches() {
     memberships.data.some(
       (member) =>
         member.business_id === branch.business_id &&
-        (!member.branch_id || member.branch_id === branch.id),
+        (member.role === "OWNER" || member.branch_id === branch.id || (member.staff_membership_branches ?? []).some((assignment:{branch_id:string})=>assignment.branch_id===branch.id)),
     ),
   );
 }
@@ -174,6 +174,7 @@ export async function downloadCatalog(branchId: string) {
     categories,
     posSections,
     products,
+    productOverrides,
     deals,
     assignments,
     settings,
@@ -206,12 +207,12 @@ export async function downloadCatalog(branchId: string) {
     supabase
       .from("products")
       .select(
-        "id,name,sku,category_id,pos_section_id,base_price,sale_price,product_images(url,is_primary,sort_order)",
+        "id,name,sku,category_id,pos_section_id,base_price,sale_price,is_available,product_images(url,is_primary,sort_order),product_variants(id,name,price_adjustment,is_default,is_active,sort_order)",
       )
       .eq("business_id", businessId)
       .eq("is_active", true)
-      .eq("is_available", true)
       .order("sort_order"),
+    supabase.from("branch_product_overrides").select("product_id,is_available,price_override,pos_visible,stock_available,sort_order").eq("business_id",businessId).eq("branch_id",branchId),
     supabase
       .from("deals")
       .select("id,name,deal_price,image_url,starts_at,ends_at")
@@ -258,6 +259,7 @@ export async function downloadCatalog(branchId: string) {
     categories,
     posSections,
     products,
+    productOverrides,
     deals,
     assignments,
     paymentMethods,
@@ -352,8 +354,10 @@ export async function downloadCatalog(branchId: string) {
   const oldDeals = new Map(
     (previous?.deals ?? []).map((item) => [item.id, item]),
   );
+  const overrides=new Map((productOverrides.data??[]).map(row=>[row.product_id,row]));
+  const visibleProducts=(products.data??[]).flatMap(product=>{const override=overrides.get(product.id);if(override?.pos_visible===false)return [];const available=(override?.is_available??product.is_available)&&(override?.stock_available??true);if(!available)return [];return [{...product,sale_price:override?.price_override??product.sale_price,branchSortOrder:override?.sort_order??2147483647}]}).sort((a,b)=>a.branchSortOrder-b.branchSortOrder);
   const productRows = await Promise.all(
-    (products.data ?? []).map(async (product) => {
+    visibleProducts.map(async (product) => {
       const pictures = (product.product_images ?? [])
         .slice()
         .sort(
@@ -376,6 +380,7 @@ export async function downloadCatalog(branchId: string) {
             ? old.imageDataUrl
             : await imageDataUrl(imageUrl),
         groups: groupsByProduct.get(product.id) ?? [],
+        variants:(product.product_variants??[]).filter(variant=>variant.is_active).sort((a,b)=>a.sort_order-b.sort_order).map(variant=>({id:variant.id,name:variant.name,price:Number(variant.price_adjustment),isDefault:variant.is_default})),
       };
     }),
   );
@@ -514,6 +519,8 @@ function payload(
     items: order.items.map((line) => ({
       itemKind: line.itemKind,
       productId: line.productId,
+      variantId: line.variantId,
+      variantName: line.variantName,
       name: line.name,
       quantity: line.quantity,
       unitBasePrice: line.unitBasePrice,

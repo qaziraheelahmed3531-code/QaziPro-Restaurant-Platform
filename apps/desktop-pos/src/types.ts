@@ -25,6 +25,7 @@ export type CatalogProduct = {
   imageUrl: string | null;
   imageDataUrl: string | null;
   groups: ModifierGroup[];
+  variants: Array<{id:string;name:string;price:number;isDefault:boolean}>;
 };
 export type CatalogDeal = {
   id: string;
@@ -108,6 +109,8 @@ export type CartLine = {
   unitBasePrice: number;
   quantity: number;
   selections: CartSelection[];
+  variantId?: string;
+  variantName?: string;
 };
 export type LocalShift = {
   id: string;

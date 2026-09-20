@@ -1,0 +1,9 @@
+import { apiError, apiSuccess, publicStorefront } from "@/lib/api/v1"
+import { getStorefrontSnapshot } from "@/lib/storefront/server"
+
+export async function GET() {
+  const snapshot = await getStorefrontSnapshot()
+  if (!snapshot.business.id) return apiError(snapshot.resolutionError??"TENANT_NOT_FOUND","No active restaurant is configured for this domain.",404)
+  if (!snapshot.branch.id) return apiError(snapshot.resolutionError??"BRANCH_REQUIRED","A branch must be selected.",409,{business:publicStorefront(snapshot).business,availableBranches:snapshot.availableBranches})
+  return apiSuccess(publicStorefront(snapshot))
+}

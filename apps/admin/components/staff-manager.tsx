@@ -12,6 +12,7 @@ type Staff = {
   is_active: boolean;
   permissions: string[];
   branch_id?: string;
+  branch_ids?: string[];
   branch_name?: string;
   last_sign_in_at?: string;
   delivery_status?: string;
@@ -136,8 +137,11 @@ export function StaffManager({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: normalized.email,
-          branchId:
-            normalized.branch_id ?? context.activeBranchId ?? branches[0]?.id,
+          branchIds:
+            normalized.role === "OWNER"
+              ? []
+              : normalized.branch_ids ??
+                (normalized.branch_id ? [normalized.branch_id] : []),
           role: normalized.role,
           active: normalized.is_active,
           permissions: normalized.permissions,
@@ -214,6 +218,11 @@ export function StaffManager({
     setDraft({
       email: "",
       branch_id: context.activeBranchId ?? branches[0]?.id,
+      branch_ids: context.activeBranchId
+        ? [context.activeBranchId]
+        : branches[0]
+          ? [branches[0].id]
+          : [],
       role: "STAFF",
       is_active: true,
       permissions: preset("STAFF"),
@@ -224,6 +233,11 @@ export function StaffManager({
     setDraft({
       email: "",
       branch_id: context.activeBranchId ?? branches[0]?.id,
+      branch_ids: context.activeBranchId
+        ? [context.activeBranchId]
+        : branches[0]
+          ? [branches[0].id]
+          : [],
       role: "CASHIER",
       is_active: true,
       permissions: [...desktopPosRequired],
@@ -237,6 +251,8 @@ export function StaffManager({
     setDraft({
       ...person,
       branch_id: person.branch_id ?? context.activeBranchId ?? branches[0]?.id,
+      branch_ids:
+        person.branch_ids ?? (person.branch_id ? [person.branch_id] : []),
       permissions: [
         ...new Set([
           ...person.permissions.filter((code) =>
@@ -579,13 +595,15 @@ export function StaffManager({
                   />
                 </label>
                 <label className="is-wide">
-                  Restaurant
+                  Allowed branches
                   <select
-                    required
-                    value={draft.branch_id ?? ""}
-                    onChange={(e) =>
-                      setDraft({ ...draft, branch_id: e.target.value })
-                    }
+                    required={draft.role !== "OWNER"}
+                    multiple
+                    value={draft.branch_ids ?? []}
+                    onChange={(e) => {
+                      const branchIds = Array.from(e.currentTarget.selectedOptions, (option) => option.value);
+                      setDraft({ ...draft, branch_ids: branchIds, branch_id: branchIds[0] });
+                    }}
                   >
                     {branches.map((branch) => (
                       <option key={branch.id} value={branch.id}>
@@ -594,8 +612,7 @@ export function StaffManager({
                     ))}
                   </select>
                   <small>
-                    The employee will enter and operate only this restaurant
-                    branch.
+                    Select one or more branches. Hold Ctrl/Cmd to select multiple.
                   </small>
                 </label>
                 <label>

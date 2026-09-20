@@ -1,6 +1,7 @@
 ﻿import "server-only"
 
 import { createClient } from "@supabase/supabase-js"
+import { cookies, headers } from "next/headers"
 import { fallbackStorefront } from "@/lib/storefront/fallback"
 import type { AreaGroupId, LocationArea, MenuSection, Product, ProductModifierGroup, StorefrontSnapshot } from "@/types"
 
@@ -82,28 +83,63 @@ function todayHoursLabel(branch: Row, timezone: string) {
   return `Open ${formatClock(row.opens_at)} – ${formatClock(row.closes_at)}`
 }
 
-export async function getStorefrontSnapshot(): Promise<StorefrontSnapshot> {
+export type StorefrontRequestContext = { hostname?: string | null; businessSlug?: string | null; branchId?: string | null }
+
+function normalizedHostname(value: string | null | undefined) {
+  return (value ?? "").split(",")[0].trim().toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "")
+}
+
+export async function getStorefrontSnapshot(explicit: StorefrontRequestContext = {}): Promise<StorefrontSnapshot> {
   const supabase = databaseClient()
-  if (!supabase) return fallbackStorefront
+  const demoEnabled = process.env.NODE_ENV === "development" && process.env.ENABLE_DEMO_STOREFRONT === "true"
+  if (!supabase) return demoEnabled ? fallbackStorefront : { ...fallbackStorefront, orderPersistence:"unavailable", products:[], deals:[], menuSections:[], heroSlides:[], resolutionError:"CONFIGURATION_MISSING" }
   const unavailableStorefront: StorefrontSnapshot = {
     ...fallbackStorefront,
     orderPersistence:"unavailable",
     deliveryAreas:[],
-    products:fallbackStorefront.products.map((product)=>({ ...product, available:false })),
-    deals:fallbackStorefront.deals.map((deal)=>({ ...deal, available:false })),
+    products:demoEnabled?fallbackStorefront.products.map((product)=>({ ...product, available:false })):[],
+    deals:demoEnabled?fallbackStorefront.deals.map((deal)=>({ ...deal, available:false })):[],
+    menuSections:demoEnabled?fallbackStorefront.menuSections:[],
+    heroSlides:demoEnabled?fallbackStorefront.heroSlides:[],
+    availableBranches:[],
   }
   try {
-    const businessResult = await supabase.from("businesses").select("*,business_branding(*),site_settings(*),social_links(*),branches(*,business_hours(*),delivery_rules(*),delivery_areas(*))").eq("slug","italian-pizza").eq("is_active",true).limit(1).maybeSingle()
-    if (businessResult.error || !businessResult.data) return unavailableStorefront
+    const requestHeaders = await headers()
+    const cookieStore = await cookies()
+    const hostname = normalizedHostname(explicit.hostname ?? requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"))
+    const platformDomain = normalizedHostname(process.env.QAZIPRO_PLATFORM_DOMAIN)
+    let businessId: string | null = null
+    let businessSlug = text(explicit.businessSlug ?? requestHeaders.get("x-qazipro-business-slug"))
+    if (!businessSlug && (process.env.NODE_ENV === "development" || ["localhost","127.0.0.1"].includes(hostname))) businessSlug = text(process.env.STOREFRONT_BUSINESS_SLUG)
+    const resolutionResult = await supabase.rpc("resolve_storefront_business",{
+      p_hostname:hostname||null,
+      p_platform_domain:platformDomain||null,
+      p_fallback_slug:businessSlug||null,
+    }).maybeSingle()
+    if (!resolutionResult.error && resolutionResult.data) {
+      const resolved = resolutionResult.data as Row
+      businessId=text(resolved.resolved_business_id)
+      businessSlug=text(resolved.resolved_business_slug)
+    }
+    let businessQuery = supabase.from("businesses").select("*,business_branding(*),site_settings(*),social_links(*),branches(*,business_hours(*),delivery_rules(*),delivery_areas(*))").eq("is_active",true)
+    businessQuery = businessId ? businessQuery.eq("id",businessId) : businessSlug ? businessQuery.eq("slug",businessSlug) : businessQuery.eq("id","00000000-0000-0000-0000-000000000000")
+    const businessResult = await businessQuery.maybeSingle()
+    if (businessResult.error || !businessResult.data) return { ...unavailableStorefront, resolutionError:"TENANT_NOT_FOUND" }
     const business = businessResult.data as Row
-    const businessId = text(business.id)
-    const [categoryResult, productResult, dealResult, bannerResult] = await Promise.all([
+    businessId = text(business.id)
+    const activeBranches = asRows(business.branches).filter((row)=>boolean(row.is_active,true)).sort((a,b)=>number(a.sort_order)-number(b.sort_order))
+    const availableBranches = activeBranches.map(row=>({id:text(row.id),slug:text(row.slug),name:text(row.restaurant_name,text(row.name)),city:text(row.city),formattedAddress:text(row.formatted_address)||text(row.address)||null}))
+    const requestedBranch = text(explicit.branchId ?? requestHeaders.get("x-qazipro-branch-id") ?? cookieStore.get(`qp-branch-${businessId}`)?.value)
+    const branch = activeBranches.length===1 ? activeBranches[0] : activeBranches.find(row=>text(row.id)===requestedBranch||text(row.slug)===requestedBranch)
+    if (!branch) return { ...unavailableStorefront, business:{...unavailableStorefront.business,id:businessId,name:text(business.name),displayName:text(first(business.business_branding)?.display_name,text(business.name)).toUpperCase()}, availableBranches, resolutionError:requestedBranch?"BRANCH_NOT_FOUND":"BRANCH_REQUIRED" }
+    const [categoryResult, productResult, overrideResult, dealResult, bannerResult] = await Promise.all([
       supabase.from("categories").select("*").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
-      supabase.from("products").select("*,categories(name,slug),product_images(*),product_modifier_groups(sort_order,modifier_groups(*,modifier_options(*)))").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
+      supabase.from("products").select("*,categories(name,slug),product_images(*),product_variants(*),product_modifier_groups(sort_order,modifier_groups(*,modifier_options(*)))").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
+      supabase.from("branch_product_overrides").select("*").eq("business_id",businessId).eq("branch_id",text(branch.id)),
       supabase.from("deals").select("*").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
       supabase.from("hero_banners").select("*").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
     ])
-    if (categoryResult.error || productResult.error || dealResult.error || bannerResult.error) return unavailableStorefront
+    if (categoryResult.error || productResult.error || overrideResult.error || dealResult.error || bannerResult.error) return unavailableStorefront
 
     const branding = first(business.business_branding)
     const settings = first(business.site_settings)
@@ -114,8 +150,6 @@ export async function getStorefrontSnapshot(): Promise<StorefrontSnapshot> {
       supabase.from("footer_links").select("label,href,group_name,is_external,is_active,sort_order").eq("business_id", businessId).eq("is_active", true).order("sort_order"),
       supabase.from("content_pages").select("slug,title,body,is_published,sort_order").eq("business_id", businessId).eq("is_published", true).order("sort_order"),
     ])
-    const branch = asRows(business.branches).filter((row) => boolean(row.is_active,true)).sort((a,b)=>number(a.sort_order)-number(b.sort_order))[0]
-    if (!branch) return unavailableStorefront
     const rule = first(branch.delivery_rules)
     const timezone = safeTimezone(text(branch.timezone,text(business.timezone,"Asia/Karachi")), safeTimezone(text(business.timezone,"Asia/Karachi")))
     const branchCity = text(branch.city, text(business.city))
@@ -133,14 +167,18 @@ export async function getStorefrontSnapshot(): Promise<StorefrontSnapshot> {
     const acceptingOrders = branchOpen && boolean(branch.online_ordering_enabled,true)
     const areas: LocationArea[] = asRows(branch.delivery_areas).filter((row)=>boolean(row.is_active,true)&&text(row.city,branch.city as string).toLocaleLowerCase()===text(branch.city).toLocaleLowerCase()).sort((a,b)=>number(a.sort_order)-number(b.sort_order)).map((row)=>({id:text(row.slug),databaseId:text(row.id),label:text(row.name),aliases:Array.isArray(row.aliases)?row.aliases.map(String):[],group:groupId(row.group_name),parentId:row.parent_id == null ? null : text(row.parent_id),level:(text(row.level,"SUB_AREA") as LocationArea["level"]),city:text(row.city)||null,countryCode:text(row.country_code)||null,providerPlaceId:text(row.provider_place_id)||null,centerLatitude:row.center_lat==null?null:number(row.center_lat),centerLongitude:row.center_lng==null?null:number(row.center_lng),serviceRadiusMeters:row.service_radius_meters==null?null:number(row.service_radius_meters),boundaryGeojson:row.boundary_geojson??null,boundaryType:(text(row.boundary_type,"LOCALITY_MATCH") as LocationArea["boundaryType"])}))
     const categories: MenuSection[] = asRows(categoryResult.data).map((row)=>({id:text(row.slug),title:text(row.name),description:text(row.description)||undefined,descriptionBold:boolean(row.description_bold),bannerImage:text(row.section_banner_url)||undefined,categoryImage:text(row.image_url,"/images/categories/pizza-placeholder.svg"),productCategory:text(row.name),kind:text(row.slug)==="deals"?"deals":undefined}))
-    const products: Product[] = asRows(productResult.data).map((row)=>{
+    const overrides = new Map(asRows(overrideResult.data).map(row=>[text(row.product_id),row]))
+    const products: Product[] = asRows(productResult.data).flatMap((row)=>{
+      const override=overrides.get(text(row.id));if(!boolean(override?.online_visible,true))return []
       const category=first(row.categories)
       const images=asRows(row.product_images).sort((a,b)=>number(a.sort_order)-number(b.sort_order))
       const modifierGroups: ProductModifierGroup[]=asRows(row.product_modifier_groups).sort((a,b)=>number(a.sort_order)-number(b.sort_order)).flatMap((assignment)=>{
         const group=first(assignment.modifier_groups);if(!group||!boolean(group.is_active,true))return []
         return [{id:text(group.id),label:text(group.name),selection:text(group.selection_type)==="MULTIPLE"?"multiple":"single",required:boolean(group.is_required),minSelections:number(group.min_selections),maxSelections:group.max_selections===null?null:number(group.max_selections),options:asRows(group.modifier_options).filter(option=>boolean(option.is_active,true)).sort((a,b)=>number(a.sort_order)-number(b.sort_order)).map(option=>({id:text(option.id),label:text(option.name),priceDelta:number(option.price_adjustment),image:text(option.image_url)||undefined,isDefault:boolean(option.is_default)}))}]
       })
-      return {id:text(row.id),name:text(row.name),description:text(row.description),price:number(row.sale_price??row.base_price),oldPrice:row.old_price===null?undefined:number(row.old_price),category:text(category?.name),badge:(text(row.badge) as Product["badge"])||undefined,available:boolean(row.is_available,true),customizable:modifierGroups.length>0,image:text(images.find(image=>boolean(image.is_primary))?.url??images[0]?.url,"/images/products/pizza-placeholder.svg"),modifierGroups}
+      const variants=asRows(row.product_variants).filter(variant=>boolean(variant.is_active,true)).sort((a,b)=>number(a.sort_order)-number(b.sort_order)).map(variant=>({id:text(variant.id),name:text(variant.name),priceDelta:number(variant.price_adjustment),isDefault:boolean(variant.is_default)}))
+      const price=override?.price_override==null?number(row.sale_price??row.base_price):number(override.price_override)
+      return [{id:text(row.id),name:text(row.name),description:text(row.description),price,oldPrice:row.old_price===null?undefined:number(row.old_price),category:text(category?.name),badge:(text(row.badge) as Product["badge"])||undefined,available:boolean(override?.is_available,boolean(row.is_available,true))&&boolean(override?.stock_available,true),customizable:modifierGroups.length>0||variants.length>0,image:text(images.find(image=>boolean(image.is_primary))?.url??images[0]?.url,"/images/products/pizza-placeholder.svg"),modifierGroups,variants}]
     })
     const now=Date.now()
     const activeWindow=(row:Row)=>{const starts=text(row.starts_at);const ends=text(row.ends_at);return(!starts||Date.parse(starts)<=now)&&(!ends||Date.parse(ends)>now)}
@@ -155,6 +193,7 @@ export async function getStorefrontSnapshot(): Promise<StorefrontSnapshot> {
       products,
       deals:asRows(dealResult.data).filter(activeWindow).map(row=>({id:text(row.id),name:text(row.name),description:text(row.description),price:number(row.deal_price),savings:Math.max(0,number(row.old_price)-number(row.deal_price)),image:text(row.image_url,"/images/products/deal-placeholder.svg"),available:true})),
       deliveryAreas:areas,
+      availableBranches,
     }
   } catch {
     return unavailableStorefront

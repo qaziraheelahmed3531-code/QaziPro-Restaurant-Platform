@@ -12,8 +12,8 @@ insert into public.site_settings (business_id, announcement_enabled, announcemen
 values ('11111111-1111-4111-8111-111111111111', true, 'Free delivery up to 5 km · Additional distance may carry a delivery fee', true, 'Google Reviews', 'AMS ISLAMIC EDUCATION SYSTEM', 'eb6881d51a4e6dee5191a77cc2ef6223d8fa3e60')
 on conflict (business_id) do update set announcement_text = excluded.announcement_text;
 
-insert into public.branches (id, business_id, code, name, city, pickup_enabled, delivery_enabled)
-values ('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111', 'tarbela-ghazi', 'Italian Pizza — Tarbela Ghazi', 'Tarbela Ghazi', true, true)
+insert into public.branches (id, business_id, code, slug, name, city, pickup_enabled, delivery_enabled)
+values ('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111', 'tarbela-ghazi', 'tarbela-ghazi', 'Italian Pizza — Tarbela Ghazi', 'Tarbela Ghazi', true, true)
 on conflict (id) do update set name = excluded.name, city = excluded.city;
 
 insert into public.delivery_rules (branch_id, free_distance_km, extra_km_rate, rounding_mode)

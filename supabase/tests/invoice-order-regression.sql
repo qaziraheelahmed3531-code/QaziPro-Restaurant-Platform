@@ -5,7 +5,7 @@ insert into public.staff_memberships(business_id,user_id,role) values('11111111-
 insert into public.invoice_settings(business_id,business_name) values('11111111-1111-4111-8111-111111111111','Italian Pizza') on conflict do nothing;
 set local role authenticated;
 select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',true);
-select public.save_staff_by_email('11111111-1111-4111-8111-111111111111','qa-counter@example.test','CASHIER',true,array['pos.use','orders.read','receipts.print']);
+select public.save_staff_by_email('11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','qa-counter@example.test','CASHIER',true,array['pos.use','orders.read','receipts.print']);
 select set_config('request.jwt.claim.sub','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',true);
 do $$ declare s public.register_shifts; sale jsonb;
 begin

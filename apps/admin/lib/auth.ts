@@ -12,6 +12,7 @@ export type AdminContext = {
   businessName: string
   activeBranchId: string | null
   assignedBranchId: string | null
+  allowedBranchIds: string[]
   role: "OWNER" | "MANAGER" | "CASHIER" | "KITCHEN" | "WAITER" | "RIDER" | "STAFF"
   permissions: string[]
 }
@@ -29,33 +30,27 @@ export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
   const requestedBusiness = cookieStore.get("ip-admin-business")?.value
   const requestedBranch = cookieStore.get("ip-admin-branch")?.value
   const membershipQuery = (businessId?: string) => {
-    let query = supabase.from("staff_memberships").select("business_id,branch_id,role,updated_at,businesses!inner(name,is_active)").eq("user_id", userId).eq("is_active", true).eq("businesses.is_active", true)
+    let query = supabase.from("staff_memberships").select("business_id,branch_id,role,updated_at,businesses!inner(name,is_active),staff_membership_branches(branch_id)").eq("user_id", userId).eq("is_active", true).eq("businesses.is_active", true)
     if (businessId) query = query.eq("business_id", businessId)
     return query.order("updated_at", { ascending: false }).limit(1).maybeSingle()
   }
   let membershipResult = await membershipQuery(requestedBusiness)
   if (!membershipResult.data && requestedBusiness) membershipResult = await membershipQuery()
-  const requestedBranchRequest = requestedBranch && requestedBranch !== "all"
-    ? supabase.from("branches").select("id,business_id,restaurant_name,name,city").eq("id", requestedBranch).eq("is_active", true).maybeSingle()
-    : Promise.resolve({ data: null })
-  const [{ data }, requestedBranchResult] = await Promise.all([Promise.resolve(membershipResult), requestedBranchRequest])
+  const { data } = membershipResult
   if (!data) return null
   const business = Array.isArray(data.businesses) ? data.businesses[0] : data.businesses
-  const assignedBranchId = data.role === "OWNER" ? null : String(data.branch_id ?? "") || null
-  const requestedBranchRow = requestedBranchResult.data
-  const selectedRequestedBranch = requestedBranchRow && requestedBranchRow.business_id === data.business_id && (!assignedBranchId || requestedBranchRow.id === assignedBranchId) ? requestedBranchRow : null
-  const needsDefaultBranch = assignedBranchId ? !selectedRequestedBranch : requestedBranch !== "all" && !selectedRequestedBranch
-  const defaultBranchRequest = () => {
-    let query = supabase.from("branches").select("id,restaurant_name,name,city").eq("business_id",data.business_id).eq("is_active",true)
-    if (assignedBranchId) query = query.eq("id", assignedBranchId)
-    return query.order("sort_order").limit(1).maybeSingle()
-  }
-  const [permissionResult, defaultBranchResult] = await Promise.all([
+  const [permissionResult,branchesResult] = await Promise.all([
     data.role === "OWNER" ? Promise.resolve({ data: [] }) : supabase.rpc("effective_permissions", { p_business_id: data.business_id }),
-    needsDefaultBranch ? defaultBranchRequest() : Promise.resolve({ data: null }),
+    supabase.from("branches").select("id,restaurant_name,name,city").eq("business_id",data.business_id).eq("is_active",true).order("sort_order"),
   ])
   const permissionRows = permissionResult.data
-  const selectedBranch = selectedRequestedBranch ?? defaultBranchResult.data
+  const allBranches=branchesResult.data??[]
+  const mapped=(data.staff_membership_branches??[]).map((row:{branch_id:string})=>String(row.branch_id))
+  const legacyBranch=String(data.branch_id??"")
+  const allowedBranchIds=data.role==="OWNER"?allBranches.map(row=>String(row.id)):Array.from(new Set([...mapped,...(legacyBranch?[legacyBranch]:[])]))
+  const availableBranches=allBranches.filter(row=>allowedBranchIds.includes(String(row.id)))
+  const selectedBranch=requestedBranch&&requestedBranch!=="all"?availableBranches.find(row=>String(row.id)===requestedBranch):availableBranches.length===1?availableBranches[0]:null
+  const assignedBranchId=data.role==="OWNER"||allowedBranchIds.length!==1?null:allowedBranchIds[0]
   return {
     userId,
     email: typeof claims?.email === "string" ? claims.email : "Staff account",
@@ -63,6 +58,7 @@ export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
     businessName: String(selectedBranch?.restaurant_name ?? (business as { name?: string } | null)?.name ?? "Restaurant"),
     activeBranchId: selectedBranch?.id ? String(selectedBranch.id) : null,
     assignedBranchId,
+    allowedBranchIds,
     role: data.role as AdminContext["role"],
     permissions: data.role === "OWNER" ? ["*"] : (permissionRows ?? []).map(String),
   }

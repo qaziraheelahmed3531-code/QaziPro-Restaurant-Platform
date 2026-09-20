@@ -80,4 +80,5 @@ export const fallbackStorefront: StorefrontSnapshot = {
   products: products.map((product) => product.customizable ? { ...product, modifierGroups: pizzaGroups } : product),
   deals,
   deliveryAreas: [],
+  availableBranches: [],
 }
