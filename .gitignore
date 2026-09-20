@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.turbo/
+**/.vercel/
+supabase/.temp/
+**/dist/
+apps/desktop-pos/release/
+apps/desktop-pos/release-*/
+coverage/
+**/next-env.d.ts
+*.log
+.env
+.env.local
+.env.*.local
+!.env.example

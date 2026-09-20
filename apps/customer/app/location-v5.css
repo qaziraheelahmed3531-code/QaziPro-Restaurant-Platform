@@ -1,0 +1,46 @@
+.location-panel.location-panel--v5 { width: min(600px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); border-radius: 18px; }
+.location-dialog .dialog-backdrop,
+.cart-drawer-dialog .dialog-backdrop { background: rgb(24 20 18 / 52%); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.location-panel--v5 .location-panel__header { padding: 18px 28px 16px; border-bottom: 0; background: var(--ip-brand-primary); color: var(--ip-text-inverse); }
+.location-panel--v5 .location-panel__header .brand-logo { display: flex; }
+.location-panel--v5 .location-panel__header .brand-logo__image { width: 154px; height: 64px; }
+.location-panel--v5 .location-panel__header .brand-logo__image img { object-fit: contain; }
+.location-panel--v5 .location-panel__header .brand__mark--empty { width: 64px; height: 64px; border-color: rgb(255 255 255 / 50%); background: rgb(255 255 255 / 18%); }
+.location-panel--v5 .location-panel__header .location-close { color: white; }
+.location-panel--v5 .location-panel__header .location-close:hover { background: rgb(255 255 255 / 18%); }
+.location-panel--v5 .location-panel__header .order-type { border-color: rgb(255 255 255 / 35%); background: rgb(255 255 255 / 18%); }
+.location-panel--v5 .location-panel__header .order-type button { color: rgb(255 255 255 / 82%); }
+.location-panel--v5 .location-panel__header .order-type button.is-selected { background: white; color: var(--ip-brand-primary); }
+.location-panel--v5 h2 { font-size: 22px; line-height: 28px; margin: 12px 0 14px; }
+.location-panel--v5 .location-panel__body { padding: 18px 28px 22px; }
+.location-panel--v5 .delivery-location-flow { gap: 14px; }
+.location-panel--v5 .location-flow-heading { margin: 0; }
+.location-panel--v5 .current-location-action { min-height: 52px; padding: 12px 14px; }
+.location-city-field { display: grid; gap: 7px; font-size: 13px; font-weight: 600; }
+.location-city-field input { width: 100%; min-height: 46px; border: 1px solid var(--ip-border-default); border-radius: 8px; padding: 10px 14px; background: var(--ip-surface-secondary, #f6f4f1); color: var(--ip-text-primary); font-size: 15px; }
+.location-panel--v5 .location-confirm { position: static; margin: 0; padding: 0; background: white; }
+.location-panel--v5 .area-results { max-height: min(180px, 25dvh); }
+.location-panel--v5 .area-row { min-height: 46px; }
+.location-panel--v5 .area-select-popover { position: static; }
+.location-panel--v5 .area-select-field { margin-top: 0; }
+.location-panel--v5 .order-type button { height: 44px; }
+.location-panel--v5 .order-type { height: 54px; }
+.location-panel--v5 .pickup-panel { min-height: 220px; }
+.location-panel--v5 .detection-status button { min-height: 44px; }
+.location-panel--v5 .detection-status { padding: 8px 10px; }
+.checkout-pin-block { grid-column: 1 / -1; min-width: 0; display: grid; gap: 12px; }
+.checkout-pin-status { padding: 10px 12px; border: 1px solid var(--ip-border-default); border-radius: 8px; font-size: 14px; line-height: 1.5; }
+.checkout-pin-status[data-valid="true"] { background: #edf6ef; color: #225b35; }
+.checkout-pin-status[data-invalid="true"] { background: #fff2ef; color: #8e211b; }
+.checkout-pin-status button { display: block; margin-top: 8px; min-height: 44px; }
+.location-map button:focus-visible { outline: 3px solid var(--ip-brand-primary); outline-offset: 2px; }
+.location-map .button { border: 1px solid var(--ip-border-strong); border-radius: 8px; background: white; color: var(--ip-text-primary); font-weight: 600; }
+.location-map .button[aria-pressed="true"] { border-color: var(--ip-brand-primary); color: var(--ip-text-brand); background: var(--ip-surface-brand-subtle); }
+.address-grid > div.form-grid__wide > span { display: block; margin-bottom: 7px; color: var(--ip-text-primary); font-size: 13px; font-weight: 600; }
+.address-grid > div.form-grid__wide > span em { color: var(--ip-text-brand); font-size: 11px; font-style: normal; }
+@media (max-width: 640px) {
+  .location-panel.location-panel--v5 { width: 100%; max-height: calc(100dvh - 16px); border-radius: 18px 18px 0 0; }
+  .location-panel--v5 .location-panel__header { padding: 16px 20px 12px; }
+  .location-panel--v5 .location-panel__body { padding: 16px 16px max(16px, env(safe-area-inset-bottom)); }
+  .location-panel--v5 h2 { font-size: 20px; line-height: 26px; }
+}

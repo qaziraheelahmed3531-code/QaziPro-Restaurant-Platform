@@ -1,0 +1,7 @@
+import { AnalyticsDashboard } from "@/components/analytics-dashboard"
+import { requirePermission } from "@/lib/auth"
+import { getSelectedBranch } from "@/lib/branch"
+import { createClient } from "@/lib/supabase/server"
+
+function dayRange(offset=0){const formatter=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Karachi",year:"numeric",month:"2-digit",day:"2-digit"});const base=new Date();base.setUTCDate(base.getUTCDate()+offset);const date=formatter.format(base);const start=new Date(`${date}T00:00:00+05:00`);return{start:start.toISOString(),end:new Date(start.getTime()+86400000).toISOString()}}
+export default async function DashboardPage(){const context=await requirePermission("dashboard.view");const supabase=await createClient();const branch=await getSelectedBranch(supabase,context.businessId);const current=dayRange();const previous=dayRange(-1);const [currentResult,previousResult]=await Promise.all([supabase.rpc("restaurant_report",{p_business_id:context.businessId,p_start:current.start,p_end:current.end,p_branch_id:branch?.id??null}),supabase.rpc("restaurant_report",{p_business_id:context.businessId,p_start:previous.start,p_end:previous.end,p_branch_id:branch?.id??null})]);return <AnalyticsDashboard key={branch?.id??"all"} businessId={context.businessId} branchId={branch?.id??null} initialReport={currentResult.data} initialPrevious={previousResult.data} initialRange={current}/>}

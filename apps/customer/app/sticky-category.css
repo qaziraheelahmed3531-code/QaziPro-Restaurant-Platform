@@ -1,0 +1,5 @@
+.sticky-category-nav{position:fixed;z-index:29;left:0;right:0;height:52px;background:rgba(255,253,250,.98);border-bottom:1px solid #e8e0d8;visibility:hidden;opacity:0;transform:translateY(-6px);pointer-events:none;transition:opacity .18s ease,transform .18s ease,visibility .18s ease}
+.sticky-category-nav.is-visible{visibility:visible;opacity:1;transform:translateY(0);pointer-events:auto}
+.sticky-category-rail{position:relative;max-width:1312px;height:52px;margin:auto;padding:0 16px;display:flex;align-items:center;gap:8px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
+.sticky-category-rail::-webkit-scrollbar{display:none}.sticky-category-rail button{flex:none;min-height:44px;padding:0 14px;border:0;border-bottom:3px solid transparent;background:transparent;color:var(--ip-text-primary);font-size:14px;font-weight:650;white-space:nowrap}.sticky-category-rail button[aria-current=true]{color:var(--ip-brand-primary);border-bottom-color:var(--ip-brand-primary)}.sticky-category-rail button:focus-visible{outline:2px solid var(--ip-brand-primary);outline-offset:-3px}
+@media(prefers-reduced-motion:reduce){.sticky-category-nav{transition:none}}

@@ -1,0 +1,12 @@
+.ip-location-map { width:100%; min-width:0; }
+.ip-location-map__surface { width:100%; z-index:0; border:1px solid #dedad5; border-radius:14px; box-shadow:0 2px 8px #2417100a; }
+.ip-location-map p { font-size:12px; color:#625951; margin:8px 0; }
+.ip-location-map__pan { display:none; min-height:44px; margin:0 0 8px; padding:8px 14px; border:1px solid #dedad5; border-radius:8px; background:white; color:#a92114; }
+@media(pointer:coarse) { .ip-location-map__pan { display:block; } }
+.ip-location-marker { background:transparent; border:0; }
+.ip-location-marker span { display:grid; place-items:center; width:32px; height:36px; background:#a92114; border:3px solid white; border-radius:50% 50% 50% 5%; transform:rotate(-45deg); color:white; box-shadow:0 3px 8px #0005; font-size:15px; }
+.ip-location-marker--rider span { width:46px; height:46px; border-radius:50%; background:#fff; color:#a92114; font-size:23px; transform:none; box-shadow:0 4px 18px #0005,0 0 0 7px #a9211424; }
+.ip-location-map .leaflet-control-attribution { font-size:9px; }
+@media (pointer:coarse) { .ip-location-map__surface.leaflet-container { touch-action:pan-y pinch-zoom; } }
+@media(max-width:640px) { .ip-location-map--customer .ip-location-map__surface { height:250px!important; } }
+.ip-location-map__loading{display:flex;align-items:center;justify-content:center;gap:8px}

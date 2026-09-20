@@ -1,0 +1,30 @@
+{
+  "name": "@italian-pizza/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./commerce": "./src/commerce.ts",
+    "./contracts": "./src/contracts.ts",
+    "./location": "./src/location.ts",
+    "./google-maps": "./src/google-maps.ts",
+    "./location-picker-map": "./src/location-picker-map.tsx",
+    "./geoapify": "./src/geoapify.ts",
+    "./social": "./src/social.ts",
+    "./social-icons": "./src/social-icons.ts"
+    ,"./motion": "./src/motion.ts"
+    ,"./app-loader": "./src/app-loader.tsx"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "simple-icons": "^16.30.0"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.22",
+    "@types/react": "^19.2.18"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  }
+}

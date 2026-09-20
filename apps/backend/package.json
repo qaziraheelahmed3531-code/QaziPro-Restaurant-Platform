@@ -1,0 +1,15 @@
+{
+  "name": "@italian-pizza/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@italian-pizza/shared": "file:../../packages/shared"
+  },
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,63 @@
+/* Motion is brief feedback; content stays visible before hydration. */
+:root { --ease-out: cubic-bezier(.22, 1, .36, 1); }
+html { scrollbar-gutter: stable; }
+body { overflow-wrap: break-word; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button, a { touch-action: manipulation; }
+:focus-visible { outline: 2px solid var(--ip-brand-primary); outline-offset: 3px; }
+.page-transition { min-width: 0; animation: storefront-arrive 180ms ease-out; }
+@keyframes storefront-arrive { from { opacity: .72; } to { opacity: 1; } }
+.button, .button-link, .icon-button, .mobile-icon-button,
+.quantity-control button, .category-tabs a, .category-tabs button {
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 140ms var(--ease-out);
+}
+.product-card, .deal-card, .category-tile {
+  transition: border-color 180ms ease, box-shadow 220ms ease, transform 220ms var(--ease-out);
+}
+.hero-slide { touch-action: pan-y; }
+.option-card .addon-thumbnail { width: 48px; height: 48px; object-fit: contain; border-radius: 9px; background: var(--ip-background-subtle); flex: none; }
+.option-grid:has(.addon-thumbnail) { grid-template-columns: minmax(0, 1fr); }
+.option-card:has(.addon-thumbnail) { min-height: 68px; padding-block: 8px; align-items: center; gap: 8px; }
+.option-card:has(.addon-thumbnail) > span { min-width: 0; flex: 1; white-space: normal; overflow-wrap: anywhere; }
+.option-card:has(.addon-thumbnail) > small { flex: none; }
+.hero-dots button { position: relative; }
+.hero-dots button::after { content: ""; position: absolute; inset: -12px -4px; }
+.cart-drawer__body { flex: 1 1 auto; }
+.cart-drawer__header, .cart-drawer__footer { min-width: 0; }
+.cart-drawer__header .icon-button { flex: none; min-width: 44px; min-height: 44px; }
+.cart-drawer__header h2 { font-size: clamp(20px, 3vw, 24px); }
+.location-panel__body, .cart-drawer__body, .customization-body { overscroll-behavior-y: contain; }
+.drawer-empty { max-width: 100%; }
+.account-menu__popover, .menu-search-results { animation: storefront-popover 160ms var(--ease-out); }
+@keyframes storefront-popover { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (hover: hover) and (pointer: fine) {
+  .product-card:hover { transform: translateY(-2px); }
+  .button:not(:disabled):hover, .button-link:hover { filter: brightness(.97); }
+}
+@media (hover: none) {
+  .product-card:hover, .deal-card:hover, .category-tile:hover { transform: none; }
+  .product-card:hover .product-card__image img, .deal-card:hover .deal-card__image img,
+  .category-tile:hover .category-tile__image img { transform: none; }
+}
+@media (max-width: 767px) {
+  .cart-drawer__header { padding-inline: 16px; gap: 8px; }
+  .cart-drawer__body { padding-inline: 16px; }
+  .cart-drawer__footer { padding-inline: 16px; }
+  .loyalty-redemption-card > header { min-width: 0; }
+  .loyalty-wallet-hero { grid-template-columns: 44px minmax(0, 1fr); padding: 16px; }
+  .loyalty-customer-tier { grid-column: 2; }
+  .loyalty-wallet-hero h2 { font-size: clamp(18px, 5vw, 25px); }
+  .loyalty-wallet-stats > div { padding: 10px 8px; }
+  .account-menu__popover { max-width: calc(100vw - 24px); }
+}
+@media (max-height: 540px) {
+  .cart-drawer { overflow-y: auto; }
+  .cart-drawer__body { flex: 1 0 auto; }
+  .cart-drawer__header { min-height: 60px; padding-block: 8px; }
+  .cart-drawer__footer { padding-block: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-transition, .account-menu__popover, .menu-search-results { animation: none; }
+  .product-card:hover, .deal-card:hover, .category-tile:hover { transform: none; }
+  .product-card__image img, .deal-card__image img, .category-tile__image img { transform: none !important; }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "italian-pizza-platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build:customer": "npm --workspace apps/customer run build",
+    "build:admin": "npm --workspace apps/admin run build",
+    "build:backend": "npm --workspace apps/backend run build",
+    "build:desktop": "npm --workspace apps/desktop-pos run build",
+    "package:desktop": "npm --workspace apps/desktop-pos run package:win",
+    "lint": "npm --workspace apps/customer run lint && npm --workspace apps/admin run lint",
+    "build": "npm run build:customer && npm run build:admin && npm run build:backend && npm run build:desktop"
+  },
+  "allowScripts": {
+    "electron@38.8.6": true,
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.28.2": true,
+    "unrs-resolver": true
+  }
+}

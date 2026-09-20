@@ -1,0 +1,45 @@
+"use client"
+
+import Image from "next/image"
+import { Bike, CheckCircle2, Clock3, LocateFixed, MapPin, Navigation, Phone, ReceiptText } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { formatPkr } from "@italian-pizza/shared"
+import { AppLoader } from "@italian-pizza/shared/app-loader"
+import { createClient } from "@/lib/supabase/client"
+
+type RiderOrder={id:string;order_number:string;token_number:number;customer_name:string;customer_phone:string;delivery_area_name:string|null;delivery_address:string;delivery_instructions:string|null;latitude:number|null;longitude:number|null;total:number;payment_method:string;payment_status:string;ready_at?:string|null;picked_up_at?:string|null;created_at:string;items:Array<{name:string;quantity:number}>}
+export type RiderDashboard={enabled:boolean;availableOrders:RiderOrder[];activeOrders:RiderOrder[];todayDelivered:number;todayCash:number}
+
+export function RiderPortal({riderId,businessId,branch,logoUrl,initialDashboard}:{riderId:string;businessId:string;branch:{id:string;name:string;city:string};logoUrl:string|null;initialDashboard:RiderDashboard}){
+  const [dashboard,setDashboard]=useState(initialDashboard)
+  const [busy,setBusy]=useState("")
+  const [message,setMessage]=useState("")
+  const [gps,setGps]=useState<"idle"|"requesting"|"live"|"error">("idle")
+  const lastPublish=useRef(0)
+  const activeOrderIds=dashboard.activeOrders.map(order=>order.id).join(":")
+  const refresh=useCallback(async()=>{const {data}=await createClient().rpc("rider_dashboard",{p_branch_id:branch.id});if(data)setDashboard(data as RiderDashboard)},[branch.id])
+  useEffect(()=>{const client=createClient();const channel=client.channel(`rider-orders-${businessId}-${riderId}`).on("postgres_changes",{event:"UPDATE",schema:"public",table:"orders",filter:`branch_id=eq.${branch.id}`},()=>void refresh()).subscribe();const interval=window.setInterval(()=>void refresh(),15000);return()=>{window.clearInterval(interval);void client.removeChannel(channel)}},[branch.id,businessId,refresh,riderId])
+  useEffect(()=>{
+    if(!dashboard.enabled||!activeOrderIds){const reset=window.setTimeout(()=>setGps("idle"),0);return()=>window.clearTimeout(reset)}
+    if(!navigator.geolocation){const unavailable=window.setTimeout(()=>setGps("error"),0);return()=>window.clearTimeout(unavailable)}
+    const requesting=window.setTimeout(()=>setGps("requesting"),0)
+    const watcher=navigator.geolocation.watchPosition(position=>{const now=Date.now();if(now-lastPublish.current<4000)return;lastPublish.current=now;const client=createClient();void Promise.all(activeOrderIds.split(":").map(orderId=>client.rpc("publish_rider_location",{p_order_id:orderId,p_latitude:position.coords.latitude,p_longitude:position.coords.longitude,p_accuracy_m:position.coords.accuracy,p_heading:position.coords.heading}))).then(results=>{if(results.some(result=>result.error)){setGps("error");setMessage("Live location could not be shared. Check location permission and refresh.")}else setGps("live")})},()=>setGps("error"),{enableHighAccuracy:true,maximumAge:3000,timeout:15000})
+    return()=>{window.clearTimeout(requesting);navigator.geolocation.clearWatch(watcher)}
+  },[activeOrderIds,dashboard.enabled])
+  const accept=async(order:RiderOrder)=>{setBusy(order.id);setMessage("");const {error}=await createClient().rpc("accept_rider_delivery",{p_order_id:order.id});if(error)setMessage(error.message.includes("no longer available")?"Another rider accepted this delivery.":"Unable to accept this delivery. Refresh and retry.");else{setMessage(`Order ${order.order_number} assigned. Live location sharing has started.`);await refresh()}setBusy("")}
+  const complete=async(order:RiderOrder)=>{const needsCash=order.payment_method==="CASH_ON_DELIVERY"&&order.payment_status!=="PAID";if(needsCash&&!window.confirm(`Confirm you received ${formatPkr(order.total)} cash from the customer?`))return;setBusy(order.id);setMessage("");const {error}=await createClient().rpc("complete_rider_delivery",{p_order_id:order.id,p_cash_received:needsCash});if(error)setMessage(error.message.includes("cash was received")?error.message:"Unable to complete this delivery. Refresh and retry.");else{setMessage(`${order.order_number} delivered${needsCash?" and cash recorded as PAID":""}.`);await refresh()}setBusy("")}
+  if(!dashboard.enabled)return <div className="rider-disabled"><Bike/><h1>Rider portal is turned off</h1><p>This restaurant is using the normal Admin delivery workflow. An owner can enable Rider Portal in Settings → Operating settings.</p></div>
+  return <div className="rider-page">
+    <header className="rider-hero"><div>{logoUrl?<Image src={logoUrl} width={150} height={70} unoptimized alt={`${branch.name} logo`}/>:<span><Bike/></span>}<section><small>RIDER DELIVERY PORTAL</small><h1>{branch.name}</h1><p>{branch.city}</p></section></div><aside><div><small>Ready to collect</small><strong>{dashboard.availableOrders.length}</strong></div><div><small>My active</small><strong>{dashboard.activeOrders.length}</strong></div><div><small>Delivered today</small><strong>{dashboard.todayDelivered}</strong></div><div><small>Cash today</small><strong>{formatPkr(Number(dashboard.todayCash))}</strong></div></aside></header>
+    <div className={`rider-gps is-${gps}`}><LocateFixed/><div><strong>{gps==="live"?"Live location sharing":gps==="requesting"?"Starting live GPS…":gps==="error"?"Location access required":"GPS starts after accepting an order"}</strong><p>{gps==="error"?"Allow precise location for this site, then refresh the portal.":"Only customers whose delivery you accepted can receive this position."}</p></div>{gps==="live"&&<i/>}</div>
+    {message&&<p className={`inline-notice ${message.startsWith("Unable")||message.startsWith("Another")?"is-error":""}`} role="status">{message}</p>}
+    <section className="rider-section"><div className="panel-header"><div><h2>My active deliveries</h2><p>Share live location and confirm payment at the customer handoff.</p></div></div>{dashboard.activeOrders.length?<div className="rider-order-grid">{dashboard.activeOrders.map(order=><RiderOrderCard key={order.id} order={order} active busy={busy===order.id} onAction={()=>void complete(order)}/>)}</div>:<div className="empty-panel"><CheckCircle2/><p>No active delivery. Accept a ready order below.</p></div>}</section>
+    <section className="rider-section"><div className="panel-header"><div><h2>Ready for pickup</h2><p>Kitchen-ready delivery orders appear here automatically. First rider to accept receives the assignment.</p></div><b>{dashboard.availableOrders.length} ready</b></div>{dashboard.availableOrders.length?<div className="rider-order-grid">{dashboard.availableOrders.map(order=><RiderOrderCard key={order.id} order={order} busy={busy===order.id} onAction={()=>void accept(order)}/>)}</div>:<div className="empty-panel"><Clock3/><p>No delivery order is ready right now.</p></div>}</section>
+  </div>
+}
+
+function RiderOrderCard({order,active=false,busy,onAction}:{order:RiderOrder;active?:boolean;busy:boolean;onAction:()=>void}){
+  const navigation=order.latitude!=null&&order.longitude!=null?`https://www.google.com/maps/dir/?api=1&destination=${order.latitude},${order.longitude}`:`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.delivery_address)}`
+  const needsCash=order.payment_method==="CASH_ON_DELIVERY"&&order.payment_status!=="PAID"
+  return <article className={active?"rider-order is-active":"rider-order"}><header><span><small>ORDER</small><strong>{order.order_number}</strong></span><b>Token {String(order.token_number).padStart(3,"0")}</b></header><div className="rider-customer"><span><strong>{order.customer_name}</strong><small>{order.delivery_area_name}</small></span><a href={`tel:${order.customer_phone}`} aria-label={`Call ${order.customer_name}`}><Phone/></a></div><p className="rider-address"><MapPin/><span>{order.delivery_address}{order.delivery_instructions&&<small>{order.delivery_instructions}</small>}</span></p><div className="rider-items">{order.items.map((item,index)=><span key={`${item.name}-${index}`}>{item.quantity}× {item.name}</span>)}</div><div className="rider-payment"><ReceiptText/><span><small>{needsCash?"COLLECT CASH":"PAYMENT"}</small><strong>{formatPkr(order.total)} · {order.payment_status}</strong></span></div><footer><a className="button button--outline" href={navigation} target="_blank" rel="noreferrer"><Navigation/> Navigate</a><button className="button" disabled={busy} onClick={onAction}>{busy?<AppLoader active delay={0} label="Saving delivery"/>:<Bike/>}{busy?"Saving…":active?(needsCash?"Cash received & delivered":"Mark delivered"):"Accept & start delivery"}</button></footer></article>
+}

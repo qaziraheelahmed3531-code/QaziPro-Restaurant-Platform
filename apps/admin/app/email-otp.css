@@ -1,0 +1,7 @@
+.login-card .login-eyebrow{margin:16px 0 8px;font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--muted)}
+.login-card p{font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.admin-otp-form{display:grid;gap:14px}.admin-otp-form h1{margin-top:8px}.admin-otp-form p{margin:0}
+.admin-otp-form .otp-inputs{display:grid;gap:5px;min-width:0}.admin-otp-form .otp-inputs input{width:100%;min-width:0;height:52px;padding:0;text-align:center;border:1px solid var(--line);border-radius:8px;font-size:20px;font-weight:700;background:#fff;color:var(--ink)}
+.admin-otp-form .otp-inputs input:focus-visible{outline:2px solid var(--brand);outline-offset:2px}.admin-otp-form .otp-inputs input:disabled{opacity:.65}
+.admin-otp-actions{display:flex;gap:8px;flex-wrap:wrap}.admin-otp-actions button{flex:1;min-height:44px}
+@media(max-width:430px){.admin-otp-form .otp-inputs{gap:4px}.admin-otp-form .otp-inputs input{font-size:18px;height:48px;border-radius:6px}}
