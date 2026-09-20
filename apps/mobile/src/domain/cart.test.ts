@@ -6,6 +6,7 @@ import {
   emptyCart,
   reorderCart,
   replaceLine,
+  restoreStoredCart,
   updateLine,
   validateCart,
 } from "./cart";
@@ -53,6 +54,17 @@ const catalog: Catalog = {
   ],
 };
 describe("cart", () => {
+  it("restores a valid tenant-scoped cart", () => {
+    const cart = addLine(emptyCart("r", "b"), line);
+    expect(restoreStoredCart(cart, "r")).toEqual(cart);
+  });
+  it("rejects corrupt or cross-tenant persisted carts", () => {
+    const cart = addLine(emptyCart("r", "b"), line);
+    expect(
+      restoreStoredCart({ ...cart, lines: [{ broken: true }] }, "r"),
+    ).toBeNull();
+    expect(restoreStoredCart(cart, "another-restaurant")).toBeNull();
+  });
   it("replaces a customization without duplicating the line", () => {
     const cart = addLine(emptyCart("restaurant-a", "a1"), line);
     const next = replaceLine(cart, line.lineId, {

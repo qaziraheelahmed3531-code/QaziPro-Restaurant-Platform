@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import * as Crypto from "expo-crypto";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { env } from "@/config/env";
 import type { MobileApi } from "./api";
 import { secureStorage } from "./storage";
@@ -41,7 +42,7 @@ export async function registerPush(api: MobileApi, token: string) {
       deviceId: id,
       platform: Platform.OS === "ios" ? "ios" : "android",
       pushToken: String(native.data),
-      appVersion: "0.1.0",
+      appVersion: Constants.expoConfig?.version ?? "unknown",
       locale: Intl.DateTimeFormat().resolvedOptions().locale,
     },
   });

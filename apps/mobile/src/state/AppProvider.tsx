@@ -27,6 +27,7 @@ import {
   clearCart,
   emptyCart,
   replaceLine,
+  restoreStoredCart,
   updateLine,
 } from "@/domain/cart";
 import { createAttempt, type CheckoutAttempt } from "@/domain/checkout";
@@ -133,11 +134,13 @@ export function AppProvider({ children }: PropsWithChildren) {
     const stop = startAuthRefresh();
     void Promise.all([
       supabase.auth.getSession(),
-      readJson<Cart>(CART_KEY),
+      readJson<unknown>(CART_KEY),
     ]).then(([auth, saved]) => {
       if (!active) return;
       setSession(auth.data.session);
-      if (saved?.restaurantKey === env.restaurantKey) setCart(saved);
+      const restored = restoreStoredCart(saved, env.restaurantKey);
+      if (restored) setCart(restored);
+      else if (saved) void removeLocal(CART_KEY);
       void reload();
     });
     const listener = supabase.auth.onAuthStateChange((_event, next) =>

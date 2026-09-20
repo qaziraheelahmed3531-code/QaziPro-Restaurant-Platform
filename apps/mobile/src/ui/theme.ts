@@ -1,12 +1,14 @@
+import { env } from "@/config/env";
+
 export const colors = {
-  background: "#fff8f1",
+  background: env.brand.background,
   surface: "#ffffff",
-  ink: "#211b18",
+  ink: env.brand.text,
   muted: "#726861",
   border: "#eadfd6",
-  primary: "#a92114",
+  primary: env.brand.primary,
   primaryDark: "#7f180f",
-  gold: "#e7a81a",
+  gold: env.brand.secondary,
   green: "#237a42",
   danger: "#ba1a1a",
   blue: "#2563eb",

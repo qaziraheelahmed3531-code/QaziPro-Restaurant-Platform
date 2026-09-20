@@ -1,8 +1,52 @@
 {
-  "cli": { "version": ">= 16.0.0" },
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
   "build": {
-    "development": { "developmentClient": true, "distribution": "internal" },
-    "staging": { "distribution": "internal", "channel": "staging" },
-    "production": { "autoIncrement": true, "channel": "production" }
+    "development": {
+      "distribution": "internal",
+      "channel": "development",
+      "environment": "development",
+      "android": { "buildType": "apk" }
+    },
+    "staging": {
+      "distribution": "internal",
+      "channel": "staging",
+      "environment": "preview",
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_API_BASE_URL": "https://qazipro-restaurant-customer-staging.vercel.app/api/v1",
+        "EXPO_PUBLIC_RESTAURANT_KEY": "qa-restaurant-a",
+        "EXPO_PUBLIC_LINK_DOMAIN": "restaurant-a.staging.qazipro.com",
+        "EXPO_PUBLIC_ENABLE_PUSH": "false",
+        "MOBILE_APP_NAME": "QaziPro Restaurant Staging",
+        "MOBILE_ANDROID_APPLICATION_ID": "com.qazipro.restaurant.staging",
+        "MOBILE_IOS_BUNDLE_ID": "com.qazipro.restaurant.staging",
+        "MOBILE_LINK_DOMAIN": "restaurant-a.staging.qazipro.com",
+        "MOBILE_APP_VERSION": "0.1.0",
+        "MOBILE_ANDROID_VERSION_CODE": "1",
+        "MOBILE_IOS_BUILD_NUMBER": "1"
+      }
+    },
+    "ios-simulator": {
+      "distribution": "internal",
+      "channel": "staging",
+      "environment": "preview",
+      "ios": { "simulator": true },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "MOBILE_ANDROID_APPLICATION_ID": "com.qazipro.restaurant.staging",
+        "MOBILE_IOS_BUNDLE_ID": "com.qazipro.restaurant.staging"
+      }
+    },
+    "production": {
+      "channel": "production",
+      "environment": "production",
+      "android": { "buildType": "app-bundle" },
+      "autoIncrement": false,
+      "env": { "EXPO_PUBLIC_APP_ENV": "production" }
+    }
   }
 }

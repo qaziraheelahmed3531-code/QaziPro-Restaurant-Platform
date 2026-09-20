@@ -200,6 +200,9 @@ export default function Checkout() {
           <View style={styles.mode}>
             {deliveryEnabled ? (
               <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ checked: mode === "DELIVERY" }}
+                accessibilityLabel="Delivery order"
                 onPress={() => setMode("DELIVERY")}
                 style={[
                   styles.modeButton,
@@ -213,6 +216,9 @@ export default function Checkout() {
             ) : null}
             {pickupEnabled ? (
               <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ checked: mode === "PICKUP" }}
+                accessibilityLabel="Pickup order"
                 onPress={() => setMode("PICKUP")}
                 style={[styles.modeButton, mode === "PICKUP" && styles.active]}
               >

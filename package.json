@@ -13,6 +13,7 @@
     "build:mobile": "npm --workspace apps/mobile run build",
     "test:mobile": "npm --workspace apps/mobile run test",
     "test:push": "npm --workspace apps/backend run test",
+    "audit:mobile-artifacts": "node scripts/mobile-artifact-audit.mjs",
     "package:desktop": "npm --workspace apps/desktop-pos run package:win",
     "staging:fixtures": "node scripts/staging-fixtures.mjs",
     "staging:cleanup": "node scripts/cleanup-staging-fixtures.mjs",

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { AppState } from "react-native";
+import { AppState, Text, View } from "react-native";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
@@ -8,6 +8,7 @@ import { AppProvider } from "@/state/AppProvider";
 import { parseDeepLink } from "@/domain/deep-links";
 import { supabase } from "@/lib/supabase";
 import { env } from "@/config/env";
+import { Button, Screen } from "@/ui/components";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -104,6 +105,37 @@ export default function Layout() {
         <Stack.Screen name="rewards" options={{ title: "Rewards" }} />
         <Stack.Screen name="favourites" options={{ title: "Favourites" }} />
       </Stack>
+    </AppProvider>
+  );
+}
+
+export function ErrorBoundary({
+  error,
+  retry,
+}: {
+  error: Error;
+  retry: () => void;
+}) {
+  return (
+    <AppProvider>
+      <Screen>
+        <View
+          style={{ flex: 1, justifyContent: "center", padding: 24, gap: 16 }}
+        >
+          <Text
+            accessibilityRole="header"
+            style={{ fontSize: 24, fontWeight: "800" }}
+          >
+            Something went wrong
+          </Text>
+          <Text>
+            The app could not display this screen safely. Your cart has not
+            been cleared.
+          </Text>
+          <Button title="Try again" onPress={retry} />
+          {env.debug ? <Text selectable>{error.message}</Text> : null}
+        </View>
+      </Screen>
     </AppProvider>
   );
 }

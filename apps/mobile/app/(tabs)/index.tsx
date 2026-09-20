@@ -68,6 +68,7 @@ export default function Home() {
                 <Text style={styles.title}>{app.bootstrap?.displayName}</Text>
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel={`Change branch. Current branch ${app.branch?.name ?? "not selected"}`}
                   onPress={() => router.push("/branch")}
                 >
                   <Text style={styles.branch}>
@@ -108,6 +109,9 @@ export default function Home() {
               {["all", ...categories].map((item) => (
                 <Pressable
                   key={item}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: category === item }}
+                  accessibilityLabel={`Show ${item === "all" ? "all" : item} menu items`}
                   onPress={() => setCategory(item)}
                   style={[styles.chip, category === item && styles.activeChip]}
                 >

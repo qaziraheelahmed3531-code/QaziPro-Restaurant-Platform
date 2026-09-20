@@ -14,3 +14,11 @@ coverage/
 .env.local
 .env.*.local
 !.env.example
+*.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+apps/mobile/credentials.json

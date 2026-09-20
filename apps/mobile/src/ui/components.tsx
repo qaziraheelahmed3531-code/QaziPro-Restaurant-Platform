@@ -72,6 +72,7 @@ export function Field({
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        accessibilityLabel={props.accessibilityLabel ?? label}
         placeholderTextColor="#9b918a"
         style={[styles.input, error && styles.inputError]}
         {...props}
@@ -114,7 +115,10 @@ export function Notice({
   tone = "info",
 }: PropsWithChildren<{ tone?: "info" | "error" | "success" }>) {
   return (
-    <View style={[styles.notice, styles[`${tone}Notice`]]}>
+    <View
+      accessibilityLiveRegion={tone === "error" ? "assertive" : "polite"}
+      style={[styles.notice, styles[`${tone}Notice`]]}
+    >
       <Text style={styles.noticeText}>{children}</Text>
     </View>
   );

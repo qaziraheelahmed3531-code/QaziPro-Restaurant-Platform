@@ -77,6 +77,7 @@ export default function CartScreen() {
             </View>
             <View style={styles.stepper}>
               <Pressable
+                accessibilityRole="button"
                 accessibilityLabel="Decrease quantity"
                 onPress={() =>
                   void app.setQuantity(item.lineId, item.quantity - 1)
@@ -86,6 +87,7 @@ export default function CartScreen() {
               </Pressable>
               <Text style={styles.count}>{item.quantity}</Text>
               <Pressable
+                accessibilityRole="button"
                 accessibilityLabel="Increase quantity"
                 onPress={() =>
                   void app.setQuantity(item.lineId, item.quantity + 1)
@@ -142,8 +144,8 @@ const styles = StyleSheet.create({
   edit: { color: colors.primary, fontWeight: "800", marginTop: 5 },
   stepper: { alignItems: "center", gap: 3 },
   step: {
-    width: 36,
-    height: 34,
+    width: 44,
+    height: 44,
     textAlign: "center",
     textAlignVertical: "center",
     fontSize: 23,

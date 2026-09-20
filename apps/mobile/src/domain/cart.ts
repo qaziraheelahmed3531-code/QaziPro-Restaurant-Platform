@@ -7,6 +7,49 @@ export const emptyCart = (restaurantKey: string, branchId: string): Cart => ({
   loyaltyCoins: 0,
   updatedAt: new Date().toISOString(),
 });
+export function restoreStoredCart(
+  value: unknown,
+  restaurantKey: string,
+): Cart | null {
+  if (!value || typeof value !== "object") return null;
+  const cart = value as Partial<Cart>;
+  if (
+    cart.restaurantKey !== restaurantKey ||
+    typeof cart.branchId !== "string" ||
+    !Array.isArray(cart.lines) ||
+    typeof cart.loyaltyCoins !== "number" ||
+    !Number.isFinite(cart.loyaltyCoins) ||
+    cart.loyaltyCoins < 0 ||
+    typeof cart.updatedAt !== "string"
+  )
+    return null;
+  const lines = cart.lines.filter(
+    (line): line is CartLine =>
+      Boolean(line) &&
+      typeof line.lineId === "string" &&
+      (line.itemKind === "product" || line.itemKind === "deal") &&
+      typeof line.productId === "string" &&
+      typeof line.name === "string" &&
+      typeof line.image === "string" &&
+      typeof line.unitEstimate === "number" &&
+      Number.isFinite(line.unitEstimate) &&
+      line.unitEstimate >= 0 &&
+      Number.isInteger(line.quantity) &&
+      line.quantity > 0 &&
+      line.quantity <= 99 &&
+      Array.isArray(line.modifiers) &&
+      line.modifiers.every(
+        (modifier) =>
+          typeof modifier.groupId === "string" &&
+          typeof modifier.optionId === "string" &&
+          typeof modifier.label === "string" &&
+          typeof modifier.priceDelta === "number" &&
+          Number.isFinite(modifier.priceDelta),
+      ),
+  );
+  if (lines.length !== cart.lines.length) return null;
+  return { ...(cart as Cart), lines };
+}
 export const cartEstimate = (cart: Cart) =>
   cart.lines.reduce((sum, line) => sum + line.unitEstimate * line.quantity, 0);
 export const addLine = (cart: Cart, line: CartLine): Cart => ({
