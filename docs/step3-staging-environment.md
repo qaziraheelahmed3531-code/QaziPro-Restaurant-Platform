@@ -18,6 +18,8 @@
 
 Secrets belong in the hosting provider/Supabase secret store. They must never be committed or exposed to browser bundles. `SUPABASE_SERVICE_ROLE_KEY` is server-only.
 
+Desktop release packaging also requires explicit non-local HTTPS `CUSTOMER_APP_URL` and `ADMIN_APP_URL`, plus the staging/production Supabase URL and publishable key. `npm run package:desktop` now fails closed if a release would embed localhost or incomplete connection settings.
+
 ## Existing real staging project
 
 - Project name: `QaziPro Restaurant Staging`

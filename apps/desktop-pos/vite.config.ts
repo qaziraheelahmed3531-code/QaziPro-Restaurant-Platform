@@ -3,11 +3,24 @@ import react from "@vitejs/plugin-react"
 
 export default defineConfig(({mode})=>{
   const adminEnv=loadEnv(mode,"../admin","")
-  const localApi=(adminEnv.ADMIN_APP_URL??"http://127.0.0.1:3001").replace("http://localhost:","http://127.0.0.1:")
+  const configured=(name:string,fallback="")=>process.env[name]?.trim()||adminEnv[name]?.trim()||fallback
+  const customerUrl=configured("CUSTOMER_APP_URL","http://localhost:3000")
+  const adminUrl=configured("ADMIN_APP_URL","http://127.0.0.1:3001").replace("http://localhost:","http://127.0.0.1:")
+  const supabaseUrl=configured("NEXT_PUBLIC_SUPABASE_URL")
+  const supabaseKey=configured("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",configured("NEXT_PUBLIC_SUPABASE_ANON_KEY"))
+  if(process.env.DESKTOP_RELEASE_BUILD==="true"){
+    for(const [name,value] of [["CUSTOMER_APP_URL",customerUrl],["ADMIN_APP_URL",adminUrl],["NEXT_PUBLIC_SUPABASE_URL",supabaseUrl],["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",supabaseKey]]){
+      if(!value)throw new Error(`${name} is required for a Desktop POS release build.`)
+    }
+    for(const [name,value] of [["CUSTOMER_APP_URL",customerUrl],["ADMIN_APP_URL",adminUrl],["NEXT_PUBLIC_SUPABASE_URL",supabaseUrl]]){
+      const url=new URL(value)
+      if(url.protocol!=="https:"||["localhost","127.0.0.1","::1"].includes(url.hostname))throw new Error(`${name} must be a non-local HTTPS URL for a Desktop POS release build.`)
+    }
+  }
   return {base:"./",plugins:[react()],define:{
-    "import.meta.env.VITE_SUPABASE_URL":JSON.stringify(adminEnv.NEXT_PUBLIC_SUPABASE_URL??""),
-    "import.meta.env.VITE_SUPABASE_KEY":JSON.stringify(adminEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY??adminEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY??""),
-    "import.meta.env.VITE_CUSTOMER_APP_URL":JSON.stringify(adminEnv.CUSTOMER_APP_URL??"http://localhost:3000"),
-    "import.meta.env.VITE_ADMIN_APP_URL":JSON.stringify(localApi),
+    "import.meta.env.VITE_SUPABASE_URL":JSON.stringify(supabaseUrl),
+    "import.meta.env.VITE_SUPABASE_KEY":JSON.stringify(supabaseKey),
+    "import.meta.env.VITE_CUSTOMER_APP_URL":JSON.stringify(customerUrl),
+    "import.meta.env.VITE_ADMIN_APP_URL":JSON.stringify(adminUrl),
   },build:{outDir:"dist",emptyOutDir:true}}
 })

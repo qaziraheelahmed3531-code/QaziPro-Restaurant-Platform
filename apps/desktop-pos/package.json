@@ -9,7 +9,7 @@
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "tsc -b && vite build",
     "start": "electron .",
-    "package:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-icon.ps1 && npm run build && electron-builder --config.electronDist=../../node_modules/electron/dist --win nsis portable"
+    "package:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-icon.ps1 && cross-env DESKTOP_RELEASE_BUILD=true npm run build && electron-builder --config.electronDist=../../node_modules/electron/dist --win nsis portable"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",
