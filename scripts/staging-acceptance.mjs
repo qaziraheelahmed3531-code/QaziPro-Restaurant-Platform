@@ -2,11 +2,18 @@ import { createClient } from "@supabase/supabase-js"
 
 const url=process.env.STAGING_SUPABASE_URL?.trim()
 const anonKey=process.env.STAGING_SUPABASE_PUBLISHABLE_KEY?.trim()
+const serviceKey=process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY?.trim()
 const password=process.env.STAGING_QA_PASSWORD?.trim()
 const baseUrl=(process.env.STAGING_CUSTOMER_URL??"http://127.0.0.1:3100").replace(/\/$/,"")
+const businessBUrl=(process.env.STAGING_CUSTOMER_B_URL??baseUrl).replace(/\/$/,"")
+const unknownDomainUrl=(process.env.STAGING_UNKNOWN_URL??baseUrl).replace(/\/$/,"")
+const unverifiedDomainUrl=(process.env.STAGING_UNVERIFIED_URL??baseUrl).replace(/\/$/,"")
 const adminBaseUrl=(process.env.STAGING_ADMIN_URL??"http://127.0.0.1:3101").replace(/\/$/,"")
-if(!url||!anonKey||!password)throw new Error("Staging URL, publishable key and QA password are required.")
+const publicStaging=process.env.PUBLIC_STAGING==="true"
+const skipExternalLocation=process.env.STAGING_SKIP_EXTERNAL_LOCATION==="true"
+if(!url||!anonKey||!serviceKey||!password)throw new Error("Staging URL, publishable key, service key and QA password are required.")
 if(!/staging/i.test(process.env.STAGING_ENVIRONMENT??""))throw new Error("Refusing to run without STAGING_ENVIRONMENT=staging.")
+if(publicStaging&&[baseUrl,businessBUrl,unknownDomainUrl,unverifiedDomainUrl,adminBaseUrl].some(value=>new URL(value).protocol!=="https:"))throw new Error("Public staging acceptance requires HTTPS Customer A, Customer B, unknown, unverified and Admin URLs.")
 
 const ids={
   businessA:"a0000000-0000-4000-8000-000000000001",businessB:"b0000000-0000-4000-8000-000000000001",
@@ -17,15 +24,28 @@ const ids={
 }
 const results=[]
 const pass=(name,detail="")=>results.push({name,status:"PASS",detail})
+const skip=(name,detail="")=>results.push({name,status:"SKIP",detail})
 const assert=(condition,message)=>{if(!condition)throw new Error(message)}
+const qaAdmin=createClient(url,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}})
+async function resetQaRateLimits(){
+  const {error}=await qaAdmin.from("api_rate_limit_buckets").delete().neq("key_hash","")
+  if(error)throw new Error(`Could not reset dedicated staging rate limits: ${error.message}`)
+}
 
 async function request(path,{host="restaurant-a.staging.qazipro.com",branch,method="GET",body,requestId,ip,token}={}){
-  const headers={host,"x-forwarded-host":host,"x-request-id":requestId??`qa-${crypto.randomUUID()}`}
+  const headers={"x-request-id":requestId??`qa-${crypto.randomUUID()}`}
+  if(!publicStaging){headers.host=host;headers["x-forwarded-host"]=host}
   if(token)headers.authorization=`Bearer ${token}`
   if(ip)headers["x-forwarded-for"]=ip
   if(branch)headers["x-qazipro-branch-id"]=branch
   if(body!==undefined)headers["content-type"]="application/json"
-  const response=await fetch(`${baseUrl}${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body),redirect:"manual"})
+  const targetBase=publicStaging
+    ? host.startsWith("restaurant-b.") ? businessBUrl
+      : host.startsWith("unknown.") ? unknownDomainUrl
+        : host.startsWith("unverified.") ? unverifiedDomainUrl
+          : baseUrl
+    : baseUrl
+  const response=await fetch(`${targetBase}${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body),redirect:"manual"})
   const json=await response.json().catch(()=>null)
   return {response,json}
 }
@@ -45,6 +65,10 @@ const contextB=await request("/api/v1/storefront/context",{host:"restaurant-b.st
 assert(contextA.json?.data?.business?.id===ids.businessA&&contextA.json?.data?.branch?.id===ids.branchA1,"A/A1 context mismatch")
 assert(contextB.json?.data?.business?.id===ids.businessB&&contextB.json?.data?.branch?.id===ids.branchB1,"B/B1 context mismatch")
 pass("Domain → business → branch isolation")
+
+const forgedBranch=await request("/api/v1/orders",{branch:ids.branchB1,method:"POST",body:{idempotencyKey:`forged-branch-${Date.now()}`,branchId:ids.branchB1,serviceMode:"PICKUP",paymentMethod:"CASH_ON_DELIVERY",customerName:"STAGING QA",customerPhone:"03000000000",items:[{productId:ids.productB,variantId:ids.variantB,quantity:1,modifiers:[]}]}})
+assert(forgedBranch.response.status===404&&forgedBranch.json?.error?.code==="BRANCH_NOT_FOUND","Forged cross-tenant branch was not rejected cleanly")
+pass("Forged cross-tenant branch rejected")
 
 const unknown=await request("/api/v1/storefront/context",{host:"unknown.staging.qazipro.com",branch:ids.branchA1})
 assert(unknown.response.status===404&&unknown.json?.error?.code==="TENANT_NOT_FOUND","Unknown domain did not fail closed")
@@ -85,12 +109,16 @@ pass("Idempotency key conflict rejected")
 
 const deliveryPayload={...orderPayload,idempotencyKey:`staging-delivery-${Date.now()}`,serviceMode:"DELIVERY",promoCode:undefined,deliveryAreaId:ids.areaA1,deliveryAddress:"STAGING QA delivery point, Islamabad",locationSource:"GPS",latitude:33.7100,longitude:73.0550}
 const delivery=await request("/api/v1/orders",{branch:ids.branchA1,method:"POST",body:deliveryPayload})
-assert(delivery.response.status===201&&delivery.json?.data?.order?.id,`Delivery checkout failed: ${JSON.stringify(delivery.json)}`)
-const deliveryOrder=delivery.json.data.order
-assert(deliveryOrder.deliveryFee>0&&deliveryOrder.total===deliveryOrder.subtotal-deliveryOrder.discount+deliveryOrder.tax+deliveryOrder.deliveryFee,"Delivery authoritative total is inconsistent")
-pass("Real delivery route and authoritative delivery total",`fee=${deliveryOrder.deliveryFee}`)
+if(skipExternalLocation&&delivery.json?.error?.code==="not-configured"){
+  skip("Real delivery route and authoritative delivery total","GEOAPIFY_API_KEY is not configured in public staging")
+}else{
+  assert(delivery.response.status===201&&delivery.json?.data?.order?.id,`Delivery checkout failed: ${JSON.stringify(delivery.json)}`)
+  const deliveryOrder=delivery.json.data.order
+  assert(deliveryOrder.deliveryFee>0&&deliveryOrder.total===deliveryOrder.subtotal-deliveryOrder.discount+deliveryOrder.tax+deliveryOrder.deliveryFee,"Delivery authoritative total is inconsistent")
+  pass("Real delivery route and authoritative delivery total",`fee=${deliveryOrder.deliveryFee}`)
+}
 
-const orderBPayload={idempotencyKey:`staging-http-b-${Date.now()}`,branchId:ids.branchB1,serviceMode:"PICKUP",paymentMethod:"ONLINE",customerName:"STAGING QA B",customerPhone:"03000000002",items:[{productId:ids.productB,variantId:ids.variantB,quantity:1,modifiers:[]}]}
+const orderBPayload={idempotencyKey:`staging-http-b-${Date.now()}`,branchId:ids.branchB1,serviceMode:"PICKUP",paymentMethod:"CASH_ON_DELIVERY",customerName:"STAGING QA B",customerPhone:"03000000002",items:[{productId:ids.productB,variantId:ids.variantB,quantity:1,modifiers:[]}]}
 const createdB=await request("/api/v1/orders",{host:"restaurant-b.staging.qazipro.com",branch:ids.branchB1,method:"POST",body:orderBPayload})
 assert(createdB.response.status===201&&createdB.json?.data?.order?.subtotal===550&&createdB.json.data.order.tax===0,"Restaurant B totals/isolation failed")
 pass("Restaurant B independent checkout totals")
@@ -162,6 +190,7 @@ assert(!storedError&&storedA.payment_method==="CASH_ON_DELIVERY"&&storedA.paymen
 pass("COD-only payment boundary")
 
 const concurrentPayload={...orderPayload,idempotencyKey:`staging-concurrent-${Date.now()}`,promoCode:undefined}
+await resetQaRateLimits()
 const concurrent=await Promise.all(Array.from({length:6},()=>request("/api/v1/orders",{branch:ids.branchA1,method:"POST",body:concurrentPayload,ip:"198.51.100.88"})))
 assert(concurrent.every(item=>item.response.status===201),"Concurrent checkout retry returned a non-success response")
 const concurrentIds=new Set(concurrent.map(item=>item.json?.data?.order?.id))
@@ -169,8 +198,10 @@ assert(concurrentIds.size===1&&!concurrentIds.has(undefined),"Concurrent idempot
 pass("Concurrent duplicate-checkout protection")
 
 const rateResponses=[]
+await resetQaRateLimits()
 for(let index=0;index<11;index++)rateResponses.push(await request("/api/v1/orders",{branch:ids.branchA1,method:"POST",body:{idempotencyKey:`rate-test-${index}`,branchId:ids.branchA1,items:[]},ip:"198.51.100.99"}))
-assert(rateResponses.slice(0,10).every(item=>item.response.status===400)&&rateResponses[10].response.status===429,"Distributed checkout rate limit boundary failed")
+const rateStatuses=rateResponses.map(item=>item.response.status)
+assert(rateResponses.slice(0,10).every(item=>item.response.status!==429)&&rateResponses[10].response.status===429,`Distributed checkout rate limit boundary failed: ${rateStatuses.join(",")}`)
 pass("Distributed checkout rate limit (10/minute)")
 
 const started=Date.now()

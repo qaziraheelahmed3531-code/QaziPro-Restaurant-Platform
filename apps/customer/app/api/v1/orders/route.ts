@@ -31,6 +31,10 @@ export async function POST(request: NextRequest) {
     if(!await consumeRateLimit(request,"checkout",10,60,payload.branchId??"unresolved"))return apiError("RATE_LIMITED","Too many order attempts. Wait a minute and retry.",429,undefined,requestId)
     const identity=await bearerIdentity(request)
     const storefront=await getStorefrontSnapshot({branchId:payload.branchId,hostname:request.headers.get("x-forwarded-host")??request.headers.get("host")})
+    if(storefront.resolutionError==="TENANT_NOT_FOUND")throw Object.assign(new Error("No verified restaurant is configured for this domain."),{status:404,code:"TENANT_NOT_FOUND"})
+    if(storefront.resolutionError==="BRANCH_NOT_FOUND")throw Object.assign(new Error("The selected branch is not available for this restaurant."),{status:404,code:"BRANCH_NOT_FOUND"})
+    if(storefront.resolutionError==="BRANCH_REQUIRED")throw Object.assign(new Error("Select a branch before checkout."),{status:409,code:"BRANCH_REQUIRED"})
+    if(storefront.resolutionError==="CONFIGURATION_MISSING"||storefront.source!=="database")throw Object.assign(new Error("The ordering service is temporarily unavailable."),{status:503,code:"ORDERING_UNAVAILABLE"})
     const order=await createOrder(payload,storefront,identity??undefined)
     return apiSuccess({order},201,requestId)
   } catch(error){return failure(error,requestId,branchId)}

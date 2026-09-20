@@ -1,0 +1,12 @@
+.git
+.vercel
+node_modules
+**/node_modules
+**/.next
+apps/desktop-pos/release
+.runtime-logs
+*.log
+*.stderr.log
+*.stdout.log
+**/.env.local
+supabase/.temp

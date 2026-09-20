@@ -49,6 +49,9 @@ await upsert("businesses", [
 await upsert("business_domains", [
   { business_id: ids.businessA, hostname: "restaurant-a.staging.qazipro.com", domain_type: "CUSTOM", is_primary: true, is_active: true, verified_at: new Date().toISOString() },
   { business_id: ids.businessB, hostname: "restaurant-b.staging.qazipro.com", domain_type: "CUSTOM", is_primary: true, is_active: true, verified_at: new Date().toISOString() },
+  { business_id: ids.businessA, hostname: "qazipro-restaurant-a-staging.vercel.app", domain_type: "SUBDOMAIN", is_primary: false, is_active: true, verified_at: new Date().toISOString() },
+  { business_id: ids.businessB, hostname: "qazipro-restaurant-b-staging.vercel.app", domain_type: "SUBDOMAIN", is_primary: false, is_active: true, verified_at: new Date().toISOString() },
+  { business_id: ids.businessA, hostname: "qazipro-unverified-staging.vercel.app", domain_type: "SUBDOMAIN", is_primary: false, is_active: true, verified_at: null },
   { business_id: ids.businessA, hostname: "unverified.staging.invalid", domain_type: "CUSTOM", is_primary: false, is_active: true, verified_at: null },
 ], "hostname")
 
