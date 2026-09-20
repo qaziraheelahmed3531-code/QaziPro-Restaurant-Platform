@@ -116,15 +116,21 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
       p_platform_domain:platformDomain||null,
       p_fallback_slug:businessSlug||null,
     }).maybeSingle()
+    if (resolutionResult.error) console.error(JSON.stringify({level:"error",event:"storefront_tenant_resolution_failed",environment:process.env.APP_ENVIRONMENT??process.env.NODE_ENV,hostname,code:resolutionResult.error.code,message:resolutionResult.error.message.slice(0,300)}))
     if (!resolutionResult.error && resolutionResult.data) {
       const resolved = resolutionResult.data as Row
       businessId=text(resolved.resolved_business_id)
       businessSlug=text(resolved.resolved_business_slug)
     }
-    let businessQuery = supabase.from("businesses").select("*,business_branding(*),site_settings(*),social_links(*),branches(*,business_hours(*),delivery_rules(*),delivery_areas(*))").eq("is_active",true)
+    // checkout_idempotency also references businesses + branches, so PostgREST
+    // needs the direct business foreign key named explicitly here.
+    let businessQuery = supabase.from("businesses").select("*,business_branding(*),site_settings(*),social_links(*),branches!branches_business_id_fkey(*,business_hours(*),delivery_rules(*),delivery_areas(*))").eq("is_active",true)
     businessQuery = businessId ? businessQuery.eq("id",businessId) : businessSlug ? businessQuery.eq("slug",businessSlug) : businessQuery.eq("id","00000000-0000-0000-0000-000000000000")
     const businessResult = await businessQuery.maybeSingle()
-    if (businessResult.error || !businessResult.data) return { ...unavailableStorefront, resolutionError:"TENANT_NOT_FOUND" }
+    if (businessResult.error || !businessResult.data) {
+      if (businessResult.error) console.error(JSON.stringify({level:"error",event:"storefront_business_load_failed",environment:process.env.APP_ENVIRONMENT??process.env.NODE_ENV,hostname,businessId,code:businessResult.error.code,message:businessResult.error.message.slice(0,300)}))
+      return { ...unavailableStorefront, resolutionError:"TENANT_NOT_FOUND" }
+    }
     const business = businessResult.data as Row
     businessId = text(business.id)
     const activeBranches = asRows(business.branches).filter((row)=>boolean(row.is_active,true)).sort((a,b)=>number(a.sort_order)-number(b.sort_order))
@@ -195,7 +201,12 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
       deliveryAreas:areas,
       availableBranches,
     }
-  } catch {
+  } catch (error) {
+    const known=error as {name?:string;message?:string}
+    // Next uses this exception as an internal control-flow signal while it
+    // promotes a page to dynamic rendering. It must not be swallowed/logged.
+    if (/Dynamic server usage/i.test(known.message??"")) throw error
+    console.error(JSON.stringify({level:"error",event:"storefront_unexpected_failure",environment:process.env.APP_ENVIRONMENT??process.env.NODE_ENV,error:{name:known.name??"Error",message:(known.message??"Unexpected storefront failure").slice(0,300)}}))
     return unavailableStorefront
   }
 }

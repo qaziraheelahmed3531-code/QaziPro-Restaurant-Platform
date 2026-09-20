@@ -1,6 +1,6 @@
 :root { --ease-out: cubic-bezier(.22, 1, .36, 1); }
 html { scrollbar-gutter: stable; }
-body { overflow-wrap: break-word; }
+body { overflow-wrap: break-word; overflow-x: clip; }
 button, a { touch-action: manipulation; }
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
 .admin-main, .admin-content { min-width: 0; }
@@ -76,6 +76,7 @@ button, a { touch-action: manipulation; }
   .pos-cart { position: static; max-height: none; margin-top: 0; }
 }
 @media (max-width: 600px) {
+  .metric-grid--six { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form-grid { grid-template-columns: minmax(0, 1fr); }
   .admin-content { padding: 18px 12px max(28px, env(safe-area-inset-bottom)); }
   .page-heading { gap: 12px; flex-wrap: wrap; }

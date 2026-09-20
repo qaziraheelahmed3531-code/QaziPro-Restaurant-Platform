@@ -9,12 +9,38 @@ import type { StorefrontSnapshot } from "@/types"
 
 export type ApiIdentity = { id: string; email: string | null }
 
-export function apiSuccess<T>(data: T, status = 200) {
-  return NextResponse.json({ ok:true,data,meta:{ version:"v1" } },{status,headers:{"Cache-Control":"private, no-store"}})
+function responseHeaders(requestId?: string) {
+  return { "Cache-Control":"private, no-store", ...(requestId ? { "x-request-id":requestId } : {}) }
 }
 
-export function apiError(code: string, message: string, status = 400, details?: unknown) {
-  return NextResponse.json({ ok:false,error:{code,message,...(details===undefined?{}:{details})},meta:{version:"v1"} },{status,headers:{"Cache-Control":"private, no-store"}})
+export function apiRequestId(request: NextRequest) {
+  const supplied=request.headers.get("x-request-id")?.trim()
+  return supplied&&/^[a-zA-Z0-9._:-]{8,100}$/.test(supplied)?supplied:crypto.randomUUID()
+}
+
+export function apiSuccess<T>(data: T, status = 200, requestId?: string) {
+  return NextResponse.json({ ok:true,data,meta:{ version:"v1",...(requestId?{requestId}:{}) } },{status,headers:responseHeaders(requestId)})
+}
+
+export function apiError(code: string, message: string, status = 400, details?: unknown, requestId?: string) {
+  return NextResponse.json({ ok:false,error:{code,message,...(details===undefined?{}:{details})},meta:{version:"v1",...(requestId?{requestId}:{})} },{status,headers:responseHeaders(requestId)})
+}
+
+export function reportApiError(error: unknown, context: { requestId:string; route:string; businessId?:string|null; branchId?:string|null }) {
+  const known=error as {name?:string;message?:string;code?:string;status?:number}
+  const record={
+    level:"error",
+    event:"api_request_failed",
+    timestamp:new Date().toISOString(),
+    service:"customer-api",
+    environment:process.env.APP_ENVIRONMENT??process.env.NODE_ENV??"unknown",
+    requestId:context.requestId,
+    route:context.route,
+    businessId:context.businessId??null,
+    branchId:context.branchId??null,
+    error:{name:known.name??"Error",code:known.code??"UNEXPECTED",status:known.status??500,message:(known.message??"Unexpected error").slice(0,500)},
+  }
+  console.error(JSON.stringify(record))
 }
 
 export async function parseJson(request: NextRequest, maximumBytes = 100_000): Promise<unknown> {
