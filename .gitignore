@@ -4,6 +4,7 @@ node_modules/
 **/.vercel/
 supabase/.temp/
 **/dist/
+**/.expo/
 apps/desktop-pos/release/
 apps/desktop-pos/release-*/
 coverage/

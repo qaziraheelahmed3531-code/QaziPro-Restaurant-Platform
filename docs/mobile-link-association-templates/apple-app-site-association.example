@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["REPLACE_TEAM_ID.REPLACE_FINAL_IOS_BUNDLE_ID"],
+        "components": [
+          { "/": "/app/orders/*" },
+          { "/": "/app/auth/*" }
+        ]
+      }
+    ]
+  }
+}

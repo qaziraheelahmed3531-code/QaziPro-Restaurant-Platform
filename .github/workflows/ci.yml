@@ -26,6 +26,13 @@ jobs:
       ADMIN_APP_URL: http://127.0.0.1:3001
       REVALIDATION_SECRET: ci-revalidation-secret
       QAZIPRO_PLATFORM_DOMAIN: qazipro.example
+      EXPO_PUBLIC_APP_ENV: staging
+      EXPO_PUBLIC_API_BASE_URL: https://staging.example/api/v1
+      EXPO_PUBLIC_SUPABASE_URL: https://staging.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-public-key
+      EXPO_PUBLIC_RESTAURANT_KEY: qa-restaurant-a
+      EXPO_PUBLIC_LINK_DOMAIN: staging.example
+      EXPO_PUBLIC_ENABLE_PUSH: "false"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -38,6 +45,9 @@ jobs:
       - run: npm run build:admin
       - run: npm run build:backend
       - run: npm run build:desktop
+      - run: npm run test:mobile
+      - run: npm run test:push
+      - run: npm run build:mobile
 
   database:
     name: Migrations, lint and RLS regression tests

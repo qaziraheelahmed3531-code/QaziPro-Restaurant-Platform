@@ -24,6 +24,7 @@ const ids = {
   categoryB: "b0000000-0000-4000-8000-000000000201",
   productA: "a0000000-0000-4000-8000-000000000301",
   productB: "b0000000-0000-4000-8000-000000000301",
+  dealA: "a0000000-0000-4000-8000-000000000302",
   variantA: "a0000000-0000-4000-8000-000000000401",
   variantB: "b0000000-0000-4000-8000-000000000401",
   modifierGroupA: "a0000000-0000-4000-8000-000000000501",
@@ -72,9 +73,18 @@ await upsert("branches", [
   { id: ids.branchB2, business_id: ids.businessB, code: "B2", slug: "b2", name: "STAGING QA B2", restaurant_name: "STAGING QA Restaurant B — B2", address: "DHA QA, Lahore", formatted_address: "DHA QA, Lahore, Pakistan", city: "Lahore", country_code: "pk", timezone: "Asia/Karachi", latitude: 31.4697, longitude: 74.4111, pickup_enabled: true, delivery_enabled: true, online_ordering_enabled: true, is_active: true, sort_order: 2 },
 ], "id")
 
+await upsert("business_hours", [ids.branchA1, ids.branchA2, ids.branchB1, ids.branchB2].flatMap((branch_id) =>
+  Array.from({ length: 7 }, (_, day_of_week) => ({ branch_id, day_of_week, opens_at: "00:00:00", closes_at: "23:59:59", is_closed: false })),
+), "branch_id,day_of_week")
+
 await upsert("business_operating_settings", [
   { business_id: ids.businessA, tax_rate_bps: 1000 },
   { business_id: ids.businessB, tax_rate_bps: 0 },
+], "business_id")
+
+await upsert("print_settings", [
+  { business_id: ids.businessA, receipt_width_mm: 80, auto_print_receipt: false, print_kitchen_ticket: true, show_prices_on_kitchen_ticket: false, receipt_footer: "STAGING QA A receipt", copies: 1 },
+  { business_id: ids.businessB, receipt_width_mm: 80, auto_print_receipt: false, print_kitchen_ticket: true, show_prices_on_kitchen_ticket: false, receipt_footer: "STAGING QA B receipt", copies: 1 },
 ], "business_id")
 
 await upsert("delivery_rules", [
@@ -101,6 +111,10 @@ await upsert("categories", [
 await upsert("products", [
   { id: ids.productA, business_id: ids.businessA, category_id: ids.categoryA, pos_section_id: ids.sectionA, slug: "qa-meal-a", sku: "QA-A-MEAL", name: "STAGING QA Meal A", description: "Variant and modifier fixture", base_price: 1000, is_available: true, is_active: true, sort_order: 1 },
   { id: ids.productB, business_id: ids.businessB, category_id: ids.categoryB, pos_section_id: ids.sectionB, slug: "qa-meal-b", sku: "QA-B-MEAL", name: "STAGING QA Meal B", description: "Tenant isolation fixture", base_price: 500, is_available: true, is_active: true, sort_order: 1 },
+], "id")
+
+await upsert("deals", [
+  { id: ids.dealA, business_id: ids.businessA, slug: "qa-pos-deal-a", name: "STAGING QA POS Deal A", description: "Disposable POS regression fixture", deal_price: 1000, is_active: true, sort_order: 1 },
 ], "id")
 
 await upsert("product_variants", [

@@ -7,9 +7,13 @@
     "@italian-pizza/shared": "file:../../packages/shared"
   },
   "scripts": {
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "test": "vitest run src/push-worker.test.ts",
+    "push:worker": "node --experimental-strip-types src/push-worker.ts"
   },
   "devDependencies": {
-    "typescript": "^5"
+    "@types/node": "^24.7.2",
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }

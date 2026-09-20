@@ -21,12 +21,14 @@ const password = `Qa!${randomUUID()}a9`
 const deviceId = randomUUID()
 const offlineOrderId = randomUUID()
 const offlineShiftId = randomUUID()
+const qaBusinessA = "a0000000-0000-4000-8000-000000000001"
+const qaBranchA1 = "a0000000-0000-4000-8000-000000000101"
 let userId, membershipId, snapshotId, shiftId, onlineShiftId
 const orderIds = []
 
 try {
-  const deal = checked(await service.from("deals").select("id,business_id,name,deal_price").eq("is_active", true).limit(1).single(), "Resolve deal")
-  const branch = checked(await service.from("branches").select("id,business_id").eq("business_id", deal.business_id).eq("is_active", true).limit(1).single(), "Resolve branch")
+  const deal = checked(await service.from("deals").select("id,business_id,name,deal_price").eq("business_id", qaBusinessA).eq("slug", "qa-pos-deal-a").eq("is_active", true).single(), "Resolve QA deal")
+  const branch = checked(await service.from("branches").select("id,business_id").eq("id", qaBranchA1).eq("business_id", deal.business_id).eq("is_active", true).single(), "Resolve QA branch")
   const created = checked(await service.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: "Step 3 staging POS QA" } }), "Create cashier")
   userId = created.user.id
   membershipId = checked(await service.from("staff_memberships").insert({ business_id: branch.business_id, branch_id: branch.id, user_id: userId, role: "CASHIER", is_active: true, permissions_customized: true }).select("id").single(), "Create membership").id
@@ -79,7 +81,7 @@ try {
   const staged = checked(await cashier.rpc("create_pos_order", { p_payload: {
     branchId: branch.id, shiftId: onlineShiftId, clientReference: randomUUID(), orderType: "TAKEAWAY",
     customerName: "STAGING Lifecycle", customerPhone: "Counter", notes: "Step 3 lifecycle verification",
-    cashReceived: price, items: [{ itemKind: "deal", productId: deal.id, quantity: 1, modifiers: [] }],
+    cashReceived: price * 2, items: [{ itemKind: "deal", productId: deal.id, quantity: 1, modifiers: [] }],
   } }), "Create lifecycle POS order")
   orderIds.push(staged.id)
   const skipped = await cashier.rpc("set_pos_order_stage", { p_order_id: staged.id, p_status: "READY" })
