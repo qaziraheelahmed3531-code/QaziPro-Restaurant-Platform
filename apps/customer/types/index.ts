@@ -121,6 +121,7 @@ export type Deal = {
 
 export type StorefrontBusiness = {
   id: string | null
+  slug: string | null
   name: string
   displayName: string
   description: string

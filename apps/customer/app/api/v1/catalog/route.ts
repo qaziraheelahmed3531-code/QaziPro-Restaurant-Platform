@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server"
 
-import { apiError, apiSuccess } from "@/lib/api/v1"
-import { getStorefrontSnapshot } from "@/lib/storefront/server"
+import { apiFailure, apiRequestId, apiSuccess } from "@/lib/api/v1"
+import { requireMobileStorefront } from "@/lib/api/mobile-context"
 
 export async function GET(request: NextRequest) {
-  const snapshot = await getStorefrontSnapshot({hostname:request.headers.get("x-forwarded-host")??request.headers.get("host")})
-  if (!snapshot.business.id || !snapshot.branch.id) return apiError(snapshot.resolutionError??"STOREFRONT_CONTEXT_REQUIRED","Resolve a restaurant and branch before loading the catalog.",409)
-  return apiSuccess({businessId:snapshot.business.id,branchId:snapshot.branch.id,menuSections:snapshot.menuSections,products:snapshot.products,deals:snapshot.deals})
+  const requestId=apiRequestId(request)
+  try {
+    const {snapshot}=await requireMobileStorefront(request)
+    return apiSuccess({restaurantKey:snapshot.business.slug,businessId:snapshot.business.id,branchId:snapshot.branch.id,menuSections:snapshot.menuSections,products:snapshot.products,deals:snapshot.deals},200,requestId)
+  } catch(error){return apiFailure(error,requestId,{route:"/api/v1/catalog"})}
 }

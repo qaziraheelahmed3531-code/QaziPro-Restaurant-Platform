@@ -16,6 +16,7 @@
     "staging:acceptance": "node scripts/staging-acceptance.mjs",
     "staging:responsive": "node scripts/staging-responsive.mjs",
     "staging:pos": "node scripts/staging-pos-acceptance.mjs",
+    "staging:mobile-api": "node scripts/mobile-api-acceptance.mjs",
     "lint": "npm --workspace apps/customer run lint && npm --workspace apps/admin run lint",
     "build": "npm run build:customer && npm run build:admin && npm run build:backend && npm run build:desktop"
   },

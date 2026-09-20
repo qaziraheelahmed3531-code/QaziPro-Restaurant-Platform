@@ -12,9 +12,10 @@
     "./location-picker-map": "./src/location-picker-map.tsx",
     "./geoapify": "./src/geoapify.ts",
     "./social": "./src/social.ts",
-    "./social-icons": "./src/social-icons.ts"
-    ,"./motion": "./src/motion.ts"
-    ,"./app-loader": "./src/app-loader.tsx"
+    "./social-icons": "./src/social-icons.ts",
+    "./motion": "./src/motion.ts",
+    "./app-loader": "./src/app-loader.tsx",
+    "./mobile-api": "./src/mobile-api.ts"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

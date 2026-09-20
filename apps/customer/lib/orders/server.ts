@@ -60,6 +60,14 @@ const boundedText = normalizeText
 
 type CustomerIdentity = { id:string;email:string|null }
 
+function safeOrder<T extends Record<string,unknown>>(order: T) {
+  const value: Record<string,unknown>={...order}
+  delete value.guest_tracking_hash
+  delete value.rider_id
+  delete value.business_id
+  return value
+}
+
 export async function createOrder(input: OrderInput, storefront: StorefrontSnapshot, suppliedIdentity?: CustomerIdentity) {
   if (storefront.business.id) await assertCustomerIdentityAllowed(storefront.business.id,suppliedIdentity??null)
   if (storefront.source !== "database" || !storefront.branch.id || input.branchId !== storefront.branch.id) throw new Error("Ordering backend is not ready for this branch.")
@@ -121,17 +129,28 @@ export async function createOrder(input: OrderInput, storefront: StorefrontSnaps
   return data
 }
 
-export async function listCustomerOrders(identity?: CustomerIdentity) {
+export async function listCustomerOrders(identity?: CustomerIdentity, businessId?: string) {
   const customerId = identity?.id ?? await currentUserId()
   if (!customerId) return []
-  const { data, error } = await createAdminClient().from("orders").select(orderSelect).eq("customer_id", customerId).order("created_at", { ascending: false }).limit(100)
+  let query=createAdminClient().from("orders").select(orderSelect).eq("customer_id", customerId)
+  if(businessId)query=query.eq("business_id",businessId)
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(100)
   if (error) throw new Error(error.message)
-  return data ?? []
+  return (data ?? []).map(order=>safeOrder(order))
 }
 
-export async function getAccessibleOrder(orderNumber: string, guestToken?: string | null) {
-  const customerId = await currentUserId()
+export async function listCustomerOrdersPage(identity: CustomerIdentity,businessId:string,limit:number,cursor?:{createdAt:string;id:string}|null) {
+  let query=createAdminClient().from("orders").select(orderSelect).eq("customer_id",identity.id).eq("business_id",businessId).order("created_at",{ascending:false}).order("id",{ascending:false}).limit(limit+1)
+  if(cursor)query=query.or(`created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`)
+  const {data,error}=await query
+  if(error)throw new Error(error.message)
+  return (data??[]).map(order=>safeOrder(order))
+}
+
+export async function getAccessibleOrder(orderNumber: string, guestToken?: string | null, suppliedIdentity?: CustomerIdentity | null, businessId?: string) {
+  const customerId = suppliedIdentity === undefined ? await currentUserId() : suppliedIdentity?.id ?? null
   let query = createAdminClient().from("orders").select(orderSelect).eq("order_number", orderNumber).limit(1)
+  if(businessId)query=query.eq("business_id",businessId)
   if (guestToken) query = query.eq("guest_tracking_hash", createHash("sha256").update(guestToken).digest("hex"))
   else if (customerId) query = query.eq("customer_id", customerId)
   else return null
@@ -139,15 +158,12 @@ export async function getAccessibleOrder(orderNumber: string, guestToken?: strin
   if (error) throw new Error(error.message)
   if (!data) return null
   // Authorization hashes are server-internal, not customer tracking fields.
-  const safeOrder = { ...data }
-  delete safeOrder.guest_tracking_hash
-  delete safeOrder.rider_id
-  return safeOrder
+  return safeOrder(data)
 }
 
-export async function cancelAccessibleOrder(orderNumber: string, guestToken?: string | null) {
-  const customerId = await currentUserId()
-  const order = await getAccessibleOrder(orderNumber, guestToken)
+export async function cancelAccessibleOrder(orderNumber: string, guestToken?: string | null, suppliedIdentity?: CustomerIdentity | null, businessId?: string) {
+  const customerId = suppliedIdentity === undefined ? await currentUserId() : suppliedIdentity?.id ?? null
+  const order = await getAccessibleOrder(orderNumber, guestToken, suppliedIdentity, businessId)
   if (!order) return null
   const guestHash = guestToken ? createHash("sha256").update(guestToken).digest("hex") : null
   const { data, error } = await createAdminClient().rpc("cancel_customer_order", {

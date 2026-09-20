@@ -14,6 +14,7 @@ export const fallbackStorefront: StorefrontSnapshot = {
   orderPersistence: "local-demo",
   business: {
     id: null,
+    slug: null,
     name: "Restaurant",
     displayName: "RESTAURANT",
     description: "Online ordering is temporarily unavailable.",

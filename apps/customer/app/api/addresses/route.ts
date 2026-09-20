@@ -11,7 +11,9 @@ export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ addresses: [] })
-  const { data, error } = await supabase.from("customer_addresses").select("*,delivery_areas(slug)").eq("customer_id", user.id).order("created_at")
+  const storefront=await getStorefrontSnapshot()
+  if(!storefront.business.id)return NextResponse.json({addresses:[]})
+  const { data, error } = await supabase.from("customer_addresses").select("*,delivery_areas(slug)").eq("customer_id", user.id).eq("business_id",storefront.business.id).order("created_at")
   if (error) return NextResponse.json({ error: "Addresses could not be loaded." }, { status: 503 })
   const addresses = (data ?? []).map((row) => ({
     id: row.id,
@@ -39,6 +41,8 @@ export async function POST(request: NextRequest) {
   const label = ["home", "work", "other"].includes(String(body.label)) ? String(body.label) : "other"
   const payload = {
     customer_id: user.id,
+    business_id: storefront.business.id,
+    branch_id: storefront.branch.id,
     delivery_area_id: typeof body.deliveryAreaId === "string" && storefront.deliveryAreas.some((area) => area.databaseId === body.deliveryAreaId) ? body.deliveryAreaId : null,
     label,
     city: storefront.branch.city,
@@ -57,7 +61,8 @@ export async function POST(request: NextRequest) {
     catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Delivery location could not be verified." }, { status: 422 }) }
   }
   if (!payload.city || !payload.address_line_1) return NextResponse.json({ error: "City and address are required." }, { status: 400 })
-  const { data, error } = await supabase.from("customer_addresses").upsert(payload, { onConflict: "customer_id,label" }).select("id").single()
+  if(!storefront.business.id||!storefront.branch.id)return NextResponse.json({error:"Choose a branch before saving an address."},{status:409})
+  const { data, error } = await supabase.from("customer_addresses").upsert(payload, { onConflict: "customer_id,business_id,label" }).select("id").single()
   return error ? NextResponse.json({ error: "Address could not be saved." }, { status: 400 }) : NextResponse.json({ ok: true, id: data.id })
 }
 
@@ -71,6 +76,6 @@ export async function DELETE(request: NextRequest) {
   catch { return NextResponse.json({ error: "This account is currently restricted." }, { status: 403 }) }
   const id = request.nextUrl.searchParams.get("id")
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: "Invalid address." }, { status: 400 })
-  const { error } = await supabase.from("customer_addresses").delete().eq("id", id).eq("customer_id", user.id)
+  const { error } = await supabase.from("customer_addresses").delete().eq("id", id).eq("customer_id", user.id).eq("business_id",storefront.business.id!)
   return error ? NextResponse.json({ error: "Address could not be deleted." }, { status: 400 }) : NextResponse.json({ ok: true })
 }
