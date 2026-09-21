@@ -33,7 +33,7 @@ export async function getSelectedBranch(
   let query = supabase
     .from("branches")
     .select(
-      "id,name,restaurant_name,city,location_revision,address,formatted_address,phone",
+      "id,name,restaurant_name,city,timezone,location_revision,address,formatted_address,phone",
     )
     .eq("business_id", businessId)
     .eq("is_active", true);
@@ -49,6 +49,7 @@ export async function getSelectedBranch(
       name: string;
       restaurant_name?: string | null;
       city: string;
+      timezone?: string | null;
       location_revision?: number;
       address?: string | null;
       formatted_address?: string | null;

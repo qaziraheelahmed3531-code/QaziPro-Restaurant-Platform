@@ -14,6 +14,7 @@ import { useRouter } from "expo-router";
 import { Button, Card, Field, Notice, Screen } from "@/ui/components";
 import { useApp } from "@/state/AppProvider";
 import type {
+  Address,
   LoyaltyWallet,
   PaymentCapabilities,
   Profile,
@@ -42,12 +43,14 @@ export default function Checkout() {
     [deliveryMessage, setDeliveryMessage] = useState(""),
     [coupon, setCoupon] = useState(app.cart.promoCode ?? ""),
     [couponMessage, setCouponMessage] = useState(""),
+    [savedAddresses, setSavedAddresses] = useState<Address[]>([]),
     [loyalty, setLoyalty] = useState<LoyaltyWallet | null>(null),
     [payments, setPayments] = useState<PaymentCapabilities | null>(null),
     [coins, setCoins] = useState(String(app.cart.loyaltyCoins || 0)),
     [submitting, setSubmitting] = useState(false),
     [error, setError] = useState("");
   const token = app.session?.access_token;
+  const branchId = app.branch?.id;
   useEffect(() => {
     void app.api
       .request<PaymentCapabilities>("/payments")
@@ -73,8 +76,30 @@ export default function Checkout() {
         .request<{ wallet: LoyaltyWallet }>("/loyalty", { token })
         .then((r) => setLoyalty(r.data.wallet))
         .catch(() => undefined);
+      void app.api
+        .request<{ addresses: Address[] }>("/addresses", {
+          token,
+          branchId,
+        })
+        .then((result) => {
+          const branchAddresses = result.data.addresses.filter(
+            (item) => item.branchId === branchId,
+          );
+          setSavedAddresses(branchAddresses);
+          const selected =
+            branchAddresses.find((item) => item.isDefault) ??
+            branchAddresses[0];
+          if (selected?.coordinates) {
+            setAddress(selected.addressLine1);
+            setAreaId(selected.deliveryAreaId);
+            setLatitude(selected.coordinates.latitude);
+            setLongitude(selected.coordinates.longitude);
+            setDeliveryMessage("Saved address selected. Delivery will be revalidated by the server.");
+          }
+        })
+        .catch(() => undefined);
     }
-  }, [app.api, token]);
+  }, [app.api, branchId, token]);
   const estimate = useMemo(() => cartEstimate(app.cart), [app.cart]);
   const codEnabled =
     payments?.methods.some(
@@ -253,6 +278,42 @@ export default function Checkout() {
           {mode === "DELIVERY" ? (
             <Card style={styles.form}>
               <Text style={styles.heading}>Delivery details</Text>
+              {savedAddresses.length ? (
+                <View style={styles.savedAddresses}>
+                  <Text style={styles.help}>Choose a saved address</Text>
+                  {savedAddresses.map((saved) => (
+                    <Pressable
+                      key={saved.id}
+                      accessibilityRole="radio"
+                      accessibilityState={{
+                        checked:
+                          address === saved.addressLine1 &&
+                          latitude === saved.coordinates?.latitude,
+                      }}
+                      disabled={!saved.coordinates}
+                      onPress={() => {
+                        if (!saved.coordinates) return;
+                        setAddress(saved.addressLine1);
+                        setAreaId(saved.deliveryAreaId);
+                        setLatitude(saved.coordinates.latitude);
+                        setLongitude(saved.coordinates.longitude);
+                        setDeliveryMessage(
+                          "Saved address selected. Delivery will be revalidated by the server.",
+                        );
+                      }}
+                      style={[
+                        styles.savedAddress,
+                        address === saved.addressLine1 && styles.savedAddressActive,
+                      ]}
+                    >
+                      <Text style={styles.savedAddressLabel}>
+                        {saved.label.toUpperCase()}
+                      </Text>
+                      <Text numberOfLines={2}>{saved.addressLine1}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
               <Field
                 label="Complete address"
                 value={address}
@@ -368,6 +429,20 @@ const styles = StyleSheet.create({
   form: { marginHorizontal: 0, gap: 12 },
   heading: { fontSize: 17, fontWeight: "900" },
   help: { fontSize: 12, color: colors.muted, lineHeight: 18 },
+  savedAddresses: { gap: 8 },
+  savedAddress: {
+    minHeight: 56,
+    padding: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "#fff",
+  },
+  savedAddressActive: {
+    borderColor: colors.primary,
+    backgroundColor: "#fff3f0",
+  },
+  savedAddressLabel: { fontSize: 11, fontWeight: "900", color: colors.primary },
   summary: { flexDirection: "row", justifyContent: "space-between" },
   bold: { fontWeight: "800" },
 });

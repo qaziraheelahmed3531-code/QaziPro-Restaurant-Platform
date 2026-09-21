@@ -1,4 +1,4 @@
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Button, Card, Notice, Screen } from "@/ui/components";
 import { useApp } from "@/state/AppProvider";
@@ -65,6 +65,42 @@ export default function Account() {
             onPress={() => router.push("/rewards")}
           />
         </Card>
+        {(app.bootstrap?.support.phone ||
+          app.bootstrap?.support.email ||
+          app.bootstrap?.support.whatsapp) && (
+          <Card style={styles.menu}>
+            <Text style={styles.heading}>Restaurant support</Text>
+            {app.bootstrap.support.phone ? (
+              <Button
+                kind="secondary"
+                title={`Call ${app.bootstrap.support.phone}`}
+                onPress={() =>
+                  void Linking.openURL(`tel:${app.bootstrap!.support.phone}`)
+                }
+              />
+            ) : null}
+            {app.bootstrap.support.whatsapp ? (
+              <Button
+                kind="secondary"
+                title="Open WhatsApp"
+                onPress={() =>
+                  void Linking.openURL(
+                    `https://wa.me/${app.bootstrap!.support.whatsapp!.replace(/\D/g, "")}`,
+                  )
+                }
+              />
+            ) : null}
+            {app.bootstrap.support.email ? (
+              <Button
+                kind="secondary"
+                title={`Email ${app.bootstrap.support.email}`}
+                onPress={() =>
+                  void Linking.openURL(`mailto:${app.bootstrap!.support.email}`)
+                }
+              />
+            ) : null}
+          </Card>
+        )}
         <Card style={styles.menu}>
           <Text style={styles.heading}>Order notifications</Text>
           <Notice>

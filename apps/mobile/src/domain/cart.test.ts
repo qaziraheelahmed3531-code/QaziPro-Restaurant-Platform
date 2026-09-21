@@ -27,6 +27,8 @@ const line: CartLine = {
 const catalog: Catalog = {
   restaurantKey: "r",
   branchId: "b",
+  heroSlides: [],
+  heroSettings: { autoplay: true, intervalMs: 5500, transitionMs: 650 },
   menuSections: [],
   deals: [],
   products: [

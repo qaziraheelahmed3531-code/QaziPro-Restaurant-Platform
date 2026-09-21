@@ -12,7 +12,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, Empty, Screen } from "@/ui/components";
 import { useApp } from "@/state/AppProvider";
 import type { CartLine } from "@/contracts/types";
-import { colors } from "@/ui/theme";
+import { formatMoney } from "@/lib/format";
+import { colors, themeColors } from "@/ui/theme";
 
 export default function ProductScreen() {
   const { id, lineId } = useLocalSearchParams<{
@@ -21,11 +22,15 @@ export default function ProductScreen() {
     }>(),
     app = useApp(),
     router = useRouter();
-  const product = app.catalog?.products.find((item) => item.id === id);
-  const editing = app.cart.lines.find((line) => line.lineId === lineId);
+  const product = app.catalog?.products.find((item) => item.id === id),
+    deal = app.catalog?.deals.find((item) => item.id === id),
+    menuItem = product ?? deal,
+    editing = app.cart.lines.find((line) => line.lineId === lineId),
+    palette = themeColors(app.bootstrap?.colors),
+    currency = app.bootstrap?.currency ?? "PKR";
   const [variantId, setVariant] = useState(
     editing?.variantId ??
-      product?.variants?.find((v) => v.isDefault)?.id ??
+      product?.variants?.find((variant) => variant.isDefault)?.id ??
       product?.variants?.[0]?.id,
   );
   const [selected, setSelected] = useState<Record<string, string[]>>(() =>
@@ -47,8 +52,8 @@ export default function ProductScreen() {
   const chosen = useMemo(
     () =>
       product?.modifierGroups?.flatMap((group) =>
-        (selected[group.id] ?? []).flatMap((id) => {
-          const option = group.options.find((value) => value.id === id);
+        (selected[group.id] ?? []).flatMap((optionId) => {
+          const option = group.options.find((value) => value.id === optionId);
           return option
             ? [
                 {
@@ -63,12 +68,12 @@ export default function ProductScreen() {
       ) ?? [],
     [product, selected],
   );
-  if (!product)
+  if (!menuItem)
     return (
       <Screen>
         <Empty
           title="Item unavailable"
-          detail="This product is no longer in the current branch menu."
+          detail="This item is no longer in the current branch menu."
         />
       </Screen>
     );
@@ -84,7 +89,7 @@ export default function ProductScreen() {
         ...current,
         [groupId]: multiple
           ? values.includes(optionId)
-            ? values.filter((id) => id !== optionId)
+            ? values.filter((value) => value !== optionId)
             : max && values.length >= max
               ? values
               : [...values, optionId]
@@ -92,6 +97,25 @@ export default function ProductScreen() {
       };
     });
   const add = async () => {
+    if (deal) {
+      const line: CartLine = {
+        lineId:
+          editing?.lineId ??
+          `mobile-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        itemKind: "deal",
+        productId: deal.id,
+        name: deal.name,
+        image: deal.image,
+        unitEstimate: deal.price,
+        quantity,
+        modifiers: [],
+      };
+      if (editing) await app.editCartLine(editing.lineId, line);
+      else await app.addToCart(line);
+      router.back();
+      return;
+    }
+    if (!product) return;
     for (const group of product.modifierGroups ?? []) {
       const count = selected[group.id]?.length ?? 0;
       if (count < group.minSelections || (group.required && count === 0))
@@ -113,7 +137,7 @@ export default function ProductScreen() {
       unitEstimate:
         product.price +
         (variant?.priceDelta ?? 0) +
-        chosen.reduce((s, o) => s + o.priceDelta, 0),
+        chosen.reduce((sum, option) => sum + option.priceDelta, 0),
       quantity,
       modifiers: chosen,
     };
@@ -121,13 +145,15 @@ export default function ProductScreen() {
     else await app.addToCart(line);
     router.back();
   };
-  const estimate =
-    (product.price +
-      (variant?.priceDelta ?? 0) +
-      chosen.reduce((s, o) => s + o.priceDelta, 0)) *
-    quantity;
+  const estimate = deal
+    ? deal.price * quantity
+    : (product!.price +
+        (variant?.priceDelta ?? 0) +
+        chosen.reduce((sum, option) => sum + option.priceDelta, 0)) *
+      quantity;
   const favourite = () => {
     if (!app.session) return router.push("/auth");
+    if (!product) return;
     void app.api
       .request("/favourites", {
         method: "POST",
@@ -140,21 +166,23 @@ export default function ProductScreen() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
-        {product.image ? (
-          <Image source={{ uri: product.image }} style={styles.image} />
+        {menuItem.image ? (
+          <Image source={{ uri: menuItem.image }} style={styles.image} />
         ) : null}
-        <Text style={styles.title}>{product.name}</Text>
-        <Text style={styles.description}>{product.description}</Text>
-        <Button
-          kind="secondary"
-          title={app.session ? "Add to favourites" : "Sign in to save"}
-          onPress={favourite}
-        />
-        {product.variants?.length ? (
+        <Text style={[styles.title, { color: palette.ink }]}>{menuItem.name}</Text>
+        <Text style={styles.description}>{menuItem.description}</Text>
+        {product ? (
+          <Button
+            kind="secondary"
+            title={app.session ? "Add to favourites" : "Sign in to save"}
+            onPress={favourite}
+          />
+        ) : null}
+        {product?.variants?.length ? (
           <View style={styles.group}>
-            <Text style={styles.heading}>Choose a variant</Text>
+            <Text style={[styles.heading, { color: palette.ink }]}>Choose a variant</Text>
             {product.variants
-              .filter((v) => v.available !== false)
+              .filter((item) => item.available !== false)
               .map((item) => (
                 <Pressable
                   accessibilityRole="radio"
@@ -164,24 +192,24 @@ export default function ProductScreen() {
                   style={[
                     styles.option,
                     variantId === item.id && styles.selected,
+                    variantId === item.id && { borderColor: palette.primary },
                   ]}
                 >
                   <Text style={styles.optionText}>{item.name}</Text>
-                  <Text>+ Rs {item.priceDelta}</Text>
+                  <Text>+ {formatMoney(item.priceDelta, currency)}</Text>
                 </Pressable>
               ))}
           </View>
         ) : null}
-        {product.modifierGroups?.map((group) => (
+        {product?.modifierGroups?.map((group) => (
           <View style={styles.group} key={group.id}>
-            <Text style={styles.heading}>{group.label}</Text>
+            <Text style={[styles.heading, { color: palette.ink }]}>{group.label}</Text>
             <Text style={styles.help}>
-              {group.required ? "Required" : "Optional"} · choose{" "}
-              {group.minSelections}
+              {group.required ? "Required" : "Optional"} · choose {group.minSelections}
               {group.maxSelections ? `–${group.maxSelections}` : "+"}
             </Text>
             {group.options
-              .filter((o) => o.available !== false)
+              .filter((option) => option.available !== false)
               .map((option) => {
                 const checked = selected[group.id]?.includes(option.id);
                 return (
@@ -197,7 +225,11 @@ export default function ProductScreen() {
                         group.maxSelections,
                       )
                     }
-                    style={[styles.option, checked && styles.selected]}
+                    style={[
+                      styles.option,
+                      checked && styles.selected,
+                      checked && { borderColor: palette.primary },
+                    ]}
                   >
                     <Text style={styles.optionText}>
                       {checked ? "✓ " : ""}
@@ -205,7 +237,7 @@ export default function ProductScreen() {
                     </Text>
                     <Text>
                       {option.priceDelta
-                        ? `+ Rs ${option.priceDelta}`
+                        ? `+ ${formatMoney(option.priceDelta, currency)}`
                         : "Included"}
                     </Text>
                   </Pressable>
@@ -219,25 +251,26 @@ export default function ProductScreen() {
             title="−"
             accessibilityLabel="Decrease quantity"
             disabled={quantity === 1}
-            onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+            onPress={() => setQuantity((current) => Math.max(1, current - 1))}
           />
           <Text style={styles.quantityText}>{quantity}</Text>
           <Button
             kind="secondary"
             title="+"
             accessibilityLabel="Increase quantity"
-            onPress={() => setQuantity((q) => Math.min(20, q + 1))}
+            onPress={() => setQuantity((current) => Math.min(20, current + 1))}
           />
         </View>
         <Button
-          title={`${editing ? "Update item" : "Add to cart"} · Rs ${estimate.toLocaleString()}`}
-          disabled={!product.available}
+          title={`${editing ? "Update item" : "Add to cart"} · ${formatMoney(estimate, currency)}`}
+          disabled={menuItem.available === false}
           onPress={() => void add()}
         />
       </ScrollView>
     </Screen>
   );
 }
+
 const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 36, gap: 12 },
   image: {
@@ -247,10 +280,10 @@ const styles = StyleSheet.create({
     resizeMode: "cover",
     backgroundColor: "#f4ece6",
   },
-  title: { fontSize: 28, fontWeight: "900", color: colors.ink },
+  title: { fontSize: 28, fontWeight: "900" },
   description: { fontSize: 15, lineHeight: 22, color: colors.muted },
   group: { gap: 8, marginTop: 13 },
-  heading: { fontSize: 18, fontWeight: "900", color: colors.ink },
+  heading: { fontSize: 18, fontWeight: "900" },
   help: { color: colors.muted, fontSize: 12 },
   option: {
     minHeight: 52,
@@ -263,7 +296,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  selected: { borderColor: colors.primary, backgroundColor: "#fff3f0" },
+  selected: { backgroundColor: "#fff3f0" },
   optionText: { fontWeight: "700", color: colors.ink },
   quantity: {
     marginVertical: 10,

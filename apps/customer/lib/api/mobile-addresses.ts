@@ -11,7 +11,7 @@ type AddressRow=Record<string,unknown>&{delivery_areas?:{slug?:string}|Array<{sl
 
 export function publicAddress(row: AddressRow) {
   const area=Array.isArray(row.delivery_areas)?row.delivery_areas[0]:row.delivery_areas
-  return {id:row.id,label:row.label,city:row.city,areaId:area?.slug??null,deliveryAreaId:row.delivery_area_id,addressLine1:row.address_line_1,addressLine2:row.address_line_2,landmark:row.landmark,instructions:row.instructions,isDefault:Boolean(row.is_default),coordinates:row.latitude!==null&&row.longitude!==null?{latitude:Number(row.latitude),longitude:Number(row.longitude),source:locationSource(row.location_source)}:null,createdAt:row.created_at}
+  return {id:row.id,branchId:row.branch_id,label:row.label,city:row.city,areaId:area?.slug??null,deliveryAreaId:row.delivery_area_id,addressLine1:row.address_line_1,addressLine2:row.address_line_2,landmark:row.landmark,instructions:row.instructions,isDefault:Boolean(row.is_default),coordinates:row.latitude!==null&&row.longitude!==null?{latitude:Number(row.latitude),longitude:Number(row.longitude),source:locationSource(row.location_source)}:null,createdAt:row.created_at}
 }
 
 export async function addressPayload(raw: unknown, snapshot: StorefrontSnapshot, partial=false) {

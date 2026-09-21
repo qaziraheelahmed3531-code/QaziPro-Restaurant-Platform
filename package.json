@@ -6,6 +6,12 @@
     "packages/*"
   ],
   "scripts": {
+    "dev:website": "npm --workspace apps/customer run dev",
+    "dev:admin": "npm --workspace apps/admin run dev",
+    "dev:desktop-pos": "npm --workspace apps/desktop-pos run dev",
+    "dev:mobile": "npm --workspace apps/mobile run start",
+    "dev:android": "npm --workspace apps/mobile run android",
+    "dev:ios": "npm --workspace apps/mobile run ios",
     "build:customer": "npm --workspace apps/customer run build",
     "build:admin": "npm --workspace apps/admin run build",
     "build:backend": "npm --workspace apps/backend run build",
@@ -13,6 +19,7 @@
     "build:mobile": "npm --workspace apps/mobile run build",
     "test:mobile": "npm --workspace apps/mobile run test",
     "test:push": "npm --workspace apps/backend run test",
+    "test:parity": "npm --workspace apps/mobile run test",
     "audit:mobile-artifacts": "node scripts/mobile-artifact-audit.mjs",
     "package:desktop": "npm --workspace apps/desktop-pos run package:win",
     "staging:fixtures": "node scripts/staging-fixtures.mjs",

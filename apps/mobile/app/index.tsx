@@ -8,7 +8,12 @@ export default function Bootstrap() {
   const app = useApp(),
     router = useRouter();
   useEffect(() => {
-    if (app.ready && app.bootstrap && !app.error)
+    if (
+      app.ready &&
+      app.bootstrap &&
+      !app.bootstrap.maintenance.enabled &&
+      !app.error
+    )
       router.replace(app.branch ? "/(tabs)" : "/branch");
   }, [app.bootstrap, app.branch, app.error, app.ready, router]);
   return (
@@ -20,6 +25,11 @@ export default function Bootstrap() {
           <Notice tone="error">{app.error}</Notice>
           <Button title="Try again" onPress={() => void app.reload()} />
         </>
+      ) : app.bootstrap?.maintenance.enabled ? (
+        <Notice>
+          {app.bootstrap.maintenance.message ||
+            "This restaurant app is temporarily under maintenance."}
+        </Notice>
       ) : (
         <Text />
       )}

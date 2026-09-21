@@ -26,15 +26,20 @@ export default function Addresses() {
     [longitude, setLongitude] = useState<number | null>(null),
     [message, setMessage] = useState("");
   const token = app.session?.access_token;
+  const branchId = app.branch?.id;
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
       const result = await app.api.request<{ addresses: Address[] }>(
         "/addresses",
-        { token },
+        { token, branchId },
       );
-      setAddresses(result.data.addresses);
+      setAddresses(
+        result.data.addresses.filter(
+          (address) => address.branchId === branchId,
+        ),
+      );
     } catch (reason) {
       setMessage(
         reason instanceof Error
@@ -44,7 +49,7 @@ export default function Addresses() {
     } finally {
       setLoading(false);
     }
-  }, [app.api, token]);
+  }, [app.api, branchId, token]);
   useEffect(() => {
     const timer = setTimeout(() => void load(), 0);
     return () => clearTimeout(timer);

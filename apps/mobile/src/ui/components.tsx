@@ -7,26 +7,35 @@ import {
   Text,
   TextInput,
   View,
+  type StyleProp,
   type TextInputProps,
   type ViewStyle,
 } from "react-native";
-import { colors, shadow } from "./theme";
+import { useApp } from "@/state/AppProvider";
+import { colors, shadow, themeColors } from "./theme";
 
 export function Screen({
   children,
   style,
 }: {
   children: ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }) {
-  return <SafeAreaView style={[styles.screen, style]}>{children}</SafeAreaView>;
+  const palette = themeColors(useApp().bootstrap?.colors);
+  return (
+    <SafeAreaView
+      style={[styles.screen, { backgroundColor: palette.background }, style]}
+    >
+      {children}
+    </SafeAreaView>
+  );
 }
 export function Card({
   children,
   style,
 }: {
   children: ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
@@ -43,6 +52,7 @@ export function Button({
   kind?: "primary" | "secondary" | "danger";
   accessibilityLabel?: string;
 }) {
+  const palette = themeColors(useApp().bootstrap?.colors);
   return (
     <Pressable
       accessibilityRole="button"
@@ -52,6 +62,7 @@ export function Button({
       style={({ pressed }) => [
         styles.button,
         styles[`${kind}Button`],
+        kind === "primary" && { backgroundColor: palette.primary },
         (pressed || disabled) && styles.buttonDim,
       ]}
     >
@@ -68,13 +79,18 @@ export function Field({
   error,
   ...props
 }: TextInputProps & { label: string; error?: string }) {
+  const palette = themeColors(useApp().bootstrap?.colors);
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, { color: palette.ink }]}>{label}</Text>
       <TextInput
         accessibilityLabel={props.accessibilityLabel ?? label}
         placeholderTextColor="#9b918a"
-        style={[styles.input, error && styles.inputError]}
+        style={[
+          styles.input,
+          { color: palette.ink },
+          error && styles.inputError,
+        ]}
         {...props}
       />
       {error ? (

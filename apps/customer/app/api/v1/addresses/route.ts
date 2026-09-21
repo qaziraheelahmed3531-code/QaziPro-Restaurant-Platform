@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server"
 
 import { apiFailure, apiRequestId, apiSuccess, apiSuccessWithMeta, decodeCursor, encodeCursor, listLimit, parseJson, requireBearerSession } from "@/lib/api/v1"
-import { requireMobileStorefront } from "@/lib/api/mobile-context"
+import { mobileBranchKey, requireMobileStorefront } from "@/lib/api/mobile-context"
 import { addressPayload, publicAddress } from "@/lib/api/mobile-addresses"
 
 const select="*,delivery_areas(slug)"
@@ -9,9 +9,11 @@ const select="*,delivery_areas(slug)"
 export async function GET(request: NextRequest) {
   const requestId=apiRequestId(request)
   try {
-    const [{snapshot},session]=await Promise.all([requireMobileStorefront(request,{branch:false}),requireBearerSession(request)])
+    const requestedBranch=mobileBranchKey(request,false)
+    const [{snapshot},session]=await Promise.all([requireMobileStorefront(request,{branch:Boolean(requestedBranch)}),requireBearerSession(request)])
     const limit=listLimit(request),cursor=decodeCursor(request.nextUrl.searchParams.get("cursor"))
     let query=session.client.from("customer_addresses").select(select).eq("customer_id",session.identity.id).eq("business_id",snapshot.business.id!).order("created_at",{ascending:false}).order("id",{ascending:false}).limit(limit+1)
+    if(requestedBranch)query=query.eq("branch_id",snapshot.branch.id!)
     if(cursor)query=query.or(`created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`)
     const {data,error}=await query
     if(error)throw error

@@ -59,6 +59,17 @@ export type Deal = {
 export type Catalog = {
   restaurantKey: string;
   branchId: string;
+  heroSlides: {
+    id: string;
+    image: string;
+    mobileImage?: string;
+    alt: string;
+  }[];
+  heroSettings: {
+    autoplay: boolean;
+    intervalMs: number;
+    transitionMs: 350 | 500 | 650;
+  };
   menuSections: MenuSection[];
   products: Product[];
   deals: Deal[];
@@ -91,6 +102,7 @@ export type Cart = {
 };
 export type Address = {
   id: string;
+  branchId: string;
   label: "home" | "work" | "other";
   city: string;
   areaId: string | null;

@@ -14,7 +14,8 @@ import type { OrderDetail } from "@/contracts/types";
 import { secureStorage } from "@/lib/storage";
 import { env } from "@/config/env";
 import { reorderCart } from "@/domain/cart";
-import { colors } from "@/ui/theme";
+import { formatMoney } from "@/lib/format";
+import { colors, themeColors } from "@/ui/theme";
 
 const terminal = new Set(["DELIVERED", "COMPLETED", "CANCELLED", "REFUNDED"]);
 export default function OrderScreen() {
@@ -131,7 +132,9 @@ export default function OrderScreen() {
     status = String(order.status ?? "PLACED"),
     items = Array.isArray(order.order_items)
       ? (order.order_items as Record<string, unknown>[])
-      : [];
+      : [],
+    currency = app.bootstrap?.currency ?? "PKR",
+    palette = themeColors(app.bootstrap?.colors);
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
@@ -141,12 +144,12 @@ export default function OrderScreen() {
             this order.
           </Notice>
         ) : null}
-        <Card style={styles.hero}>
-          <Text style={styles.kicker}>ORDER CONFIRMED</Text>
+        <Card style={[styles.hero, { backgroundColor: palette.ink }]}>
+          <Text style={[styles.kicker, { color: palette.gold }]}>ORDER CONFIRMED</Text>
           <Text style={styles.number}>{number}</Text>
           <Text style={styles.status}>{status.replaceAll("_", " ")}</Text>
           <Text style={styles.total}>
-            Rs {Number(order.total ?? 0).toLocaleString()}
+            {formatMoney(Number(order.total ?? 0), currency)}
           </Text>
           <Text style={styles.heroMeta}>
             {app.bootstrap?.displayName} · {app.branch?.name}
@@ -178,13 +181,20 @@ export default function OrderScreen() {
             <View key={String(item.id ?? index)} style={styles.row}>
               <Text style={styles.copy}>
                 {String(item.quantity ?? 1)} ×{" "}
-                {String(item.product_name_snapshot ?? item.name ?? "Item")}
+                {String(item.product_name ?? item.name ?? "Item")}
               </Text>
               <Text style={styles.bold}>
-                Rs {Number(item.line_total ?? item.total ?? 0).toLocaleString()}
+                {formatMoney(Number(item.line_total ?? item.total ?? 0), currency)}
               </Text>
             </View>
           ))}
+          <View style={styles.summary}>
+            <View style={styles.row}><Text>Subtotal</Text><Text>{formatMoney(Number(order.subtotal ?? 0), currency)}</Text></View>
+            {Number(order.discount ?? 0) > 0 ? <View style={styles.row}><Text>Discount</Text><Text>− {formatMoney(Number(order.discount), currency)}</Text></View> : null}
+            {Number(order.tax ?? 0) > 0 ? <View style={styles.row}><Text>Tax</Text><Text>{formatMoney(Number(order.tax), currency)}</Text></View> : null}
+            <View style={styles.row}><Text>Delivery</Text><Text>{formatMoney(Number(order.delivery_fee ?? 0), currency)}</Text></View>
+            <View style={styles.row}><Text style={styles.bold}>Total</Text><Text style={styles.bold}>{formatMoney(Number(order.total ?? 0), currency)}</Text></View>
+          </View>
         </Card>
         {!["CANCELLED", "DELIVERED", "COMPLETED", "REFUNDED"].includes(
           status,
@@ -242,5 +252,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  summary: { marginTop: 12 },
   bold: { fontWeight: "900" },
 });

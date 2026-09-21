@@ -95,7 +95,7 @@ export function AppProvider({ children }: PropsWithChildren) {
       const result = await api.request<Catalog>("/catalog", {
         branchId: selected.id,
       });
-      setCatalog(result.data);
+      return result.data;
     },
     [api],
   );
@@ -109,9 +109,9 @@ export function AppProvider({ children }: PropsWithChildren) {
       const savedId = await secureStorage.getItem(BRANCH_KEY),
         selected = restoreBranch(result.data, savedId);
       if (savedId && !selected) await secureStorage.removeItem(BRANCH_KEY);
+      const nextCatalog = selected ? await loadCatalog(selected) : null;
       setBranch(selected);
-      if (selected) await loadCatalog(selected);
-      else setCatalog(null);
+      setCatalog(nextCatalog);
       setOffline(false);
     } catch (reason) {
       const cached = await readJson<Bootstrap>(BOOTSTRAP_KEY);
@@ -157,11 +157,12 @@ export function AppProvider({ children }: PropsWithChildren) {
       setBusy(true);
       try {
         await api.request(`/branches/${selected.id}`);
-        await secureStorage.setItem(BRANCH_KEY, selected.id);
-        setBranch(selected);
-        await loadCatalog(selected);
+        const nextCatalog = await loadCatalog(selected);
         if (cart.branchId !== selected.id)
           await persistCart(clearCart(cart, selected.id));
+        await secureStorage.setItem(BRANCH_KEY, selected.id);
+        setBranch(selected);
+        setCatalog(nextCatalog);
       } finally {
         setBusy(false);
       }

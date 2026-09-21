@@ -4,11 +4,12 @@ import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { AppProvider } from "@/state/AppProvider";
+import { AppProvider, useApp } from "@/state/AppProvider";
 import { parseDeepLink } from "@/domain/deep-links";
 import { supabase } from "@/lib/supabase";
 import { env } from "@/config/env";
 import { Button, Screen } from "@/ui/components";
+import { themeColors } from "@/ui/theme";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -66,16 +67,17 @@ function LinkHandler() {
   }, []);
   return null;
 }
-export default function Layout() {
+function AppStack() {
+  const palette = themeColors(useApp().bootstrap?.colors);
   return (
-    <AppProvider>
+    <>
       <StatusBar style="dark" />
       <LinkHandler />
       <Stack
         screenOptions={{
           headerBackTitle: "Back",
-          headerTintColor: "#a92114",
-          headerStyle: { backgroundColor: "#fff8f1" },
+          headerTintColor: palette.primary,
+          headerStyle: { backgroundColor: palette.background },
           headerShadowVisible: false,
         }}
       >
@@ -105,6 +107,13 @@ export default function Layout() {
         <Stack.Screen name="rewards" options={{ title: "Rewards" }} />
         <Stack.Screen name="favourites" options={{ title: "Favourites" }} />
       </Stack>
+    </>
+  );
+}
+export default function Layout() {
+  return (
+    <AppProvider>
+      <AppStack />
     </AppProvider>
   );
 }

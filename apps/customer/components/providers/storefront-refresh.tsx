@@ -13,7 +13,7 @@ export function StorefrontRefresh({businessId,branchId}:{businessId:string;branc
     const refresh=()=>{if(document.visibilityState!=="visible")return;clearTimeout(timer);timer=setTimeout(()=>router.refresh(),300)}
     const client=createClient()
     let channel=client.channel(`storefront-content-${businessId}`)
-    for(const table of ["business_branding","site_settings","social_links","footer_links","content_pages","branches","products","deals"])
+    for(const table of ["business_branding","site_settings","social_links","footer_links","content_pages","branches","categories","products","deals","hero_banners","promotions","loyalty_settings","branch_product_overrides"])
       channel=channel.on("postgres_changes",{event:"*",schema:"public",table,filter:`business_id=eq.${businessId}`},refresh)
     for(const table of ["business_hours","delivery_rules","delivery_areas"])
       channel=channel.on("postgres_changes",{event:"*",schema:"public",table,filter:`branch_id=eq.${branchId}`},refresh)
