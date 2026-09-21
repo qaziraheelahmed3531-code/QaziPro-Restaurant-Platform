@@ -125,6 +125,11 @@ function find(node, test) {
   }
   return null;
 }
+function textContent(node) {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (!node || typeof node !== "object") return "";
+  return [node.props?.children].flat(Infinity).map(textContent).join("");
+}
 assert.equal(config.EMAIL_OTP_LENGTH, 8);
 assert.equal(config.isCompleteEmailOtp("01234567"), true);
 for (const invalid of ["123456", "123456789", "1234abcd", ""])
@@ -298,7 +303,7 @@ for (const app of ["customer", "admin"]) {
       : find(
           tree,
           (n) =>
-            n.type === "button" && n.props.children === "Continue with Google",
+            n.type === "button" && textContent(n).includes("Continue with Google"),
         );
   await button.props.onClick();
   const call = h.calls.find((c) => c[0] === "google");

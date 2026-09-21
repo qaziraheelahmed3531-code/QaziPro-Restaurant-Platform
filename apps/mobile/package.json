@@ -14,8 +14,8 @@
   },
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "node scripts/start-platform.mjs android",
+    "ios": "node scripts/start-platform.mjs ios",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

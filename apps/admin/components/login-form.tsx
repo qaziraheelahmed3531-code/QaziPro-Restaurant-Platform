@@ -87,7 +87,7 @@ export function LoginForm({ initialError = "" }: { initialError?: string }) {
         <div className="admin-otp-actions"><button className="button button--outline" type="button" disabled={Boolean(busy) || countdown > 0} onClick={() => void send(true)}>{busy === "resend" ? "Resending…" : countdown > 0 ? `Resend in ${countdown}s` : "Resend code"}</button><button className="button button--outline" type="button" disabled={Boolean(busy)} onClick={changeEmail}>Change email</button></div>
       </form> : <>
         <h1>Admin sign in</h1><p>Only invited restaurant owners and staff can enter this secure dashboard.</p>
-        <button className="button button--outline" style={{width:"100%"}} type="button" onClick={google} disabled={Boolean(busy)}>Continue with Google</button>
+        <button className="button button--outline google-oauth-button" style={{width:"100%"}} type="button" onClick={google} disabled={Boolean(busy)}><Image src="https://developers.google.com/static/identity/images/g-logo.png" alt="" width={20} height={20} aria-hidden="true"/>Continue with Google</button>
         <div className="login-divider">or</div>
         <form className="login-form" onSubmit={event => { event.preventDefault(); void send() }}>
           <label htmlFor="admin-email">Work email</label><input id="admin-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" disabled={Boolean(busy)} value={address} onChange={event => setAddress(event.target.value)}/>

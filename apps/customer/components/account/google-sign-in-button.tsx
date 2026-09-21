@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { AppLoader } from "@italian-pizza/shared/app-loader"
+import Image from "next/image"
 
 import { Button } from "@/components/ui/button"
 import { authErrorMessage, logAuthDiagnostic } from "@/lib/auth/errors"
@@ -35,7 +36,7 @@ export function GoogleSignInButton({ onError }: { onError: (message: string) => 
 
   return (
     <Button type="button" variant="outline" size="lg" className="google-sign-in" disabled={busy} onClick={signIn}>
-      <span aria-hidden="true">G</span>
+      <Image src="https://developers.google.com/static/identity/images/g-logo.png" alt="" width={20} height={20} aria-hidden="true" />
       <AppLoader active={busy} label="Opening Google sign-in" />
       {busy ? "Redirecting…" : "Continue with Google"}
     </Button>

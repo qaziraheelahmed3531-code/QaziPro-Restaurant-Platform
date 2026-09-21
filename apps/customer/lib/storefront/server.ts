@@ -110,17 +110,24 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
     const platformDomain = normalizedHostname(process.env.QAZIPRO_PLATFORM_DOMAIN)
     let businessId: string | null = null
     let businessSlug = text(explicit.businessSlug ?? requestHeaders.get("x-qazipro-business-slug"))
-    if (!businessSlug && (process.env.NODE_ENV === "development" || ["localhost","127.0.0.1"].includes(hostname))) businessSlug = text(process.env.STOREFRONT_BUSINESS_SLUG)
-    const resolutionResult = await supabase.rpc("resolve_storefront_business",{
-      p_hostname:hostname||null,
-      p_platform_domain:platformDomain||null,
-      p_fallback_slug:businessSlug||null,
-    }).maybeSingle()
-    if (resolutionResult.error) console.error(JSON.stringify({level:"error",event:"storefront_tenant_resolution_failed",environment:process.env.APP_ENVIRONMENT??process.env.NODE_ENV,hostname,code:resolutionResult.error.code,message:resolutionResult.error.message.slice(0,300)}))
-    if (!resolutionResult.error && resolutionResult.data) {
-      const resolved = resolutionResult.data as Row
-      businessId=text(resolved.resolved_business_id)
-      businessSlug=text(resolved.resolved_business_slug)
+    const localDevelopment = process.env.NODE_ENV === "development" && ["localhost","127.0.0.1"].includes(hostname)
+    if (!businessSlug && localDevelopment) businessSlug = text(process.env.STOREFRONT_BUSINESS_SLUG)
+    // Local development may intentionally point at a legacy/demo project that
+    // predates the tenant resolver RPC. An explicit local slug is still safe:
+    // it is resolved by the active-business query below. Production always
+    // uses the verified RPC/domain path and therefore continues to fail closed.
+    if (!(localDevelopment && businessSlug)) {
+      const resolutionResult = await supabase.rpc("resolve_storefront_business",{
+        p_hostname:hostname||null,
+        p_platform_domain:platformDomain||null,
+        p_fallback_slug:businessSlug||null,
+      }).maybeSingle()
+      if (resolutionResult.error) console.error(JSON.stringify({level:"error",event:"storefront_tenant_resolution_failed",environment:process.env.APP_ENVIRONMENT??process.env.NODE_ENV,hostname,code:resolutionResult.error.code,message:resolutionResult.error.message.slice(0,300)}))
+      if (!resolutionResult.error && resolutionResult.data) {
+        const resolved = resolutionResult.data as Row
+        businessId=text(resolved.resolved_business_id)
+        businessSlug=text(resolved.resolved_business_slug)
+      }
     }
     // checkout_idempotency also references businesses + branches, so PostgREST
     // needs the direct business foreign key named explicitly here.

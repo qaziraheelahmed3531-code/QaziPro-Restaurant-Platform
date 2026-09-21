@@ -1563,7 +1563,7 @@ function Login({
           disabled={busy}
           onClick={() => void google()}
         >
-          <span className="google-mark">G</span>Continue with Google
+          <img className="google-mark" src="https://developers.google.com/static/identity/images/g-logo.png" alt="" aria-hidden="true" />Continue with Google
         </button>
         <div className="login-divider">
           <span />

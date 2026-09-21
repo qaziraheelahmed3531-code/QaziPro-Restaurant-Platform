@@ -1214,6 +1214,17 @@ a {
   font-size: 13px;
   line-height: 20px;
 }
+.google-oauth-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.google-oauth-button img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
 .login-form {
   display: flex;
   flex-direction: column;

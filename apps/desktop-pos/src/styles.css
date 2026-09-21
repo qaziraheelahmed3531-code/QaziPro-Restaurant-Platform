@@ -675,9 +675,10 @@ button {
   background: color-mix(in srgb, var(--brand) 4%, #fff);
 }
 .google-mark {
-  color: #4285f4;
-  font-size: 18px;
-  font-weight: 900;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  object-fit: contain;
 }
 .login-divider {
   display: flex;
