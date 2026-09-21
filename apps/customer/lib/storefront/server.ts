@@ -110,7 +110,10 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
     const platformDomain = normalizedHostname(process.env.QAZIPRO_PLATFORM_DOMAIN)
     let businessId: string | null = null
     let businessSlug = text(explicit.businessSlug ?? requestHeaders.get("x-qazipro-business-slug"))
-    const localDevelopment = process.env.NODE_ENV === "development" && ["localhost","127.0.0.1"].includes(hostname)
+    const localDevelopment = process.env.NODE_ENV === "development" && (
+      ["localhost","127.0.0.1"].includes(hostname) ||
+      (!hostname && Boolean(explicit.businessSlug))
+    )
     if (!businessSlug && localDevelopment) businessSlug = text(process.env.STOREFRONT_BUSINESS_SLUG)
     // Local development may intentionally point at a legacy/demo project that
     // predates the tenant resolver RPC. An explicit local slug is still safe:
@@ -152,7 +155,35 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
       supabase.from("deals").select("*").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
       supabase.from("hero_banners").select("*").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
     ])
-    if (categoryResult.error || productResult.error || overrideResult.error || dealResult.error || bannerResult.error) return unavailableStorefront
+    if (categoryResult.error || productResult.error || overrideResult.error || dealResult.error || bannerResult.error) {
+      const catalogErrors = [categoryResult.error, productResult.error, overrideResult.error, dealResult.error, bannerResult.error]
+        .filter(Boolean)
+        .map((failure) => ({ code:failure?.code, message:failure?.message.slice(0,180) }))
+      const catalogFailure = JSON.stringify({level:demoEnabled?"warning":"error",event:"storefront_catalog_load_failed",environment:process.env.APP_ENVIRONMENT??process.env.NODE_ENV,hostname,businessId,branchId:text(branch.id),errors:catalogErrors})
+      if (demoEnabled) console.warn(catalogFailure)
+      else console.error(catalogFailure)
+      if (demoEnabled) return {
+        ...fallbackStorefront,
+        business:{
+          ...fallbackStorefront.business,
+          id:businessId,
+          slug:text(business.slug)||null,
+          name:text(branch.restaurant_name,text(business.name,"Restaurant")),
+          displayName:text(branch.restaurant_name,text(business.name,"RESTAURANT")).toUpperCase(),
+          city:text(branch.city,text(business.city)),
+          timezone:safeTimezone(text(branch.timezone,text(business.timezone,"Asia/Karachi"))),
+        },
+        branch:{
+          ...fallbackStorefront.branch,
+          id:text(branch.id),
+          name:text(branch.name),
+          restaurantName:text(branch.restaurant_name)||null,
+          city:text(branch.city,text(business.city)),
+        },
+        availableBranches,
+      }
+      return unavailableStorefront
+    }
 
     const branding = first(business.business_branding)
     const settings = first(business.site_settings)

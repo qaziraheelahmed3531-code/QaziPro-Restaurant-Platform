@@ -12,6 +12,7 @@ import { Button, Card, Empty, Screen } from "@/ui/components";
 import { useApp } from "@/state/AppProvider";
 import { cartEstimate, validateCart } from "@/domain/cart";
 import { colors } from "@/ui/theme";
+import { resolveAssetUrl } from "@/lib/format";
 
 export default function CartScreen() {
   const app = useApp(),
@@ -45,7 +46,7 @@ export default function CartScreen() {
         renderItem={({ item }) => (
           <Card style={styles.line}>
             {item.image ? (
-              <Image source={{ uri: item.image }} style={styles.image} />
+              <Image source={{ uri: resolveAssetUrl(item.image) }} style={styles.image} />
             ) : null}
             <View style={styles.info}>
               <Text style={styles.name}>{item.name}</Text>

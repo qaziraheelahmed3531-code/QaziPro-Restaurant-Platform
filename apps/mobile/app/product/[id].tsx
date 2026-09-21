@@ -12,7 +12,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, Empty, Screen } from "@/ui/components";
 import { useApp } from "@/state/AppProvider";
 import type { CartLine } from "@/contracts/types";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, resolveAssetUrl } from "@/lib/format";
 import { colors, themeColors } from "@/ui/theme";
 
 export default function ProductScreen() {
@@ -167,7 +167,7 @@ export default function ProductScreen() {
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
         {menuItem.image ? (
-          <Image source={{ uri: menuItem.image }} style={styles.image} />
+          <Image source={{ uri: resolveAssetUrl(menuItem.image) }} style={styles.image} />
         ) : null}
         <Text style={[styles.title, { color: palette.ink }]}>{menuItem.name}</Text>
         <Text style={styles.description}>{menuItem.description}</Text>

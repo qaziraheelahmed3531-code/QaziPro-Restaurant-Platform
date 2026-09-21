@@ -58,7 +58,12 @@ export async function requireMobileStorefront(request: NextRequest, options: { b
     branchId:branchKey,
   })
   if (restaurantKey && snapshot.business.slug && snapshot.business.slug !== restaurantKey) throw new ApiProblem("RESTAURANT_CONTEXT_MISMATCH", "The restaurant key does not match this storefront.", 409)
-  if (!snapshot.business.id || (options.branch && (snapshot.source !== "database" || !snapshot.branch.id))) resolutionProblem(snapshot)
+  const explicitDevelopmentDemo =
+    process.env.NODE_ENV === "development" &&
+    process.env.ENABLE_DEMO_STOREFRONT === "true" &&
+    snapshot.source === "fallback" &&
+    snapshot.orderPersistence === "local-demo"
+  if (!snapshot.business.id || (options.branch && ((!explicitDevelopmentDemo && snapshot.source !== "database") || !snapshot.branch.id))) resolutionProblem(snapshot)
   return { restaurantKey, branchKey, snapshot }
 }
 

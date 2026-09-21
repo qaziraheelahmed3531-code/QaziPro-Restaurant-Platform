@@ -82,6 +82,19 @@ const websiteNext: Record<WebsiteOrderStatus, WebsiteOrderStatus | null> = {
 };
 const money = (value: number) =>
   `Rs ${Math.round(value).toLocaleString("en-PK")}`;
+const replacementMoney = (oldTotal: number, newTotal: number) => {
+  const difference = newTotal - oldTotal;
+  return {
+    difference,
+    label:
+      difference > 0
+        ? "Extra to collect"
+        : difference < 0
+          ? "Refund to customer"
+          : "Balance",
+    amount: Math.abs(difference),
+  };
+};
 const today = () =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Karachi",
@@ -247,6 +260,8 @@ export function App() {
     knownWebsiteIds = useRef(new Set<string>()),
     websiteLoaded = useRef(false),
     branchForSync = catalog?.branchId;
+  const loginRequired =
+    locked || (!session && online) || (!catalog && !session);
 
   const refreshLocal = useCallback(async (branchId?: string) => {
     const activeCatalog = branchId
@@ -379,7 +394,19 @@ export function App() {
       setDeviceSoundDataUrl(soundPreference?.value || null);
       if (data.session && navigator.onLine)
         try {
-          setBranches(await availableBranches());
+          const assigned = await availableBranches();
+          setBranches(assigned);
+          if (
+            cached &&
+            !assigned.some(
+              (branch) =>
+                branch.id === cached.branchId &&
+                branch.business_id === cached.businessId,
+            )
+          ) {
+            setCatalog(null);
+            setShift(null);
+          }
         } catch (error) {
           setAuthError(
             error instanceof Error
@@ -387,7 +414,7 @@ export function App() {
               : "Unable to load assigned restaurant.",
           );
         }
-      if (!cached && !data.session) setLocked(true);
+      if (!data.session && (navigator.onLine || !cached)) setLocked(true);
       setBooting(false);
     })();
     const onOnline = () => {
@@ -399,6 +426,7 @@ export function App() {
     window.addEventListener("offline", onOffline);
     const { data } = supabase.auth.onAuthStateChange((_event, value) => {
       setSession(Boolean(value));
+      if (!value && navigator.onLine) setLocked(true);
     });
     return () => {
       window.removeEventListener("online", onOnline);
@@ -443,6 +471,8 @@ export function App() {
         if (result.error) throw result.error;
         const assignedBranches = await availableBranches();
         setBranches(assignedBranches);
+        setCatalog(null);
+        setShift(null);
         setLocked(false);
         await setPosLocked(false);
       } catch (error) {
@@ -462,7 +492,7 @@ export function App() {
   useEffect(() => {
     const restaurantIcon =
       catalog?.faviconDataUrl ?? catalog?.logoDataUrl ?? null;
-    if (!session || !catalog || !restaurantIcon) return;
+    if (loginRequired || !catalog || !restaurantIcon) return;
     const restaurantName = catalog.businessName;
     const restaurantId = catalog.businessId;
     let cancelled = false;
@@ -478,14 +508,14 @@ export function App() {
       cancelled = true;
     };
   }, [
-    session,
+    loginRequired,
     catalog?.businessId,
     catalog?.faviconDataUrl,
     catalog?.logoDataUrl,
     catalog?.businessName,
   ]);
   useEffect(() => {
-    if (booting || session) return;
+    if (booting || !loginRequired) return;
     let cancelled = false;
     void imageDataUrl("/qazipro-logo.png").then((logo) => {
       if (!cancelled && logo)
@@ -494,7 +524,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [booting, session]);
+  }, [booting, loginRequired]);
   useEffect(() => {
     if (session && online && !branches.length)
       void availableBranches()
@@ -961,6 +991,8 @@ export function App() {
       if (verified.error) throw verified.error;
       const assignedBranches = await availableBranches();
       setBranches(assignedBranches);
+      setCatalog(null);
+      setShift(null);
       setLocked(false);
       await setPosLocked(false);
     } catch (e) {
@@ -998,6 +1030,8 @@ export function App() {
     setLocked(true);
     setSession(false);
     setBranches([]);
+    setCatalog(null);
+    setShift(null);
     resetSale();
     if (navigator.onLine) await supabase.auth.signOut();
   };
@@ -1011,7 +1045,7 @@ export function App() {
         </div>
       </main>
     );
-  if (locked || (!catalog && !session))
+  if (loginRequired)
     return (
       <Login
         email={email}
@@ -1849,6 +1883,9 @@ function Cart({
   onCheckout: () => void;
   onHold: () => Promise<void>;
 }) {
+  const adjustment = replacing
+    ? replacementMoney(replacing.total, subtotal)
+    : null;
   return (
     <aside className="cart">
       <header>
@@ -1923,6 +1960,30 @@ function Cart({
         )}
       </div>
       <div className="cart-summary">
+        {replacing && adjustment && (
+          <div className="replacement-money replacement-money-compact">
+            <span>
+              <small>Original order</small>
+              <b>{money(replacing.total)}</b>
+            </span>
+            <span>
+              <small>Replacement total</small>
+              <b>{money(subtotal)}</b>
+            </span>
+            <span
+              className={
+                adjustment.difference === 0
+                  ? "even"
+                  : adjustment.difference > 0
+                    ? "charge"
+                    : "refund"
+              }
+            >
+              <small>{adjustment.label}</small>
+              <strong>{money(adjustment.amount)}</strong>
+            </span>
+          </div>
+        )}
         <span>
           <small>{cart.reduce((sum, x) => sum + x.quantity, 0)} items</small>
           <strong>{money(subtotal)}</strong>
@@ -1976,6 +2037,9 @@ type CheckoutProps = {
 };
 function Checkout(p: CheckoutProps) {
   const isCash = p.selected.kind === "CASH";
+  const adjustment = p.replacing
+    ? replacementMoney(p.replacing.total, p.subtotal)
+    : null;
   return (
     <div className="modal checkout-modal">
       <section>
@@ -2066,6 +2130,30 @@ function Checkout(p: CheckoutProps) {
           </div>
           <div>
             <h3>How is the customer paying?</h3>
+            {p.replacing && adjustment && (
+              <div className="replacement-money">
+                <span>
+                  <small>Original paid</small>
+                  <b>{money(p.replacing.total)}</b>
+                </span>
+                <span>
+                  <small>New replacement total</small>
+                  <b>{money(p.subtotal)}</b>
+                </span>
+                <span
+                  className={
+                    adjustment.difference === 0
+                      ? "even"
+                      : adjustment.difference > 0
+                        ? "charge"
+                        : "refund"
+                  }
+                >
+                  <small>{adjustment.label}</small>
+                  <strong>{money(adjustment.amount)}</strong>
+                </span>
+              </div>
+            )}
             <div className="tender-grid">
               {p.methods.map((method) => (
                 <button
@@ -2113,7 +2201,7 @@ function Checkout(p: CheckoutProps) {
             {isCash && (
               <>
                 <label>
-                  Cash received
+                  {p.replacing ? "Total cash after replacement" : "Cash received"}
                   <input
                     autoFocus
                     type="number"
@@ -2129,7 +2217,10 @@ function Checkout(p: CheckoutProps) {
                   Exact cash
                 </button>
                 <p className="change">
-                  Change <b>{p.change === null ? "—" : money(p.change)}</b>
+                  {p.replacing && (adjustment?.difference ?? 0) < 0
+                    ? "Refund due"
+                    : "Change"}{" "}
+                  <b>{p.change === null ? "—" : money(p.change)}</b>
                 </p>
               </>
             )}

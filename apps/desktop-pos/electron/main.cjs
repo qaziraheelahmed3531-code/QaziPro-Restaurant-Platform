@@ -127,6 +127,7 @@ const createWindow = (options = {}) => {
     ? nativeImage.createFromPath(iconPath)
     : null
   const title = windowTitle()
+  const shouldMaximize = options.maximized ?? true
   const { width, height } = screen.getPrimaryDisplay().workAreaSize
   const window = new BrowserWindow({
     title,
@@ -160,7 +161,7 @@ const createWindow = (options = {}) => {
     window.setTitle(title)
   })
   window.once("ready-to-show", () => {
-    if (options.maximized) window.maximize()
+    if (shouldMaximize) window.maximize()
     if (options.replaceWindow && !options.replaceWindow.isDestroyed())
       options.replaceWindow.destroy()
     window.show()

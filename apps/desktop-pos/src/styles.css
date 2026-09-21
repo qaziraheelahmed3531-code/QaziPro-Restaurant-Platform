@@ -1858,6 +1858,39 @@ button {
   color: var(--brand);
   font-size: 15px;
 }
+.replacement-money {
+  display: grid;
+  gap: 7px;
+  padding: 11px 12px;
+  border: 1px solid #d9dfe4;
+  border-radius: 10px;
+  background: #f8fafb;
+}
+.replacement-money span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 10px;
+}
+.replacement-money span:last-child {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e6e9;
+}
+.replacement-money .charge strong {
+  color: #b54708;
+}
+.replacement-money .refund strong {
+  color: #087a4a;
+}
+.replacement-money .even strong {
+  color: #56616b;
+}
+.replacement-money-compact {
+  margin-bottom: 10px;
+  background: #fff;
+}
 .receipt-modal {
   z-index: 100;
 }

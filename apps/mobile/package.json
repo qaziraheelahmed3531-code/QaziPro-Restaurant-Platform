@@ -13,9 +13,10 @@
     }
   },
   "scripts": {
-    "start": "expo start",
-    "android": "node scripts/start-platform.mjs android",
-    "ios": "node scripts/start-platform.mjs ios",
+    "start": "node scripts/start.mjs",
+    "web": "node scripts/start.mjs web",
+    "android": "node scripts/start.mjs android",
+    "ios": "node scripts/start.mjs ios",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -39,10 +40,12 @@
     "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.8",
+    "react-dom": "^19.2.8",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.10.0",
     "react-native-screens": "~4.28.0",
-    "react-native-url-polyfill": "^3.0.0"
+    "react-native-url-polyfill": "^3.0.0",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
     "@types/react": "~19.2.4",

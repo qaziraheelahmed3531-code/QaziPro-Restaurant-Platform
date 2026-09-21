@@ -15,7 +15,7 @@ import { Card, Empty, Notice, Screen } from "@/ui/components";
 import { useApp } from "@/state/AppProvider";
 import { cartEstimate } from "@/domain/cart";
 import { catalogCategories, visibleCatalogEntries } from "@/domain/catalog";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, resolveAssetUrl } from "@/lib/format";
 import { colors, themeColors } from "@/ui/theme";
 import type { Promotion } from "@/contracts/types";
 
@@ -36,6 +36,7 @@ export default function Home() {
       [app.catalog, category, search],
     ),
     categories = catalogCategories(app.catalog),
+    cravingSections = app.catalog?.menuSections ?? [],
     palette = themeColors(app.bootstrap?.colors),
     currency = app.bootstrap?.currency ?? "PKR";
   return (
@@ -79,7 +80,7 @@ export default function Home() {
               </View>
               {app.bootstrap?.logoUrl ? (
                 <Image
-                  source={{ uri: app.bootstrap.logoUrl }}
+                  source={{ uri: resolveAssetUrl(app.bootstrap.logoUrl) }}
                   style={styles.logo}
                   accessibilityLabel={`${app.bootstrap.displayName} logo`}
                 />
@@ -97,12 +98,95 @@ export default function Home() {
                   <Image
                     key={slide.id}
                     accessibilityLabel={slide.alt}
-                    source={{ uri: slide.mobileImage || slide.image }}
+                    source={{ uri: resolveAssetUrl(slide.mobileImage || slide.image) }}
                     style={styles.banner}
                   />
                 ))}
               </ScrollView>
             ) : null}
+            <Text style={[styles.cravingTitle, { color: palette.ink }]}>
+              What are you craving?
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cravings}
+              accessibilityLabel="Menu categories"
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: category === "all" }}
+                accessibilityLabel="Show all menu items"
+                onPress={() => setCategory("all")}
+                style={styles.cravingTile}
+              >
+                <View
+                  style={[
+                    styles.cravingPlaceholder,
+                    { borderColor: category === "all" ? palette.primary : colors.border },
+                  ]}
+                >
+                  <Text style={styles.cravingEmoji}>🍽️</Text>
+                </View>
+                <Text style={[styles.cravingLabel, { color: palette.ink }]}>All</Text>
+              </Pressable>
+              {cravingSections.map((section) => {
+                const value =
+                  section.kind === "deals"
+                    ? "deals"
+                    : section.productCategory || section.title;
+                return (
+                  <Pressable
+                    key={section.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: category === value }}
+                    accessibilityLabel={`Show ${section.title}`}
+                    onPress={() => setCategory(value)}
+                    style={styles.cravingTile}
+                  >
+                    {section.categoryImage ? (
+                      <Image
+                        source={{ uri: resolveAssetUrl(section.categoryImage) }}
+                        style={[
+                          styles.cravingImage,
+                          { borderColor: category === value ? palette.primary : colors.border },
+                        ]}
+                        accessibilityLabel={section.title}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.cravingPlaceholder,
+                          { borderColor: category === value ? palette.primary : colors.border },
+                        ]}
+                      >
+                        <Text style={styles.cravingEmoji}>
+                          {section.kind === "deals" ? "🏷️" : "🍴"}
+                        </Text>
+                      </View>
+                    )}
+                    <Text
+                      numberOfLines={2}
+                      style={[styles.cravingLabel, { color: palette.ink }]}
+                    >
+                      {section.title}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <TextInput
+              accessibilityLabel="Search menu"
+              placeholder="Search products and deals"
+              placeholderTextColor={colors.muted}
+              value={search}
+              onChangeText={setSearch}
+              returnKeyType="search"
+              style={[
+                styles.search,
+                { borderColor: palette.primary, color: palette.ink },
+              ]}
+            />
             {promotions.length ? (
               <ScrollView
                 horizontal
@@ -125,18 +209,6 @@ export default function Home() {
                 ))}
               </ScrollView>
             ) : null}
-            <TextInput
-              accessibilityLabel="Search menu"
-              placeholder="Search products and deals"
-              placeholderTextColor={colors.muted}
-              value={search}
-              onChangeText={setSearch}
-              returnKeyType="search"
-              style={[
-                styles.search,
-                { borderColor: palette.primary, color: palette.ink },
-              ]}
-            />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -193,7 +265,7 @@ export default function Home() {
             >
               <Card style={styles.productCard}>
                 {item.image ? (
-                  <Image source={{ uri: item.image }} style={styles.image} />
+                  <Image source={{ uri: resolveAssetUrl(item.image) }} style={styles.image} />
                 ) : (
                   <View style={[styles.image, styles.placeholder]}>
                     <Text>🍽️</Text>
@@ -267,6 +339,40 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     resizeMode: "cover",
     backgroundColor: "#f5eee8",
+  },
+  cravingTitle: {
+    marginHorizontal: 18,
+    marginTop: 8,
+    marginBottom: 12,
+    fontSize: 25,
+    fontWeight: "900",
+  },
+  cravings: { paddingHorizontal: 16, paddingBottom: 16, gap: 12 },
+  cravingTile: { width: 92, alignItems: "center", gap: 7 },
+  cravingImage: {
+    width: 84,
+    height: 84,
+    borderRadius: 18,
+    resizeMode: "cover",
+    backgroundColor: "#f5eee8",
+    borderWidth: 2,
+  },
+  cravingPlaceholder: {
+    width: 84,
+    height: 84,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f5eee8",
+    borderWidth: 2,
+  },
+  cravingEmoji: { fontSize: 30 },
+  cravingLabel: {
+    maxWidth: 92,
+    minHeight: 30,
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center",
   },
   search: {
     marginHorizontal: 16,

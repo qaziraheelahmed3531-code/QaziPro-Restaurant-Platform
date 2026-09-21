@@ -10,6 +10,7 @@
     "dev:admin": "npm --workspace apps/admin run dev",
     "dev:desktop-pos": "npm --workspace apps/desktop-pos run dev",
     "dev:mobile": "npm --workspace apps/mobile run start",
+    "dev:mobile:web": "npm --workspace apps/mobile run web",
     "dev:android": "npm --workspace apps/mobile run android",
     "dev:ios": "npm --workspace apps/mobile run ios",
     "build:customer": "npm --workspace apps/customer run build",
