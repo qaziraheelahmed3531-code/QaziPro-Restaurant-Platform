@@ -10,6 +10,7 @@ apps/desktop-pos/release-*/
 coverage/
 **/next-env.d.ts
 *.log
+*.tsbuildinfo
 .env
 .env.local
 .env.*.local

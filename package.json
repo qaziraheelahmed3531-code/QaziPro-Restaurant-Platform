@@ -8,6 +8,7 @@
   "scripts": {
     "dev:website": "npm --workspace apps/customer run dev",
     "dev:admin": "npm --workspace apps/admin run dev",
+    "dev:super-admin": "npm --workspace apps/super-admin run dev",
     "dev:desktop-pos": "npm --workspace apps/desktop-pos run dev",
     "dev:mobile": "npm --workspace apps/mobile run start",
     "dev:mobile:web": "npm --workspace apps/mobile run web",
@@ -15,12 +16,14 @@
     "dev:ios": "npm --workspace apps/mobile run ios",
     "build:customer": "npm --workspace apps/customer run build",
     "build:admin": "npm --workspace apps/admin run build",
+    "build:super-admin": "npm --workspace apps/super-admin run build",
     "build:backend": "npm --workspace apps/backend run build",
     "build:desktop": "npm --workspace apps/desktop-pos run build",
     "build:mobile": "npm --workspace apps/mobile run build",
     "test:mobile": "npm --workspace apps/mobile run test",
     "test:push": "npm --workspace apps/backend run test",
     "test:parity": "npm --workspace apps/mobile run test",
+    "test:super-admin": "npm --workspace apps/super-admin run test",
     "audit:mobile-artifacts": "node scripts/mobile-artifact-audit.mjs",
     "package:desktop": "npm --workspace apps/desktop-pos run package:win",
     "staging:fixtures": "node scripts/staging-fixtures.mjs",
@@ -29,8 +32,9 @@
     "staging:responsive": "node scripts/staging-responsive.mjs",
     "staging:pos": "node scripts/staging-pos-acceptance.mjs",
     "staging:mobile-api": "node scripts/mobile-api-acceptance.mjs",
-    "lint": "npm --workspace apps/customer run lint && npm --workspace apps/admin run lint && npm --workspace apps/mobile run lint",
-    "build": "npm run build:customer && npm run build:admin && npm run build:backend && npm run build:desktop && npm run build:mobile"
+    "staging:super-admin": "node scripts/super-admin-staging-acceptance.mjs",
+    "lint": "npm --workspace apps/customer run lint && npm --workspace apps/admin run lint && npm --workspace apps/mobile run lint && npm --workspace apps/super-admin run lint",
+    "build": "npm run build:customer && npm run build:admin && npm run build:super-admin && npm run build:backend && npm run build:desktop && npm run build:mobile"
   },
   "allowScripts": {
     "electron@38.8.6": true,

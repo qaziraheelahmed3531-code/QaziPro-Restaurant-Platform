@@ -43,10 +43,12 @@ jobs:
       - run: npm run lint
       - run: npm run build:customer
       - run: npm run build:admin
+      - run: npm run build:super-admin
       - run: npm run build:backend
       - run: npm run build:desktop
       - run: npm run test:mobile
       - run: npm run test:push
+      - run: npm run test:super-admin
       - run: npm run build:mobile
       - run: npm run audit:mobile-artifacts
 
