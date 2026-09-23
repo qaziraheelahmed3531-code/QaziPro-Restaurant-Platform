@@ -1,5 +1,5 @@
-import { AppLoader } from "@italian-pizza/shared/app-loader"
+import { PortalSkeleton } from "@/components/portal-skeleton"
 
 export default function Loading() {
-  return <div className="route-loading" role="status"><AppLoader active delay={0} label="Loading page"/><span>Loading page…</span></div>
+  return <PortalSkeleton />
 }

@@ -8,6 +8,8 @@ supabase/.temp/
 apps/desktop-pos/release/
 apps/desktop-pos/release-*/
 coverage/
+.playwright-mcp/
+**/.next-stage-platform/
 **/next-env.d.ts
 *.log
 *.tsbuildinfo

@@ -5,6 +5,7 @@ import "./globals.css"
 import "./storefront-finish.css"
 import "./email-otp.css"
 import "./interaction-polish.css"
+import "./client-portal.css"
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" })
 

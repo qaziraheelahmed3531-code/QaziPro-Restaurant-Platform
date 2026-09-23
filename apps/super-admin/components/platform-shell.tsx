@@ -6,7 +6,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   Activity, AppWindow, Bell, Blocks, Building2, ChevronLeft, ChevronRight,
-  CircleDollarSign, ClipboardCheck, CloudCog, Command, FileClock,
+  CircleDollarSign, ClipboardCheck, CloudCog, Command, FileClock, Inbox,
   Globe2, Headphones, LayoutDashboard, Menu, Network, PackageCheck, Plus,
   Search, Settings, ShieldCheck, Store, Users, X, ListTodo,
 } from "lucide-react"
@@ -16,6 +16,7 @@ import { signOutAction } from "@/app/actions"
 
 const icons: Record<PlatformModule, typeof Store> = {
   overview: LayoutDashboard, restaurants: Building2, onboarding: ClipboardCheck,
+  leads: Inbox,
   branches: Network, apps: AppWindow, domains: Globe2, deployments: CloudCog,
   health: Activity, support: Headphones, billing: CircleDollarSign,
   tasks: ListTodo,

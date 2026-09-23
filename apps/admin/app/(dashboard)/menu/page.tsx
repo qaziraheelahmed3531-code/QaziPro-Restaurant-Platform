@@ -1,7 +1,8 @@
 import { ProductsManager } from "@/components/products-manager";
 import { requirePermission } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ new?: string }> }) {
+  const params = await searchParams;
   const context = await requirePermission("products.manage");
   const supabase = await createClient();
   const [categories, posSections, products, groups] = await Promise.all([
@@ -43,6 +44,7 @@ export default async function Page() {
         context.role === "OWNER" ||
         context.permissions.includes("modifiers.manage")
       }
+      initialOpen={params.new === "1"}
       assetOrigin={process.env.CUSTOMER_APP_URL}
     />
   );

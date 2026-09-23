@@ -11,14 +11,24 @@ Internal platform control center for QaziPro company staff. It is intentionally 
 - Data: existing `businesses`, `branches`, orders and POS device records are reused. Platform-specific commercial, onboarding, support, release and audit records are additive.
 - Scale: directory queries are server-side and paginated; operational histories are bounded and indexed. Health without real signals is `UNKNOWN`, never fake healthy.
 - Platform order/GMV metrics come from an authorized database aggregate over the full UTC day, not a truncated client-side order page.
+- Overview counts websites as ready only when customer-domain verification, DNS and HTTPS are all healthy. Android/iOS and POS counts are backed by enabled app records and active registered devices. Incident and deployment-failure counts use exact database counts rather than the six-row attention preview.
+- The protected application shell is forced dynamic so authorization is never frozen into build-time HTML when runtime environment configuration differs.
 - A directory permission does not grant raw customer-order row access. The dashboard receives only aggregate totals.
 
 ## Local setup
 
-1. Apply `supabase/migrations/202609210001_super_admin_foundation.sql` to an isolated local or staging project only.
-2. Copy `apps/super-admin/.env.example` to `.env.local` and set public Supabase values, the server-only service role, `PLATFORM_PUBLIC_URL`, `RESTAURANT_ADMIN_URL`, allowed origins and an initial owner email allowlist.
-3. Ensure the owner email already exists in Supabase Auth or use approved Google OAuth. Sign in once to bootstrap the Platform Owner record.
-4. Run `npm run dev:super-admin`, then open `http://localhost:3002`.
+1. Apply `supabase/migrations/202609210001_super_admin_foundation.sql` to an isolated local or staging project only. The linked staging project already has the Step 9 migrations.
+2. On this Windows workspace, authenticate the Supabase CLI and verify `supabase/.temp/project-ref` is `jzisqjvroxodvmqxzsob`. Run `npm run dev:super-admin` from the repository root, then open `http://localhost:3002`. The launcher verifies that exact staging project, obtains its public/server keys for the child process, and does not print or commit them. Stop any older server on port 3002 before restarting. For a different isolated project, use `npm run dev:super-admin:plain` with a private `apps/super-admin/.env.local` based on `.env.example`; never point it at Production.
+3. Enable the Google provider in **staging** Supabase Auth, provide its Google OAuth client ID/secret in the provider settings, and allow `http://localhost:3002/auth/callback` (plus the exact approved staging HTTPS callback). The initial owner must sign in with a verified Google identity matching `qaziraheelahmed3531@gmail.com`. An email/password or OTP identity with the same address cannot bootstrap Platform Owner. Existing invited staff still require a matching active `platform_staff` membership; revoked staff cannot reactivate by signing in.
+
+### Staging Google sign-in activation
+
+The linked staging project is `jzisqjvroxodvmqxzsob`. Its Auth settings now report Google enabled and signup enabled, but the configured Google OAuth Client ID is malformed; Google returns HTTP 401 `invalid_client`. The named owner email is **not** yet an Auth user in this staging project; first successful Google sign-in can create it and the verified-identity bootstrap will then grant Platform Owner. An account with that email in another Supabase project does not count.
+
+1. In Google Auth Platform, create a **Web application** OAuth client for staging. Add `http://localhost:3002` as an authorized JavaScript origin and `https://jzisqjvroxodvmqxzsob.supabase.co/auth/v1/callback` as the authorized redirect URI. If the OAuth audience is in testing mode, add the owner's Google account as a test user.
+2. In the **staging project only**, open Supabase **Authentication → Providers → Google** and replace the invalid Client ID with the exact Google Web application OAuth Client ID and its matching secret. A valid Google Client ID has the form `digits-token.apps.googleusercontent.com`; do not enter an email, API key, placeholder, or secret in the Client ID field. Never put the secret into this repository, a `NEXT_PUBLIC_` value, or chat. The existing Google Business Reviews OAuth client is different and does not authorize the staging Supabase callback; do not reuse it without a deliberate scope/redirect review.
+3. In Supabase **Authentication → URL Configuration**, allow `http://localhost:3002/auth/callback`. Add an HTTPS staging callback only after that exact domain is configured. Leave production settings unchanged.
+4. Restart `npm run dev:super-admin`, open `/login`, and sign in interactively with the named Google account. Verify the dashboard opens, the `platform_staff` membership has the `PLATFORM_OWNER` role, and a different Google account is denied. Do not mark this complete until those checks run.
 
 Production Supabase and live `qazipro.com` are not part of this setup. Configure the future host `admin.qazipro.com` only during an approved production release.
 
@@ -96,6 +106,7 @@ Packages define commercial defaults and capability defaults. Restaurant entitlem
 - Lint/typecheck/build: `npm --workspace apps/super-admin run lint`, `typecheck`, `build`
 - Database/RLS (isolated database only): apply migrations then run `psql ... -f supabase/tests/super-admin-foundation.sql`
 - Staging acceptance: set `ALLOW_STAGING_ACCEPTANCE=1`, `APP_ENVIRONMENT=staging`, `STAGING_SUPABASE_PROJECT_REF`, URL/public/server-only Supabase keys in the process environment, then run `npm run staging:super-admin`. The script creates two temporary restaurants and removes its QA records after verification. Never point it at Production.
+- Verified staging wrapper: `./scripts/run-admin-client-portal-staging.ps1 -Suite super-admin` runs the disposable API/RBAC acceptance against the exact linked staging ref. With a local staging-configured Super Admin on port 3102, `-Suite super-admin-browser` checks 17 authenticated routes, command palette, mobile layout and non-staff denial using disposable QA identities. The wrapper never prints keys.
 - Existing platform regression: run the existing multi-tenant, branch, checkout, mobile, POS and build suites.
 
 ## External integrations still required
@@ -105,7 +116,7 @@ Real DNS/SSL checks, Vercel/GitHub deployment adapters, Sentry ingestion, invoic
 ## Current operational limits
 
 - The four Step 9 migrations have been applied to the linked **QaziPro Restaurant Staging** project only. Production was not migrated.
-- The Super Admin app needs its own staging environment variables and approved staff identities before a browser sign-in can be accepted end to end.
+- The local staging launcher supplies environment variables safely. The login page checks both provider status and OAuth Client ID shape, and now keeps Google sign-in disabled with a clear message for the malformed client rather than sending the user to Google's HTTP 401 page. The actual named Platform Owner Google login has **not** been executed. Disposable QA browser sessions do not prove Google OAuth.
 - Agreement legal wording and any signed-PDF template require QaziPro legal approval. The secure web-signing record is implemented; PDF export is not.
 - External provider probes, push/build signing checks, invoice collection and notifications remain adapters, not live integrations.
 - Restaurant runtime entitlements are recorded centrally, but existing website/POS/mobile clients do not yet enforce every package capability. Do not use package state alone as a security boundary.

@@ -109,6 +109,7 @@ export function ProductsManager({
   initialProducts,
   groups,
   canManageOptions,
+  initialOpen = false,
   assetOrigin,
 }: {
   businessId: string;
@@ -117,12 +118,13 @@ export function ProductsManager({
   initialProducts: Product[];
   groups: Group[];
   canManageOptions: boolean;
+  initialOpen?: boolean;
   assetOrigin?: string;
 }) {
   const products = initialProducts;
   const router = useRouter();
   const [removing, setRemoving] = useState<Product | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(() => initialOpen ? empty(categories[0]?.id) : null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [category, setCategory] = useState("");

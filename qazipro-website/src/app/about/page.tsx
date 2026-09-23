@@ -1,0 +1,16 @@
+import Image from "next/image";
+import Link from "next/link";
+import { ArrowUpRight, CircleCheck, Compass, HeartHandshake, Layers3 } from "lucide-react";
+import { pageMetadata } from "@/lib/metadata";
+
+export const metadata = pageMetadata("About QaziPro", "Meet founder Qazi Raheel Ahmad and the thinking behind QaziPro's connected restaurant systems and custom software.", "/about");
+
+export default function About() {
+  return <>
+    <section className="page-hero founder-hero"><div className="container founder-hero-grid"><div><span className="eyebrow">ABOUT QAZIPRO</span><h1>Software should serve<br/><span>the people using it.</span></h1><p>QaziPro is a software company focused on connected restaurant operations, modern commerce and custom digital products. The aim is simple: turn complicated work into a clear, dependable experience.</p><Link className="button button-primary" href="/contact">Talk to QaziPro <ArrowUpRight size={18}/></Link></div><figure className="founder-portrait founder-portrait-primary" data-cursor="FOUNDER"><Image src="/founder/qazi-raheel-ahmad-studio.webp" width={1080} height={1438} sizes="(max-width: 900px) 100vw, 42vw" alt="Qazi Raheel Ahmad, founder of QaziPro" priority/><figcaption><strong>Qazi Raheel Ahmad</strong><span>Founder · QaziPro</span></figcaption></figure></div></section>
+
+    <section className="content-section"><div className="container"><div className="section-heading"><span className="eyebrow">OUR POINT OF VIEW</span><h2>Clarity before complexity.</h2><p>Good software should give teams a reliable source of truth, give customers a considered experience and give the business room to adapt.</p></div><div className="content-grid"><article className="content-card"><Compass size={28}/><h3>Start with the work</h3><p>Understand the daily operation before drawing the interface.</p></article><article className="content-card"><Layers3 size={28}/><h3>Connect the pieces</h3><p>Design across systems so information does not get stranded.</p></article><article className="content-card"><HeartHandshake size={28}/><h3>Stay accountable</h3><p>Build carefully, test honestly and be clear about what is ready.</p></article></div></div></section>
+
+    <section className="content-section founder-story"><div className="container founder-story-grid"><figure className="founder-portrait founder-portrait-secondary"><Image src="/founder/qazi-raheel-ahmad-profile.webp" width={1080} height={1280} sizes="(max-width: 720px) 100vw, 38vw" alt="Portrait of Qazi Raheel Ahmad"/><span className="portrait-number">01</span></figure><div><span className="eyebrow">FOUNDER&apos;S NOTE</span><h2>Build the system around the business—not the other way around.</h2><p className="text-muted">QaziPro works with restaurants and growing businesses that want thoughtful technology without unnecessary complexity. Every engagement begins with the operation, the customer and the result that matters.</p><ul className="check-list"><li><CircleCheck size={18}/> Connected restaurant systems</li><li><CircleCheck size={18}/> Purpose-built commerce experiences</li><li><CircleCheck size={18}/> Dependable custom web products</li></ul><p className="founder-signature">Qazi Raheel Ahmad <span>Founder, QaziPro</span></p></div></div></section>
+  </>;
+}

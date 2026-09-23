@@ -12,7 +12,10 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.exchangeCodeForSession(code)
   if (!error) await supabase.rpc("claim_staff_invitations")
   const context = error ? null : await getAdminContext()
-  const response = NextResponse.redirect(new URL(error ? "/login?error=callback" : context ? adminHome(context) : "/login?error=unauthorized", url.origin))
+  const isRecovery = url.searchParams.get("type") === "recovery"
+  const destination = error ? "/login?error=callback" : context ? isRecovery ? "/auth/reset" : adminHome(context) : "/login?error=unauthorized"
+  const response = NextResponse.redirect(new URL(destination, url.origin))
+  response.headers.set("Cache-Control", "private, no-store")
   headers.forEach((value, name) => response.headers.set(name, value))
   return response
 }

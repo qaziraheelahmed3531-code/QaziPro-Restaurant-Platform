@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { AppLoader } from "@italian-pizza/shared/app-loader"
 import { useRouter } from "next/navigation"
-import { Coins, Home, LocateFixed, LoaderCircle, MapPin, Plus, Store } from "lucide-react"
+import { Banknote, Check, Coins, Home, LocateFixed, LoaderCircle, MapPin, Plus, Store } from "lucide-react"
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
 
 import { LocationMap } from "@/components/location/location-map"
@@ -125,7 +125,6 @@ export function CheckoutPage() {
   const app = useApp()
   const router = useRouter()
   const checkoutAttemptId = useRef<string | null>(null)
-  const [payment, setPayment] = useState<"cod" | "online">("cod")
   const [placing, setPlacing] = useState(false)
   const [address, setAddress] = useState<AddressDraft>(emptyAddress)
   const location = useCheckoutLocation(value => setAddress(current => ({ ...current, addressLine1: value })))
@@ -305,8 +304,12 @@ export function CheckoutPage() {
 
             <fieldset className="commerce-card payment-card">
               <legend><span>4</span><div><strong>Payment method</strong><small>Select how you would like to pay.</small></div></legend>
-              <label className={payment === "cod" ? "payment-option is-selected" : "payment-option"}><input type="radio" name="payment" value="cod" checked={payment === "cod"} onChange={() => setPayment("cod")} /><span><strong>Cash on Delivery</strong><small>Pay when your order arrives</small></span></label>
-              <label className="payment-option is-disabled"><input type="radio" name="payment" value="online" disabled /><span><strong>Online payment</strong><small>Coming soon</small></span></label>
+              <label className="payment-option payment-option--cod is-selected">
+                <input className="sr-only" type="radio" name="payment" value="cod" defaultChecked />
+                <span className="payment-option__icon"><Banknote aria-hidden="true" /></span>
+                <span className="payment-option__copy"><strong>Cash on Delivery</strong><small>Pay in cash when your order arrives</small></span>
+                <span className="payment-option__check"><Check aria-hidden="true" /></span>
+              </label>
             </fieldset>
 
             {loyalty?.enabled && loyalty.redemptionEnabled && <section className="commerce-card loyalty-redemption-card" aria-labelledby="loyalty-redemption-title">

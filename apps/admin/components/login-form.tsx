@@ -6,11 +6,17 @@ import { EMAIL_OTP_RESEND_SECONDS, emailOtpError, emptyOtpDigits, isCompleteEmai
 import { createClient } from "@/lib/supabase/client"
 import { EmailOtpInput } from "@/components/email-otp-input"
 import Image from "next/image"
+import Link from "next/link"
+import { Eye, EyeOff } from "lucide-react"
+import { BookDemoModal } from "@/components/book-demo-modal"
 
 export function LoginForm({ initialError = "" }: { initialError?: string }) {
   const [error, setError] = useState(initialError)
-  const [busy, setBusy] = useState<"" | "send" | "resend" | "verify" | "google">("")
+  const [busy, setBusy] = useState<"" | "send" | "resend" | "verify" | "google" | "password" | "reset">("")
   const [address, setAddress] = useState("")
+  const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [method, setMethod] = useState<"password" | "code">("password")
   const [sent, setSent] = useState(false)
   const [digits, setDigits] = useState(emptyOtpDigits)
   const [countdown, setCountdown] = useState(0)
@@ -34,6 +40,36 @@ export function LoginForm({ initialError = "" }: { initialError?: string }) {
       setError("Google sign-in could not be started. Please try again.")
       pending.current = false; setBusy("")
     }
+  }
+
+  async function signInPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (pending.current) return
+    const email = address.trim().toLowerCase()
+    if (!email || !password) { setError("Enter your email and password."); return }
+    pending.current = true; setBusy("password"); setError(""); setNotice("")
+    try {
+      const { error: authError } = await createClient().auth.signInWithPassword({ email, password })
+      if (authError) throw authError
+      // The completion route verifies an active restaurant staff membership.
+      window.location.replace("/auth/complete")
+    } catch {
+      setError("Sign-in failed. Check your details or use an email code.")
+      pending.current = false; setBusy("")
+    }
+  }
+
+  async function forgotPassword() {
+    if (pending.current) return
+    const email = address.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError("Enter your work email first."); return }
+    pending.current = true; setBusy("reset"); setError("")
+    try {
+      await createClient().auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/callback?type=recovery` })
+      setNotice("If this account exists, password reset instructions will arrive by email.")
+    } catch {
+      setNotice("If this account exists, password reset instructions will arrive by email.")
+    } finally { pending.current = false; setBusy("") }
   }
 
   async function send(resend = false) {
@@ -86,15 +122,18 @@ export function LoginForm({ initialError = "" }: { initialError?: string }) {
         <button className="button" disabled={Boolean(busy) || !isCompleteEmailOtp(digits.join(""))}>{busy === "verify" ? "Verifying…" : "Verify and sign in"}</button>
         <div className="admin-otp-actions"><button className="button button--outline" type="button" disabled={Boolean(busy) || countdown > 0} onClick={() => void send(true)}>{busy === "resend" ? "Resending…" : countdown > 0 ? `Resend in ${countdown}s` : "Resend code"}</button><button className="button button--outline" type="button" disabled={Boolean(busy)} onClick={changeEmail}>Change email</button></div>
       </form> : <>
-        <h1>Admin sign in</h1><p>Only invited restaurant owners and staff can enter this secure dashboard.</p>
+        <h1>Welcome back</h1><p>Sign in to your restaurant operations workspace. Staff access is verified after authentication.</p>
         <button className="button button--outline google-oauth-button" style={{width:"100%"}} type="button" onClick={google} disabled={Boolean(busy)}><Image src="https://developers.google.com/static/identity/images/g-logo.png" alt="" width={20} height={20} aria-hidden="true"/>Continue with Google</button>
         <div className="login-divider">or</div>
-        <form className="login-form" onSubmit={event => { event.preventDefault(); void send() }}>
+        <form className="login-form" onSubmit={method === "password" ? signInPassword : event => { event.preventDefault(); void send() }}>
           <label htmlFor="admin-email">Work email</label><input id="admin-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" disabled={Boolean(busy)} value={address} onChange={event => setAddress(event.target.value)}/>
-          <button className="button" disabled={Boolean(busy) || countdown > 0}>{busy === "send" ? "Sending code…" : countdown > 0 ? `Try again in ${countdown}s` : "Continue with Email"}</button>
+          {method === "password" && <><label htmlFor="admin-password">Password</label><div className="login-password-field"><input id="admin-password" name="password" type={showPassword ? "text" : "password"} required autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} disabled={Boolean(busy)}/><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff aria-hidden="true"/> : <Eye aria-hidden="true"/>}</button></div><button className="login-text-action" type="button" onClick={() => void forgotPassword()} disabled={Boolean(busy)}>Forgot password?</button></>}
+          <button className="button" disabled={Boolean(busy) || (method === "code" && countdown > 0)}>{method === "password" ? busy === "password" ? "Signing in…" : "Sign in" : busy === "send" ? "Sending code…" : countdown > 0 ? `Try again in ${countdown}s` : "Send email code"}</button>
         </form>
+        <button type="button" className="login-method-switch" disabled={Boolean(busy)} onClick={() => { setMethod(value => value === "password" ? "code" : "password"); setError(""); setNotice("") }}>{method === "password" ? "Use an email code instead" : "Use your password instead"}</button>
       </>}
     </motion.div></AnimatePresence>
     {notice && <p role="status">{notice}</p>}{error && <p className="auth-error" role="alert">{error}</p>}
+    <div className="login-explore"><Link href="/demo">View Demo</Link><span aria-hidden="true">·</span><BookDemoModal triggerClassName="login-explore__button" /></div>
   </section>
 }

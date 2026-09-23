@@ -1,0 +1,4 @@
+import Link from "next/link";
+import { pageMetadata } from "@/lib/metadata";
+export const metadata = pageMetadata("Terms", "QaziPro website terms and commercial agreement information.", "/terms");
+export default function Terms() { return <section className="content-section"><div className="container content-prose"><span className="eyebrow">TERMS</span><h1>Clear terms start with a clear agreement.</h1><p>Website information describes QaziPro services; it is not a binding offer, service-level promise or final commercial quote.</p><p>Project scope, charges, responsibilities and legal terms are agreed separately in a versioned proposal or client agreement. QaziPro&apos;s binding public website terms require business and legal approval before domain cutover.</p><p>Please <Link href="/contact">contact us</Link> if you need an approved agreement or have a question about a project.</p></div></section>; }

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { AlertTriangle, ArrowRight, Building2, CircleDollarSign, GitBranch, Network, ReceiptText, Store, TriangleAlert } from "lucide-react"
+import { AlertTriangle, AppWindow, ArrowRight, Building2, CircleDollarSign, GitBranch, Globe2, Monitor, Network, ReceiptText, Store, TriangleAlert } from "lucide-react"
 import { requirePlatformStaff } from "@/lib/auth"
 import { getOverview } from "@/lib/data"
 import { PlatformShell } from "@/components/platform-shell"
@@ -15,6 +15,10 @@ export default async function OverviewPage() {
     ["Active", metric(result.data.metrics.active), "Serving live operations", Store, "/restaurants?status=active"],
     ["Onboarding", metric(result.data.metrics.onboarding), "Not yet activated", GitBranch, "/onboarding"],
     ["Branches", metric(result.data.metrics.branches), "Active locations", Network, "/branches"],
+    ["Websites ready", metric(result.data.metrics.websitesReady), "Verified DNS and HTTPS", Globe2, "/domains"],
+    ["Android enabled", metric(result.data.metrics.androidEnabled), "Purchased app records", AppWindow, "/apps"],
+    ["iOS enabled", metric(result.data.metrics.iosEnabled), "Purchased app records", AppWindow, "/apps"],
+    ["POS terminals", metric(result.data.metrics.activePosDevices), "Registered active devices", Monitor, "/branches"],
     ["Orders today", metric(result.data.metrics.ordersToday), "Across visible tenants", ReceiptText, "/restaurants"],
     ["GMV today", metric(result.data.metrics.gmvToday, true), "Authoritative order totals", CircleDollarSign, "/billing"],
   ] as const

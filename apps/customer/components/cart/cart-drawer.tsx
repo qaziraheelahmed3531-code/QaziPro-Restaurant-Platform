@@ -24,7 +24,7 @@ export function CartDrawer() {
   const [applyingPromo, setApplyingPromo] = useState(false)
   const [entered, setEntered] = useState(false)
 
-  useBodyScrollLock(app.cartDrawerOpen || entered, reduceMotion ? 0 : 420)
+  useBodyScrollLock(app.cartDrawerOpen || entered, reduceMotion ? 0 : 300)
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -42,11 +42,11 @@ export function CartDrawer() {
     // no completion event. Always release that native dialog too.
     const closeFallback = !app.cartDrawerOpen ? window.setTimeout(() => {
       if (dialog.open) { dialog.close(); previousFocusRef.current?.focus({ preventScroll: true }) }
-    }, reduceMotion ? 0 : 520) : undefined
+    }, reduceMotion ? 0 : 360) : undefined
     return () => { cancelAnimationFrame(frame); cancelAnimationFrame(nextFrame); window.clearTimeout(closeFallback) }
   }, [app.cartDrawerOpen, reduceMotion])
 
-  const drawerTransition = reduceMotion ? { duration: 0 } : { type: "tween" as const, duration: 0.42, ease: [0.22, 1, 0.36, 1] as const }
+  const drawerTransition = reduceMotion ? { duration: 0 } : { type: "tween" as const, duration: 0.26, ease: [0.22, 1, 0.36, 1] as const }
 
   const applyPromo = async () => {
     setApplyingPromo(true)

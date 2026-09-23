@@ -92,7 +92,7 @@ kbd { padding: 3px 6px; border: 1px solid var(--line-strong); border-bottom-widt
 .page-header > div:first-child > p:last-child { max-width: 760px; margin: 0; color: var(--muted); font-size: 13px; line-height:1.6; }
 .eyebrow { margin:0; color:#a56b00; font-size:9px; font-weight:850; letter-spacing:1.15px; }
 .page-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.metric-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
+.metric-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
 .metric-card { min-height:146px; display:flex; justify-content:space-between; gap:10px; padding:18px; border:1px solid var(--line); border-radius:var(--radius-md); background:#fff; box-shadow:var(--shadow-sm); }
 .metric-card div { display:flex; flex-direction:column; }
 .metric-card span { color:var(--muted); font-size:12px; font-weight:700; }
@@ -346,6 +346,10 @@ label small,.form-help { color:var(--muted); font-size:9px; font-weight:500; lin
 .agreement-complete svg { width:34px; height:34px; color:var(--success); }
 .agreement-complete h2 { margin:8px 0; }
 .agreement-complete p { color:var(--ink-soft); font-size:12px; }
+.filter-row { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; }
+.filter-row a { padding:8px 11px; border:1px solid var(--line); border-radius:999px; background:#fff; color:var(--ink-soft); font-size:10px; font-weight:750; }
+.inline-status-form { display:flex; align-items:center; gap:6px; margin-top:8px; }
+.inline-status-form select { min-height:34px; max-width:145px; padding:0 8px; border:1px solid var(--line); border-radius:7px; background:#fff; font-size:10px; }
 @media (max-width:620px) {
   .share-banner { grid-template-columns:1fr; }
   .agreement-page { padding:0; }

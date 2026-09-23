@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useEffectEvent, useId, useMemo, useRef, useState, type KeyboardEvent } from "react"
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { Check, ChevronDown, LocateFixed, MapPin, Search, Store, X } from "lucide-react"
 
@@ -86,7 +86,6 @@ export function LocationDialog({
   const resultRefs = useRef<Array<HTMLButtonElement | null>>([])
   const permissionTimerRef = useRef<number | null>(null)
   const detectionAbortRef = useRef<AbortController | null>(null)
-  const autoDetectionAttempted = useRef(false)
   const listboxId = useId()
   const selectLabelId = useId()
   const reduceMotion = useHydrationSafeReducedMotion()
@@ -159,7 +158,6 @@ export function LocationDialog({
   }
 
   const chooseArea = (areaId: string) => {
-    autoDetectionAttempted.current = true
     detectionAbortRef.current?.abort()
     const nested = childrenOf(areaId)
     if (nested.length > 0) {
@@ -229,14 +227,6 @@ export function LocationDialog({
       }
     }
   }
-
-  const detectOnOpen = useEffectEvent(() => { void detectLocation() })
-  useEffect(() => {
-    if (!open || orderType !== "delivery" || !branch.deliveryEnabled || autoDetectionAttempted.current) return
-    // The browser owns the permission prompt; denial never blocks manual entry.
-    const timer = window.setTimeout(() => { if (autoDetectionAttempted.current) return; autoDetectionAttempted.current = true; detectOnOpen() }, 250)
-    return () => window.clearTimeout(timer)
-  }, [open, orderType, branch.deliveryEnabled])
 
   const focusResult = (index: number) => {
     const nextIndex = Math.max(0, Math.min(filteredAreas.length - 1, index))

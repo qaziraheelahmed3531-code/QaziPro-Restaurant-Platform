@@ -58,7 +58,7 @@ function revealProduct(item: SearchItem, reduceMotion: boolean) {
   target.addEventListener("animationend", () => target.classList.remove("is-search-highlighted"), { once: true })
 }
 
-function ProductSearchPrompt({ names, active }: { names: string[]; active: boolean }) {
+function ProductSearchPrompt({ names, active, reduced }: { names: string[]; active: boolean; reduced: boolean }) {
   const [productIndex, setProductIndex] = useState(0)
   const [characterCount, setCharacterCount] = useState(0)
   const [deleting, setDeleting] = useState(false)
@@ -66,7 +66,7 @@ function ProductSearchPrompt({ names, active }: { names: string[]; active: boole
   const phrase = `Search for ${name}`
 
   useEffect(() => {
-    if (!active || names.length === 0) return
+    if (!active || reduced || names.length === 0) return
     let delay = deleting ? 34 : 72
     if (!deleting && characterCount >= phrase.length) delay = 1350
     if (deleting && characterCount === 0) delay = 240
@@ -80,9 +80,10 @@ function ProductSearchPrompt({ names, active }: { names: string[]; active: boole
       }
     }, delay)
     return () => window.clearTimeout(timer)
-  }, [active, characterCount, deleting, names.length, phrase.length])
+  }, [active, characterCount, deleting, names.length, phrase.length, reduced])
 
   if (!active) return null
+  if (reduced) return <span>{phrase}</span>
   return <span data-product-prompt={name} data-product-prompt-index={productIndex % Math.max(names.length, 1)} data-product-prompt-count={names.length}>{phrase.slice(0, characterCount)}<i className="menu-search-placeholder__caret" aria-hidden="true" /></span>
 }
 
@@ -157,7 +158,7 @@ export function MenuSearch({ products, deals }: { products: Product[]; deals: De
         <div className="menu-search-control">
           <Search aria-hidden="true" />
           <div className="menu-search-placeholder" aria-hidden="true">
-            <ProductSearchPrompt names={promptNames} active={!query && !focused} />
+            <ProductSearchPrompt names={promptNames} active={!query && !focused} reduced={reduceMotion} />
           </div>
           <input
             ref={inputRef}

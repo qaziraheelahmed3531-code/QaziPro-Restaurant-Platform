@@ -5,6 +5,7 @@ import { redirect } from "next/navigation"
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
 import { createPlatformAdminClient } from "@/lib/supabase/admin"
 import type { PlatformPermission } from "@/lib/platform"
+import { canBootstrapPlatformOwner } from "@/lib/owner-bootstrap"
 
 export type PlatformContext = {
   userId: string
@@ -59,37 +60,40 @@ export async function bootstrapPlatformOwner() {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   const user = data.user
-  if (!user?.email) return false
-  const allowlist = (process.env.QAZIPRO_PLATFORM_OWNER_EMAILS ?? "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean)
-  if (!allowlist.includes(user.email.toLowerCase())) return false
+  if (!user?.email || !canBootstrapPlatformOwner(user, process.env.QAZIPRO_PLATFORM_OWNER_EMAILS ?? "")) return false
   const admin = createPlatformAdminClient()
   if (!admin) return false
   // Bootstrap is one-time only. An allowlisted but revoked/suspended owner must
   // never be silently reactivated by signing in again.
   const existing = await admin.from("platform_staff").select("status").eq("user_id", user.id).maybeSingle()
   if (existing.error || existing.data) return false
+  const { data: role, error: roleError } = await admin.from("platform_roles").select("id").eq("key", "PLATFORM_OWNER").single()
+  if (roleError || !role) return false
   const displayName = String(user.user_metadata?.full_name ?? user.user_metadata?.name ?? user.email.split("@")[0]).slice(0, 120)
-  const { error: staffError } = await admin.from("platform_staff").upsert({
+  const { error: staffError } = await admin.from("platform_staff").insert({
     user_id: user.id,
     display_name: displayName,
     email: user.email.toLowerCase(),
     status: "ACTIVE",
     last_login_at: new Date().toISOString(),
-  }, { onConflict: "user_id" })
+  })
   if (staffError) return false
-  const { data: role } = await admin.from("platform_roles").select("id").eq("key", "PLATFORM_OWNER").single()
-  if (!role) return false
-  await admin.from("platform_staff_roles").upsert({ staff_user_id: user.id, role_id: role.id }, { onConflict: "staff_user_id,role_id" })
-  await admin.from("platform_audit_logs").insert({
+  const assigned = await admin.from("platform_staff_roles").insert({ staff_user_id: user.id, role_id: role.id })
+  if (assigned.error) {
+    await admin.from("platform_staff").delete().eq("user_id", user.id)
+    return false
+  }
+  const audit = await admin.from("platform_audit_logs").insert({
     actor_user_id: user.id,
     action: "PLATFORM_OWNER_SESSION_ESTABLISHED",
     target_type: "platform_staff",
     target_id: user.id,
     reason: "Environment allowlisted platform owner authentication",
   })
+  if (audit.error) {
+    await admin.from("platform_staff").delete().eq("user_id", user.id)
+    return false
+  }
   return true
 }
 

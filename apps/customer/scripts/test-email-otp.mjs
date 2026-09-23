@@ -66,9 +66,12 @@ function harness() {
       logAuthDiagnostic: () => {},
     },
     "@/components/ui/button": { Button: "button" },
+    "@/components/book-demo-modal": { BookDemoModal: "book-demo-modal" },
     "./email-otp-input": { EmailOtpInput: "otp" },
     "@/components/email-otp-input": { EmailOtpInput: "otp" },
     "next/image": { __esModule: true, default: "img" },
+    "next/link": { __esModule: true, default: "a" },
+    "lucide-react": new Proxy({}, { get: (_target, name) => String(name) }),
     "next/navigation": {
       useRouter: () => ({ refresh: () => calls.push(["refresh"]) }),
     },
@@ -237,6 +240,8 @@ for (const app of ["customer/components/account", "admin/components"]) {
   const h = harness(),
     { LoginForm } = h.load("apps/admin/components/login-form.tsx");
   let tree = h.render(LoginForm, {});
+  find(tree, (n) => n.type === "button" && n.props.children === "Use an email code instead").props.onClick();
+  tree = h.render(LoginForm, {});
   find(tree, (n) => n.props.id === "admin-email").props.onChange({
     target: { value: " QA@example.com " },
   });
@@ -247,8 +252,8 @@ for (const app of ["customer/components/account", "admin/components"]) {
   await new Promise((r) => setImmediate(r));
   assert.equal(h.calls[0][1].email, "qa@example.com");
   assert.equal(h.calls[0][1].options.shouldCreateUser, true);
-  assert.equal(h.values[3], true);
-  h.values[4] = "01234567".split("");
+  assert.equal(h.values[6], true);
+  h.values[7] = "01234567".split("");
   tree = h.render(LoginForm, {});
   await find(
     tree,
@@ -260,16 +265,16 @@ for (const app of ["customer/components/account", "admin/components"]) {
   const other = harness(),
     form = other.load("apps/admin/components/login-form.tsx").LoginForm;
   other.render(form, {});
-  other.values[3] = true;
-  other.values[4] = "01234567".split("");
+  other.values[6] = true;
+  other.values[7] = "01234567".split("");
   tree = other.render(form, {});
   find(
     tree,
     (n) => n.type === "button" && n.props.children === "Change email",
   ).props.onClick();
-  assert.equal(other.values[3], false);
-  assert.equal(other.values[4].join(""), "");
-  assert.equal(other.values[0], "");
+  assert.equal(other.values[6], false);
+  assert.equal(other.values[7].join(""), "");
+  assert.equal(other.values[2], "");
   console.log(
     "PASS: Admin real SDK call contract, normalized email, OTP transition, complete-token verification, server authorization handoff and change-email reset",
   );
@@ -321,9 +326,9 @@ for (const app of ["customer", "admin"]) {
     { LoginForm } = h.load("apps/admin/components/login-form.tsx");
   h.render(LoginForm, {});
   h.values[2] = "qa@example.com";
-  h.values[3] = true;
-  h.values[4] = "01234567".split("");
-  h.values[5] = 0;
+  h.values[6] = true;
+  h.values[7] = "01234567".split("");
+  h.values[8] = 0;
   h.setResult({ error: { code: "otp_expired" } });
   let tree = h.render(LoginForm, {});
   await find(
@@ -341,9 +346,9 @@ for (const app of ["customer", "admin"]) {
     (n) => n.type === "button" && n.props.children === "Resend code",
   ).props.onClick();
   await new Promise((r) => setImmediate(r));
-  assert.equal(h.values[4].join(""), "");
-  assert.equal(h.values[5], config.EMAIL_OTP_RESEND_SECONDS);
-  assert.equal(h.values[6], "A new code has been sent to your email.");
+  assert.equal(h.values[7].join(""), "");
+  assert.equal(h.values[8], config.EMAIL_OTP_RESEND_SECONDS);
+  assert.equal(h.values[9], "A new code has been sent to your email.");
   tree = h.render(LoginForm, {});
   assert.equal(
     find(

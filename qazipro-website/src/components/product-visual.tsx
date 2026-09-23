@@ -1,0 +1,10 @@
+import { BarChart3, ChefHat, ClipboardList, Globe2, Layers3, Smartphone, Store, Wifi } from "lucide-react";
+
+export function ProductVisual({ compact = false }: { compact?: boolean }) {
+  return <div className={`product-visual ${compact ? "product-visual-compact" : ""}`} role="img" aria-label="Illustration of connected QaziPro restaurant operations">
+    <div className="visual-orbit visual-orbit-one"/><div className="visual-orbit visual-orbit-two"/>
+    <div className="visual-window"><div className="visual-window-top"><span className="visual-dots"><i/><i/><i/></span><span>QaziPro · Restaurant operations</span><Wifi size={15}/></div><div className="visual-window-body"><div className="visual-sidebar"><div className="visual-mark">QP</div><i className="active"><Layers3 size={17}/></i><i><ClipboardList size={17}/></i><i><Store size={17}/></i><i><BarChart3 size={17}/></i></div><div className="visual-main"><span className="visual-overline">ONE SYSTEM · EVERY TOUCHPOINT</span><strong className="visual-title">Everything in sync.</strong><div className="visual-stats"><span><strong>Menu</strong><small>One source of truth</small></span><span><strong>Orders</strong><small>All channels</small></span><span><strong>Branches</strong><small>One view</small></span></div><div className="visual-flow"><div><Globe2 size={20}/><span>Website</span></div><div><Smartphone size={20}/><span>Mobile apps</span></div><div><Store size={20}/><span>POS</span></div><div><ChefHat size={20}/><span>Kitchen</span></div></div><div className="visual-progress"><span/><span/><span/><span/></div></div></div></div>
+    <div className="visual-float visual-float-left"><span className="visual-float-icon"><Store size={19}/></span><div><strong>Counter to kitchen</strong><small>Orders stay connected</small></div></div>
+    <div className="visual-float visual-float-right"><span className="visual-float-icon warm"><Smartphone size={19}/></span><div><strong>One menu</strong><small>Across every channel</small></div></div>
+  </div>;
+}

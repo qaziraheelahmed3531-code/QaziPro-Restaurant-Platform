@@ -26,6 +26,7 @@ import {
   FileBarChart,
   Gauge,
   History,
+  LifeBuoy,
   LayoutDashboard,
   MapPinned,
   MonitorDown,
@@ -56,7 +57,9 @@ import {
   type ReactNode,
 } from "react";
 import { AdminTopbar } from "@/components/admin-topbar";
+import { AdminCommandPalette } from "@/components/admin-command-palette";
 import { DialogAccessibility } from "@/components/dialog-accessibility";
+import { WhatsAppSupportLink } from "@/components/whatsapp-support-link";
 import type { AdminContext } from "@/lib/auth";
 
 type NavItem = {
@@ -374,6 +377,10 @@ const groups: Array<{ label: string; items: NavItem[] }> = [
       },
     ],
   },
+  {
+    label: "Support",
+    items: [{ label: "Help Center", href: "/help", icon: LifeBuoy }],
+  },
 ];
 
 type AdminBranding = {
@@ -396,11 +403,21 @@ function readableTextOn(hex: string) {
 }
 
 const compactNavigationQuery = "(max-width: 1023px)";
+const sidebarStorageKey = "qazipro-admin-sidebar-collapsed";
 const subscribeCompactNavigation = (notify: () => void) => {
   const query = window.matchMedia(compactNavigationQuery);
   query.addEventListener("change", notify);
   return () => query.removeEventListener("change", notify);
 };
+const subscribeSidebarPreference = (notify: () => void) => {
+  window.addEventListener("storage", notify);
+  window.addEventListener("admin-sidebar-preference", notify);
+  return () => {
+    window.removeEventListener("storage", notify);
+    window.removeEventListener("admin-sidebar-preference", notify);
+  };
+};
+const sidebarPreference = () => window.localStorage.getItem(sidebarStorageKey) === "true";
 
 export function AdminShell({
   context,
@@ -414,7 +431,7 @@ export function AdminShell({
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [collapsedPreference, setSidebarCollapsed] = useState(false);
+  const collapsedPreference = useSyncExternalStore(subscribeSidebarPreference, sidebarPreference, () => false);
   const compactNavigation = useSyncExternalStore(subscribeCompactNavigation, () => window.matchMedia(compactNavigationQuery).matches, () => false);
   const sidebarCollapsed = collapsedPreference && !compactNavigation;
   const [pendingPath, setPendingPath] = useState("");
@@ -432,6 +449,12 @@ export function AdminShell({
     context.permissions.includes(permission) ||
     (permission === "content.manage" &&
       context.permissions.includes("social.manage"));
+  const commands = groups.flatMap(group => group.items.filter(item => allowed(item.permission)).map(item => ({
+    label: item.label,
+    href: item.href,
+    section: group.label,
+  })));
+  if (allowed("products.manage")) commands.push({ label: "Add menu item", href: "/menu?new=1", section: "Quick action" });
   const theme = {
     "--brand": branding.primaryColor,
     "--brand-dark": `color-mix(in srgb, ${branding.primaryColor} 82%, black)`,
@@ -446,6 +469,7 @@ export function AdminShell({
         style={theme}
       >
         <DialogAccessibility />
+        <AdminCommandPalette commands={commands} />
         <AnimatePresence>
           {menuOpen && (
             <motion.button
@@ -473,7 +497,7 @@ export function AdminShell({
                 />
               </i>
             ) : (
-              <i>IP</i>
+              <i aria-label="Restaurant icon">{context.businessName.slice(0, 2).toUpperCase()}</i>
             )}
             <span>
               <strong>{context.businessName}</strong>
@@ -482,7 +506,10 @@ export function AdminShell({
             <button
               className="sidebar-collapse"
               type="button"
-              onClick={() => setSidebarCollapsed((value) => !value)}
+              onClick={() => {
+                window.localStorage.setItem(sidebarStorageKey, String(!collapsedPreference));
+                window.dispatchEvent(new Event("admin-sidebar-preference"));
+              }}
               aria-label={
                 sidebarCollapsed ? "Expand navigation" : "Collapse navigation"
               }
@@ -599,6 +626,13 @@ export function AdminShell({
               );
             })}
           </nav>
+          {!sidebarCollapsed && <div className="admin-sidebar__support">
+            <span className="admin-sidebar__support-mark"><LifeBuoy aria-hidden="true" /></span>
+            <strong>Need help?</strong>
+            <p>QaziPro support is here for your team.</p>
+            <WhatsAppSupportLink restaurantName={context.businessName} className="admin-sidebar__support-link" />
+          </div>}
+          <small className="admin-sidebar__powered">Powered by QaziPro</small>
         </aside>
         <div className="admin-main">
           <AdminTopbar

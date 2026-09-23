@@ -84,6 +84,7 @@ export const modules = {
   overview: { title: "Overview", detail: "Platform activity and attention queue", permission: "restaurants.view" },
   restaurants: { title: "Restaurants", detail: "Master restaurant directory", permission: "restaurants.view" },
   onboarding: { title: "Onboarding", detail: "Guided client provisioning", permission: "onboarding.manage" },
+  leads: { title: "Website Leads", detail: "Public website and demo inquiries", permission: "onboarding.manage" },
   branches: { title: "Branches", detail: "Cross-restaurant branch operations", permission: "branches.manage" },
   apps: { title: "Apps", detail: "Android and iOS release registry", permission: "apps.manage" },
   domains: { title: "Domains", detail: "DNS, SSL and tenant resolution", permission: "domains.manage" },

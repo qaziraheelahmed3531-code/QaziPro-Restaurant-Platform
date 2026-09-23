@@ -16,17 +16,23 @@ function safeMessage(code?: string) {
 export async function getOverview() {
   await requirePlatformPermission("restaurants.view")
   const supabase = await createClient()
-  const [restaurants, active, onboarding, branches, incidents, deployments, subscriptions, orderMetrics] = await Promise.all([
+  const [restaurants, active, onboarding, branches, incidents, incidentCount, deployments, failedDeployments, subscriptions, websites, androidApps, iosApps, posDevices, orderMetrics] = await Promise.all([
     supabase.from("businesses").select("id", { count: "exact", head: true }),
     supabase.from("businesses").select("id", { count: "exact", head: true }).eq("is_active", true),
     supabase.from("restaurant_onboarding").select("id", { count: "exact", head: true }).not("lifecycle", "in", "(ACTIVE,ARCHIVED)"),
     supabase.from("branches").select("id", { count: "exact", head: true }).eq("is_active", true),
     supabase.from("platform_incidents").select("id,title,severity,status,business_id,last_seen_at").not("status", "in", "(RESOLVED,CLOSED)").order("last_seen_at", { ascending: false }).limit(6),
+    supabase.from("platform_incidents").select("id", { count: "exact", head: true }).not("status", "in", "(RESOLVED,CLOSED)"),
     supabase.from("deployment_records").select("id,component,status,environment,business_id,created_at,error_summary").order("created_at", { ascending: false }).limit(6),
+    supabase.from("deployment_records").select("id", { count: "exact", head: true }).eq("status", "FAILED"),
     supabase.from("restaurant_subscriptions").select("id", { count: "exact", head: true }).in("status", ["PAST_DUE", "GRACE_PERIOD"]),
+    supabase.from("platform_domain_records").select("id", { count: "exact", head: true }).eq("purpose", "CUSTOMER").eq("verification_status", "VERIFIED").eq("dns_status", "HEALTHY").eq("ssl_status", "HEALTHY"),
+    supabase.from("mobile_app_records").select("id", { count: "exact", head: true }).eq("platform", "ANDROID").eq("enabled", true),
+    supabase.from("mobile_app_records").select("id", { count: "exact", head: true }).eq("platform", "IOS").eq("enabled", true),
+    supabase.from("pos_offline_devices").select("id", { count: "exact", head: true }).eq("is_active", true),
     supabase.rpc("platform_today_order_metrics"),
   ])
-  const errors = [restaurants.error, active.error, onboarding.error, branches.error, incidents.error, deployments.error, subscriptions.error, orderMetrics.error].filter(Boolean)
+  const errors = [restaurants.error, active.error, onboarding.error, branches.error, incidents.error, incidentCount.error, deployments.error, failedDeployments.error, subscriptions.error, websites.error, androidApps.error, iosApps.error, posDevices.error, orderMetrics.error].filter(Boolean)
   const totals = orderMetrics.data as { ordersToday?: number; gmvToday?: number } | null
   return {
     data: {
@@ -35,9 +41,13 @@ export async function getOverview() {
         active: active.count ?? null,
         onboarding: onboarding.count ?? null,
         branches: branches.count ?? null,
-        openIncidents: incidents.data?.length ?? null,
-        failedDeployments: deployments.data?.filter((item) => item.status === "FAILED").length ?? null,
+        openIncidents: incidentCount.error ? null : incidentCount.count,
+        failedDeployments: failedDeployments.error ? null : failedDeployments.count,
         overdueSubscriptions: subscriptions.count ?? null,
+        websitesReady: websites.error ? null : websites.count,
+        androidEnabled: androidApps.error ? null : androidApps.count,
+        iosEnabled: iosApps.error ? null : iosApps.count,
+        activePosDevices: posDevices.error ? null : posDevices.count,
         ordersToday: totals?.ordersToday ?? null,
         gmvToday: totals?.gmvToday ?? null,
       },
@@ -55,7 +65,7 @@ export async function getRestaurants(query = "", page = 1, status = "all") {
   const safePage = Number.isFinite(page) ? Math.min(10000, Math.max(1, Math.floor(page))) : 1
   const safeQuery = query.trim().replace(/[^a-zA-Z0-9 _-]/g, "").slice(0, 80)
   let request = supabase.from("businesses").select(
-    "id,slug,name,city,currency,timezone,is_active,created_at,branches(id,is_active),restaurant_onboarding(lifecycle,owner_name,owner_email,updated_at),restaurant_subscriptions(status,service_packages(name)),mobile_app_records(platform,enabled,release_status),platform_domain_records(hostname,purpose,verification_status,dns_status,ssl_status)",
+    "id,slug,name,city,currency,timezone,is_active,created_at,branches:branches!branches_business_id_fkey(id,is_active),restaurant_onboarding(lifecycle,owner_name,owner_email,updated_at),restaurant_subscriptions(status,service_packages(name)),mobile_app_records(platform,enabled,release_status),platform_domain_records(hostname,purpose,verification_status,dns_status,ssl_status)",
     { count: "exact" },
   ).order("created_at", { ascending: false }).range((safePage - 1) * pageSize, safePage * pageSize - 1)
   if (safeQuery) request = request.or(`name.ilike.%${safeQuery}%,slug.ilike.%${safeQuery}%,city.ilike.%${safeQuery}%`)
@@ -69,7 +79,7 @@ export async function getRestaurant(id: string) {
   await requirePlatformPermission("restaurants.view")
   const supabase = await createClient()
   const [business, onboarding, subscription, entitlements, apps, domains, deployments, incidents, tickets, devices, audit] = await Promise.all([
-    supabase.from("businesses").select("id,slug,name,short_description,phone,email,address,city,currency,timezone,is_active,created_at,business_branding(*),branches(*)").eq("id", id).maybeSingle(),
+    supabase.from("businesses").select("id,slug,name,short_description,phone,email,address,city,currency,timezone,is_active,created_at,business_branding(*),branches:branches!branches_business_id_fkey(*)").eq("id", id).maybeSingle(),
     supabase.from("restaurant_onboarding").select("*").eq("business_id", id).maybeSingle(),
     supabase.from("restaurant_subscriptions").select("*,service_packages(name,code)").eq("business_id", id).maybeSingle(),
     supabase.from("service_entitlements").select("capability_key,enabled,source,effective_from,effective_until,limit_value").eq("business_id", id).order("capability_key"),
@@ -78,7 +88,7 @@ export async function getRestaurant(id: string) {
     supabase.from("deployment_records").select("*").eq("business_id", id).order("created_at", { ascending: false }).limit(10),
     supabase.from("platform_incidents").select("*").eq("business_id", id).order("last_seen_at", { ascending: false }).limit(10),
     supabase.from("support_tickets").select("*").eq("business_id", id).order("created_at", { ascending: false }).limit(10),
-    supabase.from("pos_offline_devices").select("id,branch_id,name,app_version,is_active,last_sync_at,updated_at").eq("business_id", id).order("updated_at", { ascending: false }),
+    supabase.from("pos_offline_devices").select("id,branch_id,name:device_name,app_version,is_active,last_sync_at,updated_at").eq("business_id", id).order("updated_at", { ascending: false }),
     supabase.from("platform_audit_logs").select("id,actor_user_id,action,target_type,reason,created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20),
   ])
   const firstError = [business.error,onboarding.error,subscription.error,entitlements.error,apps.error,domains.error,deployments.error,incidents.error,tickets.error,devices.error,audit.error].find(Boolean)
@@ -97,7 +107,7 @@ export async function getRestaurant(id: string) {
 
 const moduleTables: Partial<Record<PlatformModule, { table: string; select: string; order: string }>> = {
   onboarding: { table: "restaurant_onboarding", select: "id,business_id,lifecycle,owner_name,owner_email,blockers,assigned_staff_user_id,updated_at,businesses(name,slug)", order: "updated_at" },
-  branches: { table: "branches", select: "id,business_id,name,restaurant_name,city,is_active,online_ordering_enabled,temporarily_closed,updated_at,businesses(name)", order: "updated_at" },
+  branches: { table: "branches", select: "id,business_id,name,restaurant_name,city,is_active,online_ordering_enabled,temporarily_closed,updated_at,businesses:businesses!branches_business_id_fkey(name)", order: "updated_at" },
   apps: { table: "mobile_app_records", select: "id,business_id,platform,enabled,app_name,application_identifier,version_name,build_number,credential_status,push_status,release_status,last_release_at,businesses(name)", order: "updated_at" },
   domains: { table: "platform_domain_records", select: "id,business_id,hostname,purpose,verification_status,dns_status,ssl_status,auth_redirect_ready,last_checked_at,failure_summary,businesses(name)", order: "updated_at" },
   deployments: { table: "deployment_records", select: "id,business_id,component,environment,version,commit_sha,provider,status,started_at,finished_at,error_summary,businesses(name)", order: "created_at" },
@@ -156,7 +166,7 @@ export async function getPlatformTeam() {
   await requirePlatformPermission("team.manage")
   const supabase = await createClient()
   const [staff, roles, permissions] = await Promise.all([
-    supabase.from("platform_staff").select("user_id,display_name,email,status,mfa_required,last_login_at,access_revoked_at,created_at,platform_staff_roles(platform_roles(key,name)),platform_staff_permissions(permission_key,allowed)").order("created_at", { ascending: false }).limit(200),
+    supabase.from("platform_staff").select("user_id,display_name,email,status,mfa_required,last_login_at,access_revoked_at,created_at,platform_staff_roles:platform_staff_roles!platform_staff_roles_staff_user_id_fkey(platform_roles(key,name)),platform_staff_permissions:platform_staff_permissions!platform_staff_permissions_staff_user_id_fkey(permission_key,allowed)").order("created_at", { ascending: false }).limit(200),
     supabase.from("platform_roles").select("id,key,name,description").neq("key", "PLATFORM_OWNER").order("name"),
     supabase.from("platform_permissions").select("key,label").order("key"),
   ])
@@ -167,7 +177,7 @@ export async function getPlatformTeam() {
 export async function getPlatformBusinessOptions() {
   await requirePlatformPermission("restaurants.view")
   const supabase = await createClient()
-  const result = await supabase.from("businesses").select("id,name,slug,branches(id,name,code)").order("name").limit(500)
+  const result = await supabase.from("businesses").select("id,name,slug,branches:branches!branches_business_id_fkey(id,name,code)").order("name").limit(500)
   return { data: (result.data ?? []) as unknown as Row[], error: result.error ? safeMessage(result.error.code) : null }
 }
 

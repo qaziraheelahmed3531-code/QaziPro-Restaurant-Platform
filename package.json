@@ -8,7 +8,8 @@
   "scripts": {
     "dev:website": "npm --workspace apps/customer run dev",
     "dev:admin": "npm --workspace apps/admin run dev",
-    "dev:super-admin": "npm --workspace apps/super-admin run dev",
+    "dev:super-admin": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-admin-client-portal-staging.ps1 -Suite serve-super-admin -Port 3002",
+    "dev:super-admin:plain": "npm --workspace apps/super-admin run dev",
     "dev:desktop-pos": "npm --workspace apps/desktop-pos run dev",
     "dev:mobile": "npm --workspace apps/mobile run start",
     "dev:mobile:web": "npm --workspace apps/mobile run web",

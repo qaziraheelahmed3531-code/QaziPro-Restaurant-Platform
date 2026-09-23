@@ -4,7 +4,6 @@ import type { CSSProperties } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppOverlays } from "@/components/providers/app-overlays";
 import { AppProvider } from "@/components/providers/app-provider";
-import { StorefrontBootSkeleton } from "@/components/loading/storefront-boot-skeleton";
 import { StorefrontRefresh } from "@/components/providers/storefront-refresh";
 import { DesktopPosAuthBridge } from "@/components/providers/desktop-pos-auth-bridge";
 import { GoogleReviewsSection } from "@/components/reviews/google-reviews-section";
@@ -79,7 +78,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body suppressHydrationWarning className="min-h-full flex flex-col" style={theme}>
         <DesktopPosAuthBridge />
         {!storefront.branch.id ? <BranchSelector storefront={storefront}/> : restriction?.prevent_storefront_access ? <BlockedAccount restaurantName={restaurantName} contactHref={contactHref}/> : <AppProvider storefront={storefront}>
-          <StorefrontBootSkeleton />
           <StorefrontRefresh businessId={storefront.business.id ?? ""} branchId={storefront.branch.id ?? ""}/>
           {children}
           <GoogleReviewsSection />

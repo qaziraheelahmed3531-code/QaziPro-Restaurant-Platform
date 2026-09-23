@@ -107,11 +107,11 @@ const order = load('apps/customer/lib/orders/server.ts',{
   'server-only':{},'node:crypto':require('node:crypto'),'@italian-pizza/shared/location':coverage,
   '@italian-pizza/shared/commerce':commerce,'@/lib/location/validate-delivery':validation,
   '@/lib/geoapify/routing':{getDrivingRoute:async()=>{routeCount++;return{distanceKm:7}}},
-  '@/lib/restrictions/server':{assertCustomerMutationAllowed:async()=>{}},
+  '@/lib/restrictions/server':{assertCustomerIdentityAllowed:async()=>{}},
   '@/lib/supabase/server':{isSupabaseConfigured:()=>false},
   '@/lib/supabase/admin':{createAdminClient:()=>({rpc:async(_name,{p_payload})=>{rpcCount++;assert.equal(p_payload.distanceKm,7);assert.equal(p_payload.locationSource,'MAP_PIN');return{data:{ok:true},error:null}}})},
 })
-const input={branchId:storefront.branch.id,serviceMode:'DELIVERY',customerName:'QA',customerPhone:'03000000000',deliveryAreaId:radius.databaseId,deliveryAddress:'QA address',latitude:35,longitude:74,locationSource:'MAP_PIN',distanceKm:0,deliveryFee:0,items:[{productId:'40000000-0000-4000-8000-000000000001',quantity:1}]}
+const input={idempotencyKey:'qa-location-v5-order',branchId:storefront.branch.id,serviceMode:'DELIVERY',paymentMethod:'CASH_ON_DELIVERY',customerName:'QA',customerPhone:'03000000000',deliveryAreaId:radius.databaseId,deliveryAddress:'QA address',latitude:35,longitude:74,locationSource:'MAP_PIN',distanceKm:0,deliveryFee:0,items:[{productId:'40000000-0000-4000-8000-000000000001',quantity:1}]}
 await assert.rejects(order.createOrder(input,storefront),/outside/)
 assert.equal(rpcCount,0);assert.equal(routeCount,0)
 await order.createOrder({...input,latitude:33.2,longitude:72.2},storefront)
