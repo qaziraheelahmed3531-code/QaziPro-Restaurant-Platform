@@ -34,6 +34,8 @@
     "staging:pos": "node scripts/staging-pos-acceptance.mjs",
     "staging:mobile-api": "node scripts/mobile-api-acceptance.mjs",
     "staging:super-admin": "node scripts/super-admin-staging-acceptance.mjs",
+    "staging:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-full-staging-acceptance.ps1",
+    "staging:public-leads": "node scripts/public-lead-staging-acceptance.mjs",
     "lint": "npm --workspace apps/customer run lint && npm --workspace apps/admin run lint && npm --workspace apps/mobile run lint && npm --workspace apps/super-admin run lint",
     "build": "npm run build:customer && npm run build:admin && npm run build:super-admin && npm run build:backend && npm run build:desktop && npm run build:mobile"
   },

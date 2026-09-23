@@ -8,7 +8,7 @@ The standalone public site lives in `qazipro-website/`. It presents QaziPro's re
 
 1. Copy `qazipro-website/.env.example` to an ignored `.env.local`.
 2. Use only the staging Supabase URL and a server-only staging secret key.
-3. Set `STAGING_SUPABASE_PROJECT_REF` to the same project reference and `PUBLIC_LEADS_ENABLED=1`.
+3. Set `SUPABASE_PROJECT_REF` (or the staging-only legacy `STAGING_SUPABASE_PROJECT_REF`) to the same project reference and `PUBLIC_LEADS_ENABLED=1`.
 4. Run `npm install` and `npm run dev` inside `qazipro-website/`.
 5. Open `http://localhost:3003`.
 

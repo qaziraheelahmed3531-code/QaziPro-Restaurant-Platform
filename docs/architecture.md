@@ -1,5 +1,7 @@
 # Italian Pizza Platform Architecture
 
+> Historical foundation document. For the current multi-application QaziPro baseline, deployment boundaries and Super Admin/public-site additions, use `docs/platform-architecture.md`. The security principles and data flows below remain relevant, but its application inventory is no longer complete.
+
 ## System shape
 
 The platform is a small monorepo with two deployable Next.js applications and one runtime-neutral package boundary:

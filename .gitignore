@@ -10,6 +10,8 @@ apps/desktop-pos/release-*/
 coverage/
 .playwright-mcp/
 **/.next-stage-platform/
+**/.next-stage-portal/
+**/.next-stage-customer/
 **/next-env.d.ts
 *.log
 *.tsbuildinfo

@@ -20,7 +20,7 @@ export function CategoryMenuSection({ section, products, deals }: { section: Men
           <h2 id={`${section.id}-title`}>{section.title}</h2>
           {section.description && <p className={section.descriptionBold ? "is-bold" : undefined}>{section.description}</p>}
         </div>
-        <span>{section.kind === "deals" ? `${deals.length} offers` : sectionProducts.length ? `${sectionProducts.length} items` : "Coming soon"}</span>
+        <span>{section.kind === "deals" ? `${deals.length} offers` : sectionProducts.length ? `${sectionProducts.length} items` : "No items available"}</span>
       </Reveal>
       {section.kind === "deals" ? (
         <div className="deal-rail">{deals.map((deal) => <DealCard key={deal.id} deal={deal} />)}</div>

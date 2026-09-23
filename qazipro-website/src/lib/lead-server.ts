@@ -7,7 +7,8 @@ import type { LeadInput } from "@/lib/lead-schema";
 function stagingClient() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const ref = process.env.STAGING_SUPABASE_PROJECT_REF;
+  const ref = process.env.SUPABASE_PROJECT_REF
+    || (process.env.APP_ENVIRONMENT === "staging" ? process.env.STAGING_SUPABASE_PROJECT_REF : undefined);
   if (process.env.PUBLIC_LEADS_ENABLED !== "1" || !url || !key || !ref) return null;
   try {
     if (new URL(url).hostname !== `${ref}.supabase.co`) return null;
