@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
 import { cache } from "react"
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
+import { entitlementAllows, runtimeCapabilityKeys } from "@/lib/entitlements"
 
 export type AdminContext = {
   userId: string
@@ -15,6 +16,7 @@ export type AdminContext = {
   allowedBranchIds: string[]
   role: "OWNER" | "MANAGER" | "CASHIER" | "KITCHEN" | "WAITER" | "RIDER" | "STAFF"
   permissions: string[]
+  capabilities: Record<string,boolean>
 }
 
 export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
@@ -51,6 +53,13 @@ export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
   const availableBranches=allBranches.filter(row=>allowedBranchIds.includes(String(row.id)))
   const selectedBranch=requestedBranch&&requestedBranch!=="all"?availableBranches.find(row=>String(row.id)===requestedBranch):availableBranches.length===1?availableBranches[0]:null
   const assignedBranchId=data.role==="OWNER"||allowedBranchIds.length!==1?null:allowedBranchIds[0]
+  const entitlementResult=await supabase.rpc("resolve_runtime_entitlements",{
+    p_business_id:data.business_id,
+    p_branch_id:selectedBranch?.id??null,
+    p_capability_keys:[...runtimeCapabilityKeys],
+  })
+  const entitlementRows=(entitlementResult.data??{}) as Record<string,{enabled?:boolean}>
+  const capabilities=Object.fromEntries(runtimeCapabilityKeys.map(key=>[key,Boolean(entitlementRows[key]?.enabled)]))
   return {
     userId,
     email: typeof claims?.email === "string" ? claims.email : "Staff account",
@@ -61,12 +70,13 @@ export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
     allowedBranchIds,
     role: data.role as AdminContext["role"],
     permissions: data.role === "OWNER" ? ["*"] : (permissionRows ?? []).map(String),
+    capabilities,
   }
 })
 
 export async function requirePermission(permission: string) {
   const context = await requireAdmin()
-  if (context.role !== "OWNER" && !context.permissions.includes(permission)) {
+  if ((context.role !== "OWNER" && !context.permissions.includes(permission)) || !entitlementAllows(context.capabilities,permission)) {
     const destination = adminHome(context)
     redirect(destination)
   }
@@ -82,5 +92,5 @@ export async function requireAdmin() {
 
 export function adminHome(context: AdminContext) {
   const routes: Array<[string,string]> = [["dashboard.view","/"],["waiter.use","/waiter"],["rider.use","/rider"],["pos.use","/pos"],["orders.read","/orders"],["kds.use","/kitchen"],["products.manage","/menu"],["categories.manage","/categories"],["modifiers.manage","/modifiers"],["deals.manage","/deals"],["loyalty.manage","/loyalty"],["invoices.read","/invoices"],["inventory.read","/inventory"],["ingredients.manage","/inventory/manage"],["recipes.manage","/recipes"],["purchases.manage","/purchases"],["suppliers.manage","/suppliers"],["wastage.manage","/wastage"],["social.manage","/content"],["payments.read","/payments"],["reports.read","/reports"],["staff.manage","/users"],["branding.manage","/appearance"],["content.manage","/content"],["banners.manage","/banners"],["delivery.manage","/delivery"],["branches.manage","/branches"],["hours.manage","/hours"],["customers.read","/customers"],["promotions.manage","/promotions"],["reviews.manage","/integrations"],["register.manage","/register"],["receipts.print","/receipts"],["audit.read","/audit-logs"],["notifications.read","/notifications"],["business.manage","/business"],["printing.manage","/printing"],["settings.manage","/settings"]]
-  return context.role === "OWNER" ? "/" : routes.find(([permission]) => context.permissions.includes(permission))?.[1] ?? "/access-denied"
+  return routes.find(([permission]) => (context.role === "OWNER" || context.permissions.includes(permission)) && entitlementAllows(context.capabilities,permission))?.[1] ?? "/access-denied"
 }

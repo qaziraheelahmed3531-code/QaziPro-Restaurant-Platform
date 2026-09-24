@@ -81,6 +81,8 @@ type Order = {
   preparing_at: string | null;
   ready_at: string | null;
   delivered_at: string | null;
+  delivery_failed_at: string | null;
+  delivery_failure_reason: string | null;
   location_snapshot: LocationSnapshot | null;
   order_items: Item[];
   order_status_history: History[];
@@ -107,7 +109,7 @@ const statusForView: Record<View, OrderStatus[] | null> = {
   CANCELLED: ["CANCELLED"],
 };
 const select =
-  "id,order_number,token_number,channel,operational_order_type,waiter_id,waiter_name,rider_id,rider_name,table_reference,customer_name,customer_phone,customer_email,service_mode,status,payment_method,payment_status,payment_reference,delivery_area_name,delivery_address,delivery_instructions,latitude,longitude,order_notes,subtotal,discount,delivery_fee,tax,total,created_at,confirmed_at,preparing_at,ready_at,delivered_at,location_snapshot,order_items(id,product_name,quantity,unit_price,line_total,order_item_modifiers(id,group_name,option_name,price_adjustment)),order_status_history(id,status,note,created_at),pos_order_replacements(id),branches(name)";
+  "id,order_number,token_number,channel,operational_order_type,waiter_id,waiter_name,rider_id,rider_name,table_reference,customer_name,customer_phone,customer_email,service_mode,status,payment_method,payment_status,payment_reference,delivery_area_name,delivery_address,delivery_instructions,latitude,longitude,order_notes,subtotal,discount,delivery_fee,tax,total,created_at,confirmed_at,preparing_at,ready_at,delivered_at,delivery_failed_at,delivery_failure_reason,location_snapshot,order_items(id,product_name,quantity,unit_price,line_total,order_item_modifiers(id,group_name,option_name,price_adjustment)),order_status_history(id,status,note,created_at),pos_order_replacements(id),branches(name)";
 export function OrdersManager({
   canEdit,
   canPrint,
@@ -677,7 +679,9 @@ export function OrdersManager({
                     {order.rider_id && <small>Rider {order.rider_name ?? "Assigned"}</small>}
                   </td>
                   <td data-label="Time">
-                    {new Date(order.created_at).toLocaleString("en-PK")}
+                    {new Date(order.created_at).toLocaleString("en-PK", {
+                      timeZone: "Asia/Karachi",
+                    })}
                   </td>
                   <td data-label="Channel">
                     <span className="status-badge">{order.channel}</span>
@@ -792,6 +796,7 @@ export function OrdersManager({
                     </p>
                   )}
                   {selected.rider_id&&<p className="inline-notice"><strong>Assigned rider: {selected.rider_name??"Rider"}</strong><br/>Customer live GPS is available while this order is out for delivery.</p>}
+                  {selected.delivery_failure_reason&&<p className="inline-notice is-error"><strong>Delivery failed</strong><br/>{selected.delivery_failure_reason}</p>}
                   <p>
                     {[
                       selected.delivery_area_name,
@@ -853,7 +858,9 @@ export function OrdersManager({
                           <span>
                             <strong>{row.status.replaceAll("_", " ")}</strong>
                             <small>
-                              {new Date(row.created_at).toLocaleString("en-PK")}
+                              {new Date(row.created_at).toLocaleString("en-PK", {
+                                timeZone: "Asia/Karachi",
+                              })}
                             </small>
                           </span>
                         </li>

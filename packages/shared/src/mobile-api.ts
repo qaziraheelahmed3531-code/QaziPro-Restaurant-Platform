@@ -1,6 +1,7 @@
 export const mobileApiVersion = "v1" as const
 export const restaurantContextHeader = "x-qazipro-restaurant" as const
 export const branchContextHeader = "x-qazipro-branch-id" as const
+export const clientPlatformHeader = "x-qazipro-client-platform" as const
 
 export type MobilePlatform = "android" | "ios"
 export type PublicPaymentMethod = "CASH_ON_DELIVERY"

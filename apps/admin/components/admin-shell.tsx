@@ -61,6 +61,7 @@ import { AdminCommandPalette } from "@/components/admin-command-palette";
 import { DialogAccessibility } from "@/components/dialog-accessibility";
 import { WhatsAppSupportLink } from "@/components/whatsapp-support-link";
 import type { AdminContext } from "@/lib/auth";
+import { entitlementAllows } from "@/lib/entitlements";
 
 type NavItem = {
   label: string;
@@ -112,6 +113,12 @@ const groups: Array<{ label: string; items: NavItem[] }> = [
         href: "/waiter",
         icon: UtensilsCrossed,
         permission: "waiter.use",
+      },
+      {
+        label: "Restaurant Tables",
+        href: "/tables",
+        icon: UtensilsCrossed,
+        permission: "settings.manage",
       },
       {
         label: "Rider Portal",
@@ -445,10 +452,11 @@ export function AdminShell({
   );
   const allowed = (permission?: string) =>
     !permission ||
-    context.role === "OWNER" ||
-    context.permissions.includes(permission) ||
-    (permission === "content.manage" &&
-      context.permissions.includes("social.manage"));
+    (entitlementAllows(context.capabilities,permission) && (
+      context.role === "OWNER" ||
+      context.permissions.includes(permission) ||
+      (permission === "content.manage" && context.permissions.includes("social.manage"))
+    ));
   const commands = groups.flatMap(group => group.items.filter(item => allowed(item.permission)).map(item => ({
     label: item.label,
     href: item.href,

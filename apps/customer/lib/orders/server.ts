@@ -10,6 +10,7 @@ import { createClient as createSessionClient, isSupabaseConfigured } from "@/lib
 import { assertCustomerIdentityAllowed } from "@/lib/restrictions/server"
 import type { StorefrontSnapshot } from "@/types"
 import { asQuantity, isUuid, normalizeText } from "@italian-pizza/shared/commerce"
+import { requireRuntimeEntitlements } from "@/lib/entitlements/server"
 
 type InputItem = { itemKind?: "product" | "deal"; productId: string; variantId?: string; quantity: number; modifiers?: Array<{ groupId: string; optionId: string }> }
 export type OrderInput = {
@@ -69,9 +70,12 @@ function safeOrder<T extends Record<string,unknown>>(order: T) {
 }
 
 export async function createOrder(input: OrderInput, storefront: StorefrontSnapshot, suppliedIdentity?: CustomerIdentity) {
-  if (storefront.business.id) await assertCustomerIdentityAllowed(storefront.business.id,suppliedIdentity??null)
+  const businessId=storefront.business.id
+  if (businessId) await assertCustomerIdentityAllowed(businessId,suppliedIdentity??null)
   if (storefront.source !== "database" || !storefront.branch.id || input.branchId !== storefront.branch.id) throw new Error("Ordering backend is not ready for this branch.")
+  if(!businessId)throw new Error("Restaurant configuration is unavailable.")
   if (!isUuid(input.branchId)) throw new Error("Branch selection is invalid.")
+  await requireRuntimeEntitlements(businessId,input.branchId,[input.serviceMode==="DELIVERY"?"ordering.delivery":"ordering.pickup"])
   if (!/^[A-Za-z0-9._:-]{8,128}$/.test(input.idempotencyKey??"")) throw new Error("A valid checkout idempotency key is required.")
   if (!Array.isArray(input.items) || input.items.length < 1 || input.items.length > 50) throw new Error("Your cart is empty or too large.")
   if (!boundedText(input.customerName, 120) || !boundedText(input.customerPhone, 40)) throw new Error("Name and phone are required.")
@@ -102,6 +106,7 @@ export async function createOrder(input: OrderInput, storefront: StorefrontSnaps
   const customerId = customer.id
   const loyaltyCoinsToRedeem = input.loyaltyCoinsToRedeem ?? 0
   if (!Number.isInteger(loyaltyCoinsToRedeem) || loyaltyCoinsToRedeem < 0 || loyaltyCoinsToRedeem > 1_000_000) throw new Error("Choose a valid number of loyalty coins.")
+  if(loyaltyCoinsToRedeem>0)await requireRuntimeEntitlements(businessId,input.branchId,["loyalty"])
   const payload = {
     idempotencyKey: boundedText(input.idempotencyKey, 128),
     branchId: input.branchId,

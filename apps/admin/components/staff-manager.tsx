@@ -392,6 +392,7 @@ export function StaffManager({
                     {person.last_sign_in_at
                       ? new Date(person.last_sign_in_at).toLocaleDateString(
                           "en-PK",
+                          { timeZone: "Asia/Karachi" },
                         )
                       : "Not yet"}
                   </td>

@@ -11,7 +11,7 @@ const steps = ["Business", "Services", "Commercials", "Brand & domains", "Branch
 const services = [
   ["admin.restaurant", "Restaurant Admin"], ["pos.web", "Web POS"], ["pos.desktop", "Desktop POS"],
   ["inventory", "Inventory"], ["kitchen", "Kitchen / KDS"], ["waiter", "Waiter"], ["rider", "Rider"],
-  ["website.ordering", "Online Ordering Website"], ["loyalty", "Loyalty"], ["reports.advanced", "Advanced Reports"],
+  ["website.ordering", "Online Ordering Website"], ["ordering.delivery", "Delivery Orders"], ["ordering.pickup", "Pickup Orders"], ["loyalty", "Loyalty"], ["reports.advanced", "Advanced Reports"],
   ["mobile.android", "Android App"], ["mobile.ios", "iOS App"],
 ]
 
@@ -37,7 +37,7 @@ export function OnboardingWizard({ packages }: { packages: OnboardingPackage[] }
         <label>Timezone<input name="timezone" defaultValue="Asia/Karachi"/></label>
         <label className="span-2">Primary address<textarea name="address" rows={2}/></label>
       </div></section>
-      <section hidden={step!==1} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 2</p><h2>Services and entitlements</h2><p>Capabilities are stored centrally and enforced independently from navigation visibility.</p></div><div className="service-grid">{services.map(([value,label])=><label className="service-option" key={value}><input type="checkbox" name="services" value={value} defaultChecked={["admin.restaurant","pos.web","pos.desktop","website.ordering"].includes(value)}/><span><Check/>{label}</span></label>)}</div></section>
+      <section hidden={step!==1} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 2</p><h2>Services and entitlements</h2><p>Capabilities are stored centrally and enforced independently from navigation visibility.</p></div><div className="service-grid">{services.map(([value,label])=><label className="service-option" key={value}><input type="checkbox" name="services" value={value} defaultChecked={["admin.restaurant","pos.web","pos.desktop","website.ordering","ordering.delivery","ordering.pickup"].includes(value)}/><span><Check/>{label}</span></label>)}</div></section>
       <section hidden={step!==2} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 3</p><h2>Package and commercials</h2><p>Pricing is configuration, not hardcoded product logic.</p></div><div className="form-grid">
         <label className="span-2">Service package<select name="packageId" required defaultValue=""><option value="" disabled>Select an active package</option>{packages.map((item)=><option value={item.id} key={item.id}>{item.name} · {item.currency} {item.base_fee.toLocaleString()}/{item.billing_frequency.toLowerCase()}</option>)}</select></label>
         <label>Monthly/base fee<input name="baseFee" type="number" min="0" defaultValue="0"/></label><label>Setup fee<input name="setupFee" type="number" min="0" defaultValue="0"/></label>

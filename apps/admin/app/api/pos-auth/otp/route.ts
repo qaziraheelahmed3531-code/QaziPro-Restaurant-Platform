@@ -123,6 +123,13 @@ export async function POST(request: Request) {
           challengeId: randomUUID(),
           message: "If this email has POS access, a login code has been sent.",
         });
+      const entitlement = await admin.rpc("resolve_runtime_entitlement", {
+        p_business_id: businessId,
+        p_branch_id: null,
+        p_capability_key: "pos.desktop",
+      });
+      if (entitlement.error || !(entitlement.data as { enabled?: boolean } | null)?.enabled)
+        return json({ error: "Desktop POS is not enabled for this restaurant." }, 403);
       const recent = await admin
         .from("desktop_pos_login_otps")
         .select("created_at")

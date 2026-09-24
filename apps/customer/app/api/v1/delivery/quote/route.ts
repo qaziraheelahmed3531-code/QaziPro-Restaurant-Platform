@@ -6,6 +6,7 @@ import { calculateDeliveryFee } from "@/lib/delivery-fee"
 import { GeoapifyServiceError, isCoordinate } from "@/lib/geoapify/client"
 import { getDrivingRoute } from "@/lib/geoapify/routing"
 import { validateDeliveryPoint, validateRouteDistance } from "@/lib/location/validate-delivery"
+import { requireRuntimeEntitlements } from "@/lib/entitlements/server"
 
 export async function GET(request: NextRequest) {
   const requestId=apiRequestId(request)
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
     const latitude=Number(request.nextUrl.searchParams.get("latitude")),longitude=Number(request.nextUrl.searchParams.get("longitude"))
     if(!isCoordinate(latitude,-90,90)||!isCoordinate(longitude,-180,180))throw new ApiProblem("VALIDATION_FAILED","Valid latitude and longitude are required.",422)
     const {snapshot}=await requireMobileStorefront(request)
+    await requireRuntimeEntitlements(snapshot.business.id!,snapshot.branch.id,["ordering.delivery"])
     let area: Awaited<ReturnType<typeof validateDeliveryPoint>>
     try { area=await validateDeliveryPoint({latitude,longitude},snapshot,request.nextUrl.searchParams.get("areaId")??undefined) }
     catch(error){throw new ApiProblem("DELIVERY_LOCATION_INVALID",error instanceof Error?error.message:"Delivery location is invalid.",422)}

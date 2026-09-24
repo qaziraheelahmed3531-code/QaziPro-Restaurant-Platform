@@ -71,11 +71,11 @@ assert(forgedBranch.response.status===404&&forgedBranch.json?.error?.code==="BRA
 pass("Forged cross-tenant branch rejected")
 
 const unknown=await request("/api/v1/storefront/context",{host:"unknown.staging.qazipro.com",branch:ids.branchA1})
-assert(unknown.response.status===404&&unknown.json?.error?.code==="TENANT_NOT_FOUND","Unknown domain did not fail closed")
+assert(unknown.response.status===404&&unknown.json?.error?.code==="RESTAURANT_NOT_FOUND","Unknown domain did not fail closed")
 pass("Unknown domain fails closed")
 
 const unverified=await request("/api/v1/storefront/context",{host:"unverified.staging.invalid",branch:ids.branchA1})
-assert(unverified.response.status===404&&unverified.json?.error?.code==="TENANT_NOT_FOUND","Unverified custom domain resolved")
+assert(unverified.response.status===404&&unverified.json?.error?.code==="RESTAURANT_NOT_FOUND","Unverified custom domain resolved")
 pass("Unverified custom domain fails closed")
 
 const catalogA=await request("/api/v1/catalog",{branch:ids.branchA1})

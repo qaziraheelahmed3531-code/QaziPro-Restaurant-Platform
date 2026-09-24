@@ -1,5 +1,6 @@
 import { env } from "@/config/env";
 import { customerMessage, MobileApiError } from "./errors";
+import { Platform } from "react-native";
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
@@ -40,6 +41,9 @@ export class MobileApi {
     const headers: Record<string, string> = {
       accept: "application/json",
       "x-qazipro-restaurant": this.restaurantKey,
+      ...(Platform.OS === "android" || Platform.OS === "ios"
+        ? { "x-qazipro-client-platform": Platform.OS }
+        : {}),
       "x-request-id": `mobile-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     };
     if (options.branchId) headers["x-qazipro-branch-id"] = options.branchId;

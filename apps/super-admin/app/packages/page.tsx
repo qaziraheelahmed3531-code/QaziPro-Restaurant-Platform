@@ -5,7 +5,7 @@ import { DataNotice, EmptyState, PageHeader, StatusBadge } from "@/components/ui
 import { requirePlatformStaff } from "@/lib/auth"
 import { getModuleRows } from "@/lib/data"
 
-const capabilities = ["admin.restaurant","pos.web","pos.desktop","inventory","kitchen","waiter","rider","website.ordering","loyalty","reports.advanced","mobile.android","mobile.ios"]
+const capabilities = ["admin.restaurant","pos.web","pos.desktop","inventory","kitchen","waiter","rider","website.ordering","ordering.delivery","ordering.pickup","loyalty","reports.advanced","mobile.android","mobile.ios"]
 
 export default async function PackagesPage({ searchParams }: { searchParams: Promise<{ created?:string; error?:string; page?:string }> }) {
   const notice=await searchParams

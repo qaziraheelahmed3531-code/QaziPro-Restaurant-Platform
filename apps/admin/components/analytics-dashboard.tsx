@@ -182,6 +182,7 @@ function Trend({ points }: { points: Point[] }) {
         {points.slice(0, 8).map((point) => (
           <span key={point.bucket}>
             {new Date(point.bucket).toLocaleDateString("en-PK", {
+              timeZone: "Asia/Karachi",
               month: "short",
               day: "numeric",
               hour: points.length < 25 ? "numeric" : undefined,
@@ -578,8 +579,12 @@ export function AnalyticsDashboard({
             <div>
               <h2>Sales trend</h2>
               <p>
-                {new Date(currentRange.start).toLocaleDateString("en-PK")} –{" "}
-                {new Date(currentRange.end).toLocaleDateString("en-PK")}
+                {new Date(currentRange.start).toLocaleDateString("en-PK", {
+                  timeZone: "Asia/Karachi",
+                })} –{" "}
+                {new Date(currentRange.end).toLocaleDateString("en-PK", {
+                  timeZone: "Asia/Karachi",
+                })}
               </p>
             </div>
           </div>

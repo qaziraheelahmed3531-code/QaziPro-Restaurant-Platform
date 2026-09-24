@@ -112,8 +112,15 @@ export type PosFlowOrder = {
   id: string;
   order_number: string;
   token_number: number;
+  channel: "WEBSITE" | "POS" | "INTEGRATION";
   total: number;
-  status: "CONFIRMED" | "PREPARING" | "READY" | "DELIVERED";
+  status:
+    | "RECEIVED"
+    | "CONFIRMED"
+    | "PREPARING"
+    | "READY"
+    | "OUT_FOR_DELIVERY"
+    | "DELIVERED";
   payment_status: string;
   payment_reference: string | null;
   operational_order_type: string | null;
@@ -343,11 +350,10 @@ export function PosTerminal({
       const { data } = await supabase
         .from("orders")
         .select(
-          "id,order_number,token_number,total,status,payment_status,payment_reference,operational_order_type,created_at,pos_order_replacements(id)",
+          "id,order_number,token_number,channel,total,status,payment_status,payment_reference,operational_order_type,created_at,pos_order_replacements(id)",
         )
         .eq("business_id", businessId)
         .eq("branch_id", branch.id)
-        .eq("channel", "POS")
         .neq("status", "CANCELLED")
         .order("created_at", { ascending: false })
         .limit(50);
@@ -768,6 +774,7 @@ export function PosTerminal({
         id: result.id,
         order_number: result.orderNumber,
         token_number: result.tokenNumber,
+        channel: "POS",
         total: result.total,
         status: "CONFIRMED",
         payment_status: "PAID",
@@ -912,12 +919,13 @@ export function PosTerminal({
           <header>
             <div>
               <span className="eyebrow">ONE-TAP KITCHEN FLOW</span>
-              <h2>Active POS orders</h2>
+              <h2>Live branch orders</h2>
             </div>
           </header>
           {activePosOrders.length ? (
             <div className="pos-flow-strip">
               {activePosOrders.map((order) => {
+                const isCounterOrder = order.channel === "POS";
                 const nextStage =
                   order.status === "CONFIRMED"
                     ? "PREPARING"
@@ -925,6 +933,7 @@ export function PosTerminal({
                       ? "READY"
                       : "DELIVERED";
                 const replacementEligible =
+                  isCounterOrder &&
                   clock > 0 &&
                   order.status === "CONFIRMED" &&
                   !order.pos_order_replacements?.length &&
@@ -938,6 +947,7 @@ export function PosTerminal({
                       </strong>
                       <span>{order.order_number}</span>
                       <b>{formatPkr(order.total)}</b>
+                      <small>{order.channel === "WEBSITE" ? "Online" : order.channel === "POS" ? "Counter" : "Integration"}</small>
                     </div>
                     <div className="pos-stage-buttons">
                       <span
@@ -946,17 +956,35 @@ export function PosTerminal({
                         {order.status.charAt(0) +
                           order.status.slice(1).toLowerCase()}
                       </span>
-                      <button
-                        className={`pos-stage-action pos-stage-${nextStage.toLowerCase()}`}
-                        disabled={statusBusy !== null}
-                        onClick={() => void updateOrderStage(order, nextStage)}
-                      >
-                        {nextStage === "PREPARING"
-                          ? "Start preparing"
-                          : nextStage === "READY"
-                            ? "Mark ready"
-                            : "Mark delivered"}
-                      </button>
+                      {isCounterOrder &&
+                        ["CONFIRMED", "PREPARING", "READY"].includes(
+                          order.status,
+                        ) && (
+                          <button
+                            className={`pos-stage-action pos-stage-${nextStage.toLowerCase()}`}
+                            disabled={statusBusy !== null}
+                            onClick={() =>
+                              void updateOrderStage(
+                                order,
+                                nextStage as PosFlowOrder["status"],
+                              )
+                            }
+                          >
+                            {nextStage === "PREPARING"
+                              ? "Start preparing"
+                              : nextStage === "READY"
+                                ? "Mark ready"
+                                : "Mark delivered"}
+                          </button>
+                        )}
+                      {!isCounterOrder && (
+                        <Link
+                          className="pos-stage-action"
+                          href={`/orders?order=${encodeURIComponent(order.id)}`}
+                        >
+                          Open order
+                        </Link>
+                      )}
                       {replacementEligible && (
                         <Link
                           className="pos-replacement-action"
@@ -966,14 +994,16 @@ export function PosTerminal({
                           Replacement
                         </Link>
                       )}
-                      <button
-                        className="pos-cancel-action"
-                        disabled={statusBusy !== null}
-                        onClick={() => void cancelPosOrder(order)}
-                      >
-                        <X />
-                        Cancel
-                      </button>
+                      {isCounterOrder && (
+                        <button
+                          className="pos-cancel-action"
+                          disabled={statusBusy !== null}
+                          onClick={() => void cancelPosOrder(order)}
+                        >
+                          <X />
+                          Cancel
+                        </button>
+                      )}
                     </div>
                   </article>
                 );
@@ -981,7 +1011,7 @@ export function PosTerminal({
             </div>
           ) : (
             <p className="pos-flow-empty">
-              No active counter orders. New sales appear here instantly.
+              No active branch orders. New counter and online sales appear here instantly.
             </p>
           )}
           {recentPosOrders.length > 0 && (

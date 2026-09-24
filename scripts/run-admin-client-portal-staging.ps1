@@ -1,7 +1,9 @@
 # Requires an authenticated Supabase CLI. Does not write credentials to the repo.
 param(
   [ValidateSet('admin', 'super-admin', 'super-admin-browser', 'serve-admin', 'serve-super-admin')][string]$Suite = 'admin',
-  [ValidateRange(0, 65535)][int]$Port = 0
+  [ValidateRange(0, 65535)][int]$Port = 0,
+  [string]$TargetUrl = '',
+  [switch]$WithFixtures
 )
 $ErrorActionPreference = 'Stop'
 $expectedRef = 'jzisqjvroxodvmqxzsob'
@@ -50,10 +52,18 @@ $env:APP_ENVIRONMENT = 'staging'
 $env:NEXT_PUBLIC_APP_ENVIRONMENT = 'staging'
 $env:STAGING_ENVIRONMENT = 'staging'
 $env:ALLOW_STAGING_ACCEPTANCE = '1'
-$env:STAGING_ADMIN_URL = 'http://localhost:3101'
+$env:STAGING_QA_PASSWORD = "Qa!$([guid]::NewGuid().ToString('N'))a9"
+$env:STAGING_ADMIN_URL = if ($TargetUrl) { $TargetUrl.TrimEnd('/') } else { 'http://localhost:3101' }
+if (([uri]$env:STAGING_ADMIN_URL).Host -notin @('localhost','127.0.0.1') -and ([uri]$env:STAGING_ADMIN_URL).Host -notmatch 'staging') {
+  throw 'Admin acceptance may only target localhost or an explicitly named staging host.'
+}
 $env:STAGING_SUPER_ADMIN_URL = 'http://localhost:3102'
 
 try {
+  if ($WithFixtures -and $Suite -notlike 'serve-*') {
+    node (Join-Path $PSScriptRoot 'staging-fixtures.mjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Fixture provisioning failed.' }
+  }
   if ($Suite -eq 'serve-admin' -or $Suite -eq 'serve-super-admin') {
     if ($Suite -eq 'serve-admin') {
       $env:DEMO_LEADS_ENABLED = '1'
@@ -77,7 +87,12 @@ try {
   node (Join-Path $PSScriptRoot $acceptanceScript)
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
+  if ($WithFixtures -and $Suite -notlike 'serve-*') {
+    node (Join-Path $PSScriptRoot 'cleanup-staging-fixtures.mjs')
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Automatic staging fixture cleanup failed.' }
+  }
   Remove-Item Env:STAGING_SUPABASE_SERVICE_ROLE_KEY -ErrorAction SilentlyContinue
+  Remove-Item Env:STAGING_QA_PASSWORD -ErrorAction SilentlyContinue
   Remove-Item Env:SUPABASE_SERVICE_ROLE_KEY -ErrorAction SilentlyContinue
   $serviceKey = $null
   $raw = $null

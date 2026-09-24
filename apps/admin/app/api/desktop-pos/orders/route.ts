@@ -64,6 +64,11 @@ async function authorized(request: Request, branchId: string) {
     ),
   );
   const grants = new Set((permissions.data ?? []) as string[]);
+  const entitlement = await db.rpc("resolve_runtime_entitlement", {
+    p_business_id: branch.business_id,
+    p_branch_id: branchId,
+    p_capability_key: "pos.desktop",
+  });
   if (
     membership.error ||
     permissions.error ||
@@ -71,7 +76,9 @@ async function authorized(request: Request, branchId: string) {
     !grants.has("desktop_pos.use") ||
     !grants.has("pos.use") ||
     !grants.has("orders.read") ||
-    !grants.has("orders.manage")
+    !grants.has("orders.manage") ||
+    entitlement.error ||
+    !(entitlement.data as { enabled?: boolean } | null)?.enabled
   )
     return null;
   return { db, businessId: branch.business_id };

@@ -11,12 +11,17 @@ assert.equal(new URL(origin).hostname,"localhost")
 const env=Object.fromEntries(readFileSync(new URL("../.env.local",import.meta.url),"utf8").split(/\r?\n/).filter(line=>/^[A-Z_]+=/.test(line)).map(line=>{const index=line.indexOf("=");return[line.slice(0,index),line.slice(index+1).trim().replace(/^["']|["']$/g,"")] }))
 const db=createClient(env.NEXT_PUBLIC_SUPABASE_URL,env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}})
 const email=`qa-waiter-${randomUUID()}@example.test`,password=`Qa!${randomUUID()}`
-let userId,membershipId,orderId,ownerUserId
+let userId,membershipId,orderId,ownerUserId,hoursSnapshot
 let failed=false
-const checked=(result,label)=>{if(result.error)throw new Error(`${label}: ${result.error.code??result.error.status??"provider error"}`);return result.data}
+const checked=(result,label)=>{if(result.error)throw new Error(`${label}: ${result.error.code??result.error.status??"provider error"} ${String(result.error.message??"").slice(0,180)}`);return result.data}
 
 try{
   const branch=checked(await db.from("branches").select("id,business_id,restaurant_name,name,city").eq("id","22222222-2222-4222-8222-222222222222").single(),"Resolve restaurant")
+  const timezone=checked(await db.from("businesses").select("timezone").eq("id",branch.business_id).single(),"Resolve timezone").timezone
+  const weekdayName=new Intl.DateTimeFormat("en-US",{timeZone:timezone,weekday:"short"}).format(new Date())
+  const weekday=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(weekdayName)
+  hoursSnapshot=checked(await db.from("business_hours").select("branch_id,day_of_week,opens_at,closes_at,is_closed").eq("branch_id",branch.id).eq("day_of_week",weekday).single(),"Snapshot business hours")
+  checked(await db.from("business_hours").update({opens_at:"00:00:00",closes_at:"23:59:59",is_closed:false}).eq("branch_id",branch.id).eq("day_of_week",weekday),"Open restaurant for disposable QA")
   const product=checked(await db.from("products").select("id,name,base_price,sale_price").eq("business_id",branch.business_id).eq("is_active",true).eq("is_available",true).order("sort_order").limit(1).single(),"Resolve live product")
   const assignments=checked(await db.from("product_modifier_groups").select("modifier_groups(id,min_selections,modifier_options(id,price_adjustment,is_active,is_default,sort_order))").eq("product_id",product.id).order("sort_order"),"Resolve product options")
   const modifiers=assignments.flatMap(assignment=>{const group=Array.isArray(assignment.modifier_groups)?assignment.modifier_groups[0]:assignment.modifier_groups;if(!group)return[];return(group.modifier_options??[]).filter(option=>option.is_active).sort((a,b)=>Number(b.is_default)-Number(a.is_default)||a.sort_order-b.sort_order).slice(0,group.min_selections).map(option=>({groupId:group.id,optionId:option.id}))})
@@ -24,6 +29,7 @@ try{
   userId=created.user.id
   const membership=checked(await db.from("staff_memberships").insert({business_id:branch.business_id,branch_id:branch.id,user_id:userId,role:"WAITER",is_active:true,permissions_customized:false}).select("id").single(),"Create waiter membership")
   membershipId=membership.id
+  checked(await db.from("staff_membership_branches").insert({membership_id:membershipId,business_id:branch.business_id,branch_id:branch.id}),"Assign waiter branch")
   const jar=new Map()
   const waiter=createServerClient(env.NEXT_PUBLIC_SUPABASE_URL,env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,{cookieOptions:{name:"italian-pizza-admin-auth",path:"/",sameSite:"lax"},cookies:{getAll:()=>[...jar].map(([name,value])=>({name,value})),setAll:values=>values.forEach(({name,value})=>jar.set(name,value))}})
   checked(await waiter.auth.signInWithPassword({email,password}),"Sign in waiter")
@@ -58,6 +64,7 @@ try{
   assert.ok(!posBody.includes("Point of sale")&&(posPage.status>=300||posBody.includes("NEXT_REDIRECT")),"WAITER must be denied cashier POS")
   console.log(`PASS: ${saved.order_number} created as attributed, unpaid DINE_IN POS order; waiter dashboard/report updated and cashier access stayed denied`)
 }catch(error){failed=true;console.error(`FAIL: ${error instanceof Error?error.message:"waiter verification failed"}`)}finally{
+  if(hoursSnapshot)await db.from("business_hours").update({opens_at:hoursSnapshot.opens_at,closes_at:hoursSnapshot.closes_at,is_closed:hoursSnapshot.is_closed}).eq("branch_id",hoursSnapshot.branch_id).eq("day_of_week",hoursSnapshot.day_of_week)
   if(orderId){await db.from("audit_logs").delete().eq("entity_id",orderId);await db.from("orders").delete().eq("id",orderId)}
   if(userId)await db.from("audit_logs").delete().eq("actor_id",userId)
   if(membershipId)await db.from("staff_memberships").delete().eq("id",membershipId)

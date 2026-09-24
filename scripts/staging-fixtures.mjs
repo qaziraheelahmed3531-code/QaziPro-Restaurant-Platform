@@ -47,6 +47,24 @@ await upsert("businesses", [
   { id: ids.businessB, slug: "qa-restaurant-b", name: "STAGING QA Restaurant B", short_description: "Staging isolation fixture B", city: "Lahore", phone: "+92420000002", email: "restaurant-b@staging.qazipro.invalid", is_active: true },
 ], "id")
 
+// Runtime access is database-authoritative. Explicit fixture entitlements keep
+// the public/API regression suite deterministic; the dedicated entitlement
+// suite toggles the A/B matrix and restores these values before teardown.
+const runtimeCapabilities = [
+  "admin.restaurant", "pos.web", "pos.desktop", "inventory", "kitchen",
+  "waiter", "rider", "website.ordering", "ordering.delivery",
+  "ordering.pickup", "loyalty", "reports.advanced", "mobile.android", "mobile.ios",
+]
+await upsert("service_entitlements", [ids.businessA, ids.businessB].flatMap((business_id) =>
+  runtimeCapabilities.map((capability_key) => ({
+    business_id,
+    capability_key,
+    enabled: true,
+    source: "OVERRIDE",
+    notes: "Disposable staging acceptance fixture",
+  })),
+), "business_id,capability_key,source")
+
 await upsert("business_domains", [
   { business_id: ids.businessA, hostname: "restaurant-a.staging.qazipro.com", domain_type: "CUSTOM", is_primary: true, is_active: true, verified_at: new Date().toISOString() },
   { business_id: ids.businessB, hostname: "restaurant-b.staging.qazipro.com", domain_type: "CUSTOM", is_primary: true, is_active: true, verified_at: new Date().toISOString() },

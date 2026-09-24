@@ -3,6 +3,7 @@
 node_modules
 **/node_modules
 **/.next
+**/.next-*
 apps/desktop-pos/release
 .runtime-logs
 *.log
@@ -10,3 +11,15 @@ apps/desktop-pos/release
 *.stdout.log
 **/.env.local
 supabase/.temp
+
+# Isolated Vercel staging projects select apps/customer or apps/admin through
+# their project Root Directory. Keep both apps plus the shared workspace package.
+/apps/super-admin/
+/apps/mobile/
+/apps/desktop-pos/
+/qazipro-website/
+/docs/
+/scripts/
+/supabase/
+/apps/customer/.next/
+/apps/customer/node_modules/

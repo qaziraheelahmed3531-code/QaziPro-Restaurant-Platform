@@ -123,11 +123,10 @@ export default async function Page({
     supabase
       .from("orders")
       .select(
-        "id,order_number,token_number,total,status,payment_status,payment_reference,operational_order_type,created_at,pos_order_replacements(id)",
+        "id,order_number,token_number,channel,total,status,payment_status,payment_reference,operational_order_type,created_at,pos_order_replacements(id)",
       )
       .eq("business_id", context.businessId)
       .eq("branch_id", branch.id)
-      .eq("channel", "POS")
       .neq("status", "CANCELLED")
       .order("created_at", { ascending: false })
       .limit(50),

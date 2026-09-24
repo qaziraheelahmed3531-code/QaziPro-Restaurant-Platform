@@ -9,9 +9,10 @@ const url = process.env.STAGING_SUPABASE_URL;
 const publicKey = process.env.STAGING_SUPABASE_PUBLISHABLE_KEY;
 const serviceKey = process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY;
 const adminUrl = process.env.STAGING_ADMIN_URL ?? "http://localhost:3101";
+const adminHostname = new URL(adminUrl).hostname;
 if (process.env.ALLOW_STAGING_ACCEPTANCE !== "1" || process.env.STAGING_ENVIRONMENT !== "staging" ||
   !expectedRef || expectedRef !== "jzisqjvroxodvmqxzsob" || !url || new URL(url).hostname !== `${expectedRef}.supabase.co` ||
-  !publicKey || !serviceKey || new URL(adminUrl).hostname !== "localhost") {
+  !publicKey || !serviceKey || (!['localhost','127.0.0.1'].includes(adminHostname) && !/staging/i.test(adminHostname))) {
   throw new Error("Refusing Admin acceptance without verified staging-only configuration.");
 }
 
@@ -142,7 +143,10 @@ try {
     const result = await fetch("/api/demo-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullName: "QA Portal", businessName: "QA Restaurant", email, phone: "+923000000000", branchBand: "ONE" }) });
     return { status: result.status, body: await result.json() };
   }, leadEmail);
-  check(response.status === 201 && response.body.code === "REQUEST_RECEIVED", "Demo request did not save");
+  check(
+    response.status === 201 && response.body.code === "REQUEST_RECEIVED",
+    `Demo request did not save (status ${response.status}, code ${response.body?.code ?? "UNKNOWN"})`,
+  );
   const lead = checked(await service.from("platform_demo_requests").select("id").eq("email", leadEmail).single(), "Demo request lookup");
   leads.push(lead.id);
   await demoContext.close();

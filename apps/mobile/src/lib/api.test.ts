@@ -28,6 +28,7 @@ describe("canonical API client", () => {
     expect(init.headers).toMatchObject({
       "x-qazipro-restaurant": "restaurant-a",
       "x-qazipro-branch-id": "branch-a",
+      "x-qazipro-client-platform": "android",
     });
   });
   it("preserves request ids", async () => {
