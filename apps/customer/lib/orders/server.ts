@@ -129,7 +129,14 @@ export async function createOrder(input: OrderInput, storefront: StorefrontSnaps
   const { data, error } = await createAdminClient().rpc("create_order_with_loyalty", { p_payload: payload, p_customer_id: customerId })
   if (error) {
     if (process.env.NODE_ENV === "development") console.error("[order-create] transaction failed", { code: error.code })
-    throw new Error(error.code === "22023" ? error.message : "We couldn't place the order right now. Please try again shortly.")
+    if(error.code==="22023"){
+      const idempotencyConflict=/idempotency key/i.test(error.message)
+      throw Object.assign(new Error(error.message),{
+        status:idempotencyConflict?409:400,
+        code:idempotencyConflict?"IDEMPOTENCY_CONFLICT":"INVALID_ORDER",
+      })
+    }
+    throw Object.assign(new Error("We couldn't place the order right now. Please try again shortly."),{status:503,code:"ORDER_CREATE_FAILED"})
   }
   return data
 }

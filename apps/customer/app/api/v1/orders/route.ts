@@ -8,8 +8,10 @@ function failure(error: unknown, requestId: string, branchId?: string) {
   const known=error as {message?:string;status?:number;code?:string}
   const message=known.message??"The order request could not be completed."
   const safe=/gen_random_bytes|postgres|postgrest|pgrst|relation .* does not exist|column .* does not exist|function .* does not exist/i.test(message)?"The ordering service is temporarily unavailable.":message
-  reportApiError(error,{requestId,route:"/api/v1/orders",branchId})
-  return apiError(known.code??"ORDER_REQUEST_FAILED",safe,known.status??400,undefined,requestId)
+  const status=known.status??400
+  const code=known.code??"ORDER_REQUEST_FAILED"
+  reportApiError(Object.assign(new Error(safe),{status,code}),{requestId,route:"/api/v1/orders",branchId})
+  return apiError(code,safe,status,undefined,requestId)
 }
 
 export async function GET(request: NextRequest) {
