@@ -14,7 +14,6 @@ supabase/.temp
 
 # Isolated Vercel staging projects select apps/customer or apps/admin through
 # their project Root Directory. Keep both apps plus the shared workspace package.
-/apps/super-admin/
 /apps/mobile/
 /apps/desktop-pos/
 /qazipro-website/
