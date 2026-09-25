@@ -91,7 +91,7 @@ export async function getRestaurants(query = "", page = 1, status = "all") {
 export async function getRestaurant(id: string) {
   await requirePlatformPermission("restaurants.view")
   const supabase = await createClient()
-  const [business, onboarding, subscription, entitlements, apps, domains, deployments, incidents, tickets, devices, audit, invitations, memberships] = await Promise.all([
+  const [business, onboarding, subscription, entitlements, apps, domains, deployments, incidents, tickets, devices, audit, invitations, memberships, accessSummary] = await Promise.all([
     supabase.from("businesses").select("id,slug,name,short_description,phone,email,address,city,currency,timezone,is_active,created_at,business_branding(*),branches:branches!branches_business_id_fkey(*)").eq("id", id).maybeSingle(),
     supabase.from("restaurant_onboarding").select("*").eq("business_id", id).maybeSingle(),
     supabase.from("restaurant_subscriptions").select("*,service_packages(name,code)").eq("business_id", id).maybeSingle(),
@@ -103,10 +103,11 @@ export async function getRestaurant(id: string) {
     supabase.from("support_tickets").select("*").eq("business_id", id).order("created_at", { ascending: false }).limit(10),
     supabase.from("pos_offline_devices").select("id,branch_id,name:device_name,app_version,is_active,last_sync_at,updated_at").eq("business_id", id).order("updated_at", { ascending: false }),
     supabase.from("platform_audit_logs").select("id,actor_user_id,action,target_type,reason,created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20),
-    supabase.from("staff_invitations").select("id,email,role,is_active,status,delivery_status,branch_id,branch_ids,created_at,updated_at").eq("business_id", id).order("created_at", { ascending: false }),
+    supabase.from("staff_invitations").select("id,email,role,is_active,status,delivery_status,branch_id,branch_ids,expires_at,accepted_at,revoked_at,created_at,updated_at").eq("business_id", id).order("created_at", { ascending: false }),
     supabase.from("staff_memberships").select("id,user_id,role,is_active,branch_id,created_at,updated_at").eq("business_id", id).order("created_at", { ascending: false }),
+    supabase.rpc("platform_restaurant_access_summary", { p_business_id: id }),
   ])
-  const firstError = [business.error,onboarding.error,subscription.error,entitlements.error,apps.error,domains.error,deployments.error,incidents.error,tickets.error,devices.error,audit.error,invitations.error,memberships.error].find(Boolean)
+  const firstError = [business.error,onboarding.error,subscription.error,entitlements.error,apps.error,domains.error,deployments.error,incidents.error,tickets.error,devices.error,audit.error,invitations.error,memberships.error,accessSummary.error].find(Boolean)
   return {
     data: business.data ? {
       business: business.data as Row,
@@ -115,7 +116,8 @@ export async function getRestaurant(id: string) {
       entitlements: (entitlements.data ?? []) as Row[],
       apps: (apps.data ?? []) as Row[], domains: (domains.data ?? []) as Row[], deployments: (deployments.data ?? []) as Row[],
       incidents: (incidents.data ?? []) as Row[], tickets: (tickets.data ?? []) as Row[], devices: (devices.data ?? []) as Row[], audit: (audit.data ?? []) as Row[],
-      invitations: (invitations.data ?? []) as Row[], memberships: (memberships.data ?? []) as Row[],
+      invitations: (invitations.data ?? []) as Row[],
+      memberships: (Array.isArray(accessSummary.data) ? accessSummary.data : memberships.data ?? []) as Row[],
     } : null,
     error: firstError ? safeMessage(firstError.code) : null,
   }

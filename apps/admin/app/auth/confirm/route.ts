@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
-import { adminHome, getAdminContext } from "@/lib/auth"
+import { accessReasonQuery, adminHome, getAdminAccessResolution, getAdminContext } from "@/lib/auth"
 import type { EmailOtpType } from "@supabase/supabase-js"
 
 // Supabase Invite template: {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite
@@ -15,7 +15,8 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: type as EmailOtpType })
   if (!error) await supabase.rpc("claim_staff_invitations")
   const context = error ? null : await getAdminContext()
-  const response = NextResponse.redirect(new URL(error ? "/login?error=callback" : context ? adminHome(context) : "/login?error=unauthorized", url.origin))
+  const access = error ? null : await getAdminAccessResolution()
+  const response = NextResponse.redirect(new URL(error ? "/login?error=callback" : context ? adminHome(context) : `/login?error=${accessReasonQuery(access?.reason ?? "UNKNOWN")}`, url.origin))
   response.headers.set("Referrer-Policy", "no-referrer")
   response.headers.set("Cache-Control", "no-store")
   headers.forEach((value, name) => response.headers.set(name, value))

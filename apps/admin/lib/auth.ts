@@ -19,26 +19,78 @@ export type AdminContext = {
   capabilities: Record<string,boolean>
 }
 
+export type AdminAccessReason =
+  | "AUTHORIZED" | "AUTHENTICATION_REQUIRED" | "NO_MEMBERSHIP"
+  | "MEMBERSHIP_INACTIVE" | "MEMBERSHIP_LINK_INCOMPLETE"
+  | "INVITATION_INCOMPLETE" | "INVITATION_EXPIRED" | "INVITATION_REVOKED"
+  | "RESTAURANT_INACTIVE" | "RESTAURANT_SUSPENDED" | "BUSINESS_NOT_FOUND"
+  | "BRANCH_ACCESS_MISSING" | "ENTITLEMENT_MISSING" | "ENTITLEMENT_DISABLED"
+  | "SUBSCRIPTION_SUSPENDED" | "SUBSCRIPTION_CANCELLED" | "UNKNOWN"
+
+export type AdminAccessResolution = {
+  allowed: boolean
+  reason: AdminAccessReason
+  membershipId?: string
+  businessId?: string
+  businessName?: string
+  role?: AdminContext["role"]
+  branchIds?: string[]
+  capability?: string
+  entitlementReason?: string
+}
+
+const getAdminAuthState = cache(async () => {
+  const supabase = await createClient()
+  const [{ data: claimsResult }, cookieStore] = await Promise.all([supabase.auth.getClaims(), cookies()])
+  return { supabase, claims: claimsResult?.claims, cookieStore }
+})
+
+export const getAdminAccessResolution = cache(async (): Promise<AdminAccessResolution> => {
+  if (!isSupabaseConfigured()) return { allowed: false, reason: "UNKNOWN" }
+  const { supabase, claims, cookieStore } = await getAdminAuthState()
+  const userId = typeof claims?.sub === "string" ? claims.sub : ""
+  if (!userId) return { allowed: false, reason: "AUTHENTICATION_REQUIRED" }
+  const requestedBusiness = cookieStore.get("ip-admin-business")?.value
+  const { data, error } = await supabase.rpc("resolve_restaurant_admin_access", { p_business_id: requestedBusiness || null })
+  if (error || !data || typeof data !== "object") return { allowed: false, reason: "UNKNOWN" }
+  const resolution = data as Record<string, unknown>
+  return {
+    allowed: resolution.allowed === true,
+    reason: String(resolution.reason ?? "UNKNOWN") as AdminAccessReason,
+    membershipId: resolution.membershipId ? String(resolution.membershipId) : undefined,
+    businessId: resolution.businessId ? String(resolution.businessId) : undefined,
+    businessName: resolution.businessName ? String(resolution.businessName) : undefined,
+    role: resolution.role as AdminContext["role"] | undefined,
+    branchIds: Array.isArray(resolution.branchIds) ? resolution.branchIds.map(String) : [],
+    capability: resolution.capability ? String(resolution.capability) : undefined,
+    entitlementReason: resolution.entitlementReason ? String(resolution.entitlementReason) : undefined,
+  }
+})
+
+export function accessReasonQuery(reason: AdminAccessReason) {
+  const values: Partial<Record<AdminAccessReason,string>> = {
+    NO_MEMBERSHIP: "no-membership", MEMBERSHIP_INACTIVE: "membership-inactive",
+    MEMBERSHIP_LINK_INCOMPLETE: "membership-link", INVITATION_INCOMPLETE: "invitation-incomplete",
+    INVITATION_EXPIRED: "invitation-expired", INVITATION_REVOKED: "invitation-revoked",
+    RESTAURANT_INACTIVE: "restaurant-inactive", RESTAURANT_SUSPENDED: "restaurant-suspended",
+    BUSINESS_NOT_FOUND: "restaurant-missing", BRANCH_ACCESS_MISSING: "branch-access",
+    ENTITLEMENT_MISSING: "entitlement-missing", ENTITLEMENT_DISABLED: "entitlement-disabled",
+    SUBSCRIPTION_SUSPENDED: "subscription-suspended", SUBSCRIPTION_CANCELLED: "subscription-cancelled",
+  }
+  return values[reason] ?? "unauthorized"
+}
+
 export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
   if (!isSupabaseConfigured()) return null
-  const supabase = await createClient()
-  const [{ data: claimsResult }, cookieStore] = await Promise.all([
-    supabase.auth.getClaims(),
-    cookies(),
-  ])
-  const claims = claimsResult?.claims
+  const { supabase, claims, cookieStore } = await getAdminAuthState()
   const userId = typeof claims?.sub === "string" ? claims.sub : ""
   if (!userId) return null
-  const requestedBusiness = cookieStore.get("ip-admin-business")?.value
+  const access = await getAdminAccessResolution()
+  if (!access.allowed || !access.membershipId || !access.businessId || !access.role) return null
   const requestedBranch = cookieStore.get("ip-admin-branch")?.value
-  const membershipQuery = (businessId?: string) => {
-    let query = supabase.from("staff_memberships").select("business_id,branch_id,role,updated_at,businesses!inner(name,is_active),staff_membership_branches(branch_id)").eq("user_id", userId).eq("is_active", true).eq("businesses.is_active", true)
-    if (businessId) query = query.eq("business_id", businessId)
-    return query.order("updated_at", { ascending: false }).limit(1).maybeSingle()
-  }
-  let membershipResult = await membershipQuery(requestedBusiness)
-  if (!membershipResult.data && requestedBusiness) membershipResult = await membershipQuery()
-  const { data } = membershipResult
+  const { data } = await supabase.from("staff_memberships")
+    .select("business_id,branch_id,role,businesses!inner(name),staff_membership_branches(branch_id)")
+    .eq("id", access.membershipId).eq("user_id", userId).eq("is_active", true).maybeSingle()
   if (!data) return null
   const business = Array.isArray(data.businesses) ? data.businesses[0] : data.businesses
   const [permissionResult,branchesResult] = await Promise.all([
@@ -64,7 +116,7 @@ export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
     userId,
     email: typeof claims?.email === "string" ? claims.email : "Staff account",
     businessId: String(data.business_id),
-    businessName: String(selectedBranch?.restaurant_name ?? (business as { name?: string } | null)?.name ?? "Restaurant"),
+    businessName: String(selectedBranch?.restaurant_name ?? access.businessName ?? (business as { name?: string } | null)?.name ?? "Restaurant"),
     activeBranchId: selectedBranch?.id ? String(selectedBranch.id) : null,
     assignedBranchId,
     allowedBranchIds,

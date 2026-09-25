@@ -10,7 +10,7 @@ import { createPlatformAdminClient } from "@/lib/supabase/admin"
 import { slugifyRestaurant, type RestaurantLifecycle } from "@/lib/platform"
 import { appIdentifierPattern, supportedServiceKeys, validateProvisioningRequiredFields } from "@/lib/onboarding"
 
-export type ActionState = { error?: string; requestId?: string }
+export type ActionState = { error?: string; requestId?: string; success?: boolean; enabled?: boolean }
 
 const text = (form: FormData, name: string) => String(form.get(name) ?? "").trim()
 const money = (form: FormData, name: string) => Math.max(0, Math.round(Number(form.get(name)) || 0))
@@ -269,17 +269,20 @@ export async function resendRestaurantOwnerInvitationAction(form: FormData) {
   if (!admin || !process.env.RESTAURANT_ADMIN_URL) redirect(`/restaurants/${businessId}?error=invite-configuration`)
   const scope = await verifyPlatformScope(admin, businessId, "")
   if (!scope?.businessId) redirect(`/restaurants/${businessId}?error=scope`)
-  const invitation = await admin.from("staff_invitations").select("id,email,role,status,is_active,delivery_status").eq("id", invitationId).eq("business_id", businessId).eq("role", "OWNER").maybeSingle()
-  if (!invitation.data || invitation.data.status !== "PENDING" || !invitation.data.is_active) redirect(`/restaurants/${businessId}?error=invite-state`)
+  const invitation = await admin.from("staff_invitations").select("id,email,role,status,is_active,delivery_status,expires_at").eq("id", invitationId).eq("business_id", businessId).eq("role", "OWNER").maybeSingle()
+  if (!invitation.data || !["PENDING","EXPIRED","REVOKED"].includes(String(invitation.data.status))) redirect(`/restaurants/${businessId}?error=invite-state`)
   let portalUrl: URL
   try { portalUrl = new URL(process.env.RESTAURANT_ADMIN_URL) } catch { redirect(`/restaurants/${businessId}?error=invite-configuration`) }
   if (!['http:', 'https:'].includes(portalUrl.protocol)) redirect(`/restaurants/${businessId}?error=invite-configuration`)
+  const resetStatus: InvitationDeliveryStatus = "NOT_SENT"
+  const reset = await admin.from("staff_invitations").update({ status: "PENDING", is_active: true, revoked_at: null, expires_at: new Date(Date.now()+7*24*60*60*1000).toISOString(), delivery_status: resetStatus, updated_at: new Date().toISOString() }).eq("id", invitationId).eq("business_id", businessId).in("status", ["PENDING","EXPIRED","REVOKED"])
+  if (reset.error) redirect(`/restaurants/${businessId}?error=invite-update`)
   const result = await deliverRestaurantOwnerInvitation({
     admin,
     businessId,
     invitationId,
     email: String(invitation.data.email),
-    currentStatus: String(invitation.data.delivery_status) as InvitationDeliveryStatus,
+    currentStatus: resetStatus,
     allowManualResend: true,
   })
   if (!result.claimed) redirect(`/restaurants/${businessId}?error=invite-in-progress`)
@@ -302,26 +305,47 @@ export async function setRestaurantOwnerInvitationStatusAction(form: FormData) {
   const admin = createPlatformAdminClient()
   const businessId = text(form, "businessId")
   const invitationId = text(form, "invitationId")
-  const active = text(form, "active") === "true"
   if (!admin) redirect(`/restaurants/${businessId}?error=invite-configuration`)
   const scope = await verifyPlatformScope(admin, businessId, "")
   if (!scope?.businessId) redirect(`/restaurants/${businessId}?error=scope`)
   const invitation = await admin.from("staff_invitations").select("id,email,role,status,is_active").eq("id", invitationId).eq("business_id", businessId).eq("role", "OWNER").maybeSingle()
   if (!invitation.data || invitation.data.status !== "PENDING") redirect(`/restaurants/${businessId}?error=invite-state`)
-  const updated = await admin.from("staff_invitations").update({ is_active: active, updated_at: new Date().toISOString() }).eq("id", invitationId).eq("business_id", businessId).eq("status", "PENDING")
+  const updated = await admin.from("staff_invitations").update({ is_active: false, status: "REVOKED", revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", invitationId).eq("business_id", businessId).eq("status", "PENDING")
   if (updated.error) redirect(`/restaurants/${businessId}?error=invite-update`)
   await admin.from("platform_audit_logs").insert({
     actor_user_id: context.userId,
-    action: active ? "RESTAURANT_OWNER_INVITATION_ACTIVATED" : "RESTAURANT_OWNER_INVITATION_DEACTIVATED",
+    action: "RESTAURANT_OWNER_INVITATION_REVOKED",
     target_type: "staff_invitations",
     target_id: invitationId,
     business_id: businessId,
     reason: text(form, "reason") || "Restaurant owner pending invitation access control",
     before_data: invitation.data,
-    after_data: { is_active: active },
+    after_data: { is_active: false, status: "REVOKED" },
   })
   revalidatePath(`/restaurants/${businessId}`)
   redirect(`/restaurants/${businessId}?invite=updated`)
+}
+
+export async function updateRestaurantMembershipAction(form: FormData) {
+  await requirePlatformPermission("restaurants.edit")
+  const businessId = text(form, "businessId")
+  const membershipId = text(form, "membershipId")
+  const role = text(form, "role")
+  const active = text(form, "active") === "true"
+  const roles = ["OWNER","MANAGER","CASHIER","KITCHEN","WAITER","RIDER","STAFF"]
+  if (!businessId || !membershipId || !roles.includes(role)) redirect(`/restaurants/${businessId}?error=membership-validation`)
+  const supabase = await createClient()
+  const { error } = await supabase.rpc("platform_update_restaurant_membership", {
+    p_business_id: businessId,
+    p_membership_id: membershipId,
+    p_role: role,
+    p_active: active,
+    p_branch_ids: form.getAll("branchIds").map(String),
+    p_reason: text(form, "reason") || "Restaurant 360 membership access update",
+  })
+  if (error) redirect(`/restaurants/${businessId}?error=${error.code === "22023" ? "membership-safety" : "membership-update"}`)
+  revalidatePath(`/restaurants/${businessId}`)
+  redirect(`/restaurants/${businessId}?membership=updated`)
 }
 
 export async function updateBranchAction(form: FormData) {
@@ -684,6 +708,29 @@ export async function setEntitlementAction(form: FormData) {
   revalidatePath("/billing")
   revalidatePath(`/restaurants/${businessId}`)
   redirect(`${returnTo}?entitlement=1`)
+}
+
+export async function setEntitlementInstantAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const requestId = randomUUID()
+  try {
+    const context = await requirePlatformPermission("subscriptions.manage")
+    const admin = createPlatformAdminClient()
+    const businessId = text(form, "businessId"), capability = text(form, "capability").toLowerCase()
+    const enabled = text(form, "enabled") === "true"
+    if (!admin || !businessId || !supportedServiceKeys.has(capability)) return { error: "This entitlement change is not valid.", requestId }
+    const scope = await verifyPlatformScope(admin, businessId, "")
+    if (!scope?.businessId) return { error: "The restaurant could not be verified.", requestId }
+    const before = await admin.from("service_entitlements").select("id,enabled,source,effective_until,notes").eq("business_id", businessId).eq("capability_key", capability).eq("source", "OVERRIDE").maybeSingle()
+    const values = { business_id: businessId, capability_key: capability, source: "OVERRIDE", enabled, effective_until: null, notes: "Restaurant 360 service override", updated_at: new Date().toISOString() }
+    const result = await admin.from("service_entitlements").upsert(values, { onConflict: "business_id,capability_key,source" }).select("id").single()
+    if (result.error || !result.data) return { error: "The entitlement could not be saved. No change was confirmed.", requestId }
+    const audit = await admin.from("platform_audit_logs").insert({ actor_user_id: context.userId, action: "ENTITLEMENT_OVERRIDE_SAVED", target_type: "service_entitlements", target_id: result.data.id, business_id: businessId, reason: "Restaurant 360 service override", request_id: requestId, before_data: before.data, after_data: values })
+    if (audit.error) return { error: "The entitlement changed, but its audit record failed. Refresh before retrying.", requestId }
+    revalidatePath(`/restaurants/${businessId}`)
+    return { success: true, enabled, requestId }
+  } catch {
+    return { error: "The entitlement change was rejected safely.", requestId }
+  }
 }
 
 export async function upsertIntegrationStatusAction(form: FormData) {

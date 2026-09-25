@@ -322,6 +322,12 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 .record-row-stack form.inline-action select { min-width:150px; }
 .button-small { min-height:34px; padding:0 11px; font-size:11px; }
 .inline-action { margin:0; }
+.row-actions { position:relative; min-width:90px; }
+.row-actions summary { cursor:pointer; color:var(--info); font-size:10px; font-weight:800; }
+.row-actions[open] { min-width:230px; padding:10px; border:1px solid var(--line); border-radius:9px; background:#fff; box-shadow:var(--shadow-md); }
+.row-actions form { display:grid; gap:8px; margin-top:10px; }
+.row-actions label { display:grid; gap:4px; color:var(--muted); font-size:9px; font-weight:750; }
+.row-actions input { min-height:36px; padding:7px 9px; border:1px solid var(--line); border-radius:7px; }
 .agreement-page { min-height:100dvh; padding:48px 20px; background:var(--canvas); }
 .agreement-document { width:min(100%,860px); margin:auto; padding:38px; border:1px solid var(--line); border-radius:18px; background:#fff; box-shadow:var(--shadow-md); }
 .agreement-document > header { display:flex; align-items:center; justify-content:space-between; gap:18px; padding-bottom:20px; border-bottom:1px solid var(--line); }
@@ -375,6 +381,19 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 .entity-actions details[open] { width:100%; }
 .entity-actions details form,.inline-create form { margin-top:14px; }
 .access-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:18px; }
+.subpanel { padding:16px; border:1px solid var(--line); border-radius:var(--radius-md); background:var(--paper-soft); }
+.subpanel > h3 { margin:0 0 12px; font-size:13px; }
+.access-membership-list { display:grid; gap:10px; }
+.access-membership { padding:13px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+.access-membership > header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.access-membership > header div:first-child { display:flex; min-width:0; flex-direction:column; gap:3px; overflow-wrap:anywhere; }
+.access-membership > header small,.access-membership dl { color:var(--muted); font-size:9px; }
+.access-membership dl { display:grid; grid-template-columns:90px 1fr; gap:6px 10px; margin:12px 0 0; }
+.access-membership dt { font-weight:800; }
+.access-membership dd { margin:0; color:var(--ink-soft); }
+.entitlement-toggle { display:flex; max-width:260px; flex-direction:column; align-items:flex-end; gap:4px; }
+.inline-action-error { max-width:240px; color:var(--danger); font-size:8px; line-height:1.35; text-align:right; }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; margin:-1px; padding:0; border:0; clip:rect(0,0,0,0); white-space:nowrap; }
 .entitlement-list > div > span { display:flex; flex-direction:column; gap:2px; }
 .entitlement-list > div > span small { color:var(--muted); font-size:8px; }
 .attention-banner { margin-bottom:14px; padding:11px 13px; border:1px solid #e3bd58; border-radius:8px; background:#fff7dd; color:#6f4c00; font-size:10px; font-weight:700; }
