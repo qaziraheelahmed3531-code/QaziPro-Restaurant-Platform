@@ -1,10 +1,12 @@
 import "server-only"
 
 import nodemailer from "nodemailer"
+import { isSyntheticQaEmail } from "@italian-pizza/shared"
 
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, character => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[character]!)
 
 export async function sendPosLoginOtp(input: { recipient:string; code:string; restaurantName:string; logoUrl?:string|null; primaryColor?:string|null }) {
+  if(isSyntheticQaEmail(input.recipient))return {status:"SUPPRESSED" as const,error:"Synthetic QA recipient suppressed."}
   const host=process.env.SMTP_HOST?.trim(),user=process.env.SMTP_USER?.trim(),password=process.env.SMTP_PASSWORD?.trim()
   if(!host||!user||!password)return {status:"FAILED" as const,error:"Email / SMTP is not configured."}
   const port=Number(process.env.SMTP_PORT||587)

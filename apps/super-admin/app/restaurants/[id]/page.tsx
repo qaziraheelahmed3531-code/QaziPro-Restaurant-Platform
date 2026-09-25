@@ -44,7 +44,7 @@ export default async function RestaurantWorkspace({ params, searchParams }: { pa
     {notice.created ? <div className="success-banner">Restaurant provisioned once. It remains inactive until its lifecycle reaches Active.</div> : null}
     {notice.updated || notice.profile || notice.entitlement || notice.branchStatus ? <div className="success-banner">Change saved and audited.</div> : null}
     {notice.branch ? <div className="success-banner">Branch saved. Delivery remains disabled until location and delivery rules are verified.</div> : null}
-    {notice.invite ? <div className="success-banner">Owner invitation state updated and audited.</div> : null}
+    {notice.invite ? <div className="success-banner">{notice.invite === "suppressed" ? "Synthetic QA invitation safely recorded without external email delivery." : "Owner invitation state updated and audited."}</div> : null}
     {notice.delivery === "pending" ? <div className="attention-banner">Delivery was requested but remains pending because the branch has no verified delivery rule or complete coordinates.</div> : null}
     {notice.error ? <div className="form-error">The operation was rejected safely ({notice.error}).</div> : null}
 

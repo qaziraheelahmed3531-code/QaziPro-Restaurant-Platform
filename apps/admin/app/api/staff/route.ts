@@ -259,7 +259,7 @@ export async function POST(request: Request) {
         p_id: data.id,
         p_status: delivery.status,
       });
-    if (delivery.status !== "SENT")
+    if (delivery.status !== "SENT" && delivery.status !== "SUPPRESSED")
       return NextResponse.json(
         {
           ok: false,
@@ -272,7 +272,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       pending: isPendingInvitation,
-      message: `Secure restaurant access email sent to ${data.email}.${isPendingInvitation ? " Access will activate after they use the link." : " Their assigned access is already active."}`,
+      message: delivery.status === "SUPPRESSED"
+        ? "Synthetic QA invitation saved without external email delivery."
+        : `Secure restaurant access email sent to ${data.email}.${isPendingInvitation ? " Access will activate after they use the link." : " Their assigned access is already active."}`,
     });
   } catch (error) {
     if (isPendingInvitation)

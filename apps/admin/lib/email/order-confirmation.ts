@@ -1,11 +1,12 @@
 import "server-only"
 
 import nodemailer from "nodemailer"
+import { isSyntheticQaEmail } from "@italian-pizza/shared"
 
 type Branch={restaurant_name?:string|null;name:string;formatted_address?:string|null;address?:string|null;phone?:string|null}
 export type OrderEmail={order_number:string;token_number:number;customer_email:string|null;customer_name:string;service_mode:string;delivery_address:string|null;total:number;order_items:Array<{product_name:string;quantity:number;line_total:number}>;branches:Branch|Branch[]|null}
 const clean=(value:unknown)=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]!)
-const qaAddress=(value:string)=>/@example\.(test|invalid)$/i.test(value)||/qa[-_.+ ]|do.?not.?fulfill|test/i.test(value)
+const qaAddress=(value:string)=>isSyntheticQaEmail(value)||/@example\.(test|invalid)$/i.test(value)||/qa[-_.+ ]|do.?not.?fulfill|test/i.test(value)
 const publicImageUrl=(value?:string|null)=>{
   if(!value?.trim())return null
   try{const url=new URL(value,process.env.CUSTOMER_APP_URL||"http://localhost:3000");return url.protocol==="https:"||url.protocol==="http:"?url.href:null}catch{return null}

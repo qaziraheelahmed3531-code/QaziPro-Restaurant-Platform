@@ -1,6 +1,7 @@
 import "server-only"
 
 import nodemailer from "nodemailer"
+import { isSyntheticQaEmail } from "@italian-pizza/shared"
 
 type Campaign = {
   subject: string
@@ -31,7 +32,7 @@ export async function sendCustomerBroadcast(campaign: Campaign, recipients: Reci
   const text = `${campaign.subject}\n\n${campaign.message}${campaign.deal ? `\n\n${campaign.deal.name}${campaign.deal.price != null ? ` — Rs ${campaign.deal.price}` : ""}` : ""}\n\nOrder: ${customerUrl}`
 
   return Promise.all(recipients.map(async (item) => {
-    if (/@example\.(test|invalid)$/i.test(item.recipient) || /qa[-_.+]|do.?not.?fulfill/i.test(item.recipient)) return { ...item, status: "SKIPPED" as const, error: "Automated/test recipient suppressed." }
+    if (isSyntheticQaEmail(item.recipient) || /@example\.(test|invalid)$/i.test(item.recipient) || /qa[-_.+]|do.?not.?fulfill/i.test(item.recipient)) return { ...item, status: "SKIPPED" as const, error: "Automated/test recipient suppressed." }
     try {
       const result = await transport.sendMail({ from: process.env.SMTP_FROM || user, to: item.recipient, subject: `${campaign.subject} — ${campaign.restaurant}`, html, text })
       return { ...item, status: "SENT" as const, messageId: result.messageId }

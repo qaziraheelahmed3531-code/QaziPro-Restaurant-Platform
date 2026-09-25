@@ -1,6 +1,7 @@
 import "server-only"
 
 import nodemailer from "nodemailer"
+import { isSyntheticQaEmail } from "@italian-pizza/shared"
 
 type StaffInvitationEmail = {
   recipient: string
@@ -27,6 +28,7 @@ const publicImageUrl = (value?: string | null) => {
 }
 
 export async function sendStaffInvitationEmail(invitation: StaffInvitationEmail) {
+  if (isSyntheticQaEmail(invitation.recipient)) return { status: "SUPPRESSED" as const, error: "Synthetic QA recipient suppressed." }
   const host = process.env.SMTP_HOST?.trim()
   const user = process.env.SMTP_USER?.trim()
   const password = process.env.SMTP_PASSWORD?.trim()

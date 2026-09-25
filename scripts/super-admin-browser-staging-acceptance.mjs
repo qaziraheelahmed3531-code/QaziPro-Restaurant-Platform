@@ -12,7 +12,7 @@ const publicKey = process.env.STAGING_SUPABASE_PUBLISHABLE_KEY;
 const serviceKey = process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY;
 const appUrl = process.env.STAGING_SUPER_ADMIN_URL ?? "http://localhost:3102";
 const appHostname = new URL(appUrl).hostname;
-const isKnownStagingDeployment = /^qazi-pro-restaurant-platform-super-admin-[a-z0-9]+\.vercel\.app$/i.test(appHostname);
+const isKnownStagingDeployment = appHostname === "qazi-pro-restaurant-platform-super.vercel.app" || /^qazi-pro-restaurant-platform-super-admin-[a-z0-9]+\.vercel\.app$/i.test(appHostname);
 const screenshotDir = process.env.STAGING_SCREENSHOT_DIR;
 if (process.env.ALLOW_STAGING_ACCEPTANCE !== "1" || process.env.STAGING_ENVIRONMENT !== "staging" ||
   ref !== "jzisqjvroxodvmqxzsob" || new URL(url).hostname !== `${ref}.supabase.co` ||
@@ -116,6 +116,8 @@ try {
   const liveLocationBody = await liveLocationResponse.json();
   check(Array.isArray(liveLocationBody.candidates) && liveLocationBody.candidates.length > 0, "Authenticated Geoapify proxy returned no Islamabad candidates");
   check(!JSON.stringify(liveLocationBody).includes(process.env.GEOAPIFY_API_KEY ?? "__never__"), "Geoapify server key leaked in the location response");
+  const transparentTile = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+  await page.route("https://maps.geoapify.com/**", route => route.fulfill({ status: 200, contentType: "image/png", body: transparentTile }));
   const locationCandidate = {
     id: "geoapify:qa-islamabad",
     name: "QA Blue Area Branch",
@@ -205,14 +207,20 @@ try {
   const provisionAudit = checked(await service.from("platform_audit_logs").select("action").eq("business_id", provisionedBusinessId).eq("action", "RESTAURANT_PROVISIONED"), "Provision audit");
   check(provisionAudit.length === 1, "Provisioning did not create exactly one audit event");
   check(await page.getByText("Invitation and membership state").isVisible(), "Restaurant 360 owner/access view is missing");
-  const invitation = checked(await service.from("staff_invitations").select("id,is_active,status").eq("business_id", provisionedBusinessId).eq("role", "OWNER").single(), "Owner invitation fixture");
-  check(invitation.status === "PENDING", "Owner invitation is not pending before access management");
+  const invitation = checked(await service.from("staff_invitations").select("id,is_active,status,delivery_status").eq("business_id", provisionedBusinessId).eq("role", "OWNER").single(), "Owner invitation fixture");
+  check(invitation.status === "PENDING" && invitation.delivery_status === "SUPPRESSED", "Synthetic owner invitation was not safely suppressed");
   await page.getByRole("button", { name: "Deactivate invitation" }).click();
   await waitForData(async () => checked(await service.from("staff_invitations").select("is_active").eq("id", invitation.id).single(), "Disabled owner invitation"), value => value.is_active === false, "Owner invitation deactivation did not complete");
   await page.getByText("Owner invitation state updated and audited.").waitFor({ state: "visible", timeout: 30000 });
   await page.getByRole("button", { name: "Activate invitation" }).click();
   await waitForData(async () => checked(await service.from("staff_invitations").select("is_active").eq("id", invitation.id).single(), "Enabled owner invitation"), value => value.is_active === true, "Owner invitation activation did not complete");
   check(await page.getByText("Owner invitation state updated and audited.").isVisible(), "Owner invitation access feedback is missing");
+  await page.getByRole("button", { name: "Resend invitation" }).click();
+  await page.waitForURL(value => value.pathname === `/restaurants/${provisionedBusinessId}` && value.searchParams.get("invite") === "suppressed", { timeout: 30000 });
+  const suppressedInvite = checked(await service.from("staff_invitations").select("delivery_status").eq("id", invitation.id).single(), "Suppressed owner invitation resend");
+  check(suppressedInvite.delivery_status === "SUPPRESSED", "Synthetic owner invitation resend reached an external transport");
+  const suppressionAudit = checked(await service.from("platform_audit_logs").select("id").eq("business_id", provisionedBusinessId).eq("action", "RESTAURANT_OWNER_INVITATION_SUPPRESSED"), "Invitation suppression audit");
+  check(suppressionAudit.length === 1, "Synthetic invitation suppression was not audited once");
 
   const addBranchDetails = page.locator("#branches details.inline-create");
   await addBranchDetails.locator("summary").click();

@@ -10,9 +10,10 @@ const publicKey = process.env.STAGING_SUPABASE_PUBLISHABLE_KEY;
 const serviceKey = process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY;
 const adminUrl = process.env.STAGING_ADMIN_URL ?? "http://localhost:3101";
 const adminHostname = new URL(adminUrl).hostname;
+const isKnownStagingDeployment = adminHostname === "qazi-pro-restaurant-platform-admin.vercel.app" || /^qazi-pro-restaurant-platform-admin-[a-z0-9]+\.vercel\.app$/i.test(adminHostname);
 if (process.env.ALLOW_STAGING_ACCEPTANCE !== "1" || process.env.STAGING_ENVIRONMENT !== "staging" ||
   !expectedRef || expectedRef !== "jzisqjvroxodvmqxzsob" || !url || new URL(url).hostname !== `${expectedRef}.supabase.co` ||
-  !publicKey || !serviceKey || (!['localhost','127.0.0.1'].includes(adminHostname) && !/staging/i.test(adminHostname))) {
+  !publicKey || !serviceKey || (!['localhost','127.0.0.1'].includes(adminHostname) && !/staging/i.test(adminHostname) && !isKnownStagingDeployment)) {
   throw new Error("Refusing Admin acceptance without verified staging-only configuration.");
 }
 
@@ -109,11 +110,27 @@ try {
   await ownerPage.getByLabel("Active branch").locator(`option[value="${A2}"]`).waitFor({ state: "attached" });
   const branchValues = await ownerPage.getByLabel("Active branch").locator("option").evaluateAll(options => options.map(option => option.value));
   check(branchValues.includes(A1) && branchValues.includes(A2), "Owner cannot see both QA branches");
+  await ownerPage.getByLabel("Active branch").selectOption(A1);
+  await ownerPage.getByLabel("Active branch").waitFor({ state: "visible" });
+  check(await ownerPage.getByLabel("Active branch").inputValue() === A1, "Owner branch selection did not persist");
   await ownerPage.keyboard.press("Control+k");
   await ownerPage.getByLabel("Search permitted pages").fill("Add menu item");
   check(await ownerPage.getByRole("option", { name: /Add menu item/ }).count() === 1, "Owner quick action absent");
   await ownerPage.keyboard.press("Escape");
   check(!(await ownerPage.locator(".admin-command-dialog").evaluate(node => node.open)), "Command palette did not close");
+
+  await ownerPage.goto(`${adminUrl}/delivery`, { waitUntil: "domcontentloaded" });
+  await ownerPage.getByRole("heading", { name: "Restaurant Location", exact: true }).waitFor({ timeout: 30000 });
+  check(await ownerPage.getByRole("button", { name: /Use current location/ }).count() === 1, "Delivery setup current-location control absent");
+  check(await ownerPage.getByRole("button", { name: /Discover \/ refresh areas/ }).count() === 1, "Provider-backed area discovery control absent");
+  check(await ownerPage.locator(".ip-location-map").count() === 1, "Restaurant location map absent");
+  const restaurantMap = ownerPage.getByRole("region", { name: "Restaurant location map" });
+  const mapUnavailable = ownerPage.getByText(/Map service is (not configured|unavailable)/);
+  await Promise.race([
+    restaurantMap.waitFor({ state: "visible", timeout: 30000 }),
+    mapUnavailable.first().waitFor({ state: "visible", timeout: 30000 }),
+  ]);
+  check(await restaurantMap.count() === 1, "Restaurant location map service unavailable in staging");
   check(ownerErrors.length === 0, `Owner browser runtime errors: ${ownerErrors.join("; ")}`);
   await ownerContext.close();
 
@@ -151,7 +168,7 @@ try {
   leads.push(lead.id);
   await demoContext.close();
 
-  console.log(JSON.stringify({ ok: true, assertions, areas: ["owner login", "owner navigation", "command palette", "limited staff", "branch RLS", "tenant isolation", "demo lead"] }));
+  console.log(JSON.stringify({ ok: true, assertions, areas: ["owner login", "owner navigation", "command palette", "delivery location and area setup", "limited staff", "branch RLS", "tenant isolation", "demo lead"] }));
 } finally {
   if (browser) await browser.close();
   await cleanup();

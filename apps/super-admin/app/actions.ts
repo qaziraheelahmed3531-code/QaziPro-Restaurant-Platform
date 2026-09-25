@@ -1,6 +1,7 @@
 "use server"
 
 import { createHash, randomBytes, randomUUID } from "node:crypto"
+import { deliverExternalInvitation, isSyntheticQaEmail, type InvitationDeliveryStatus } from "@italian-pizza/shared"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { requirePlatformPermission } from "@/lib/auth"
@@ -21,6 +22,48 @@ const optionalNumber = (form: FormData, name: string) => {
 const safeReturnPath = (form: FormData, fallback: string) => {
   const value = text(form, "returnTo")
   return value.startsWith("/") && !value.startsWith("//") ? value : fallback
+}
+
+type PlatformAdminClient = NonNullable<ReturnType<typeof createPlatformAdminClient>>
+
+async function deliverRestaurantOwnerInvitation(input: {
+  admin: PlatformAdminClient
+  businessId: string
+  invitationId: string
+  email: string
+  currentStatus: InvitationDeliveryStatus
+  allowManualResend?: boolean
+}) {
+  const allowed = input.allowManualResend
+    ? new Set<InvitationDeliveryStatus>(["NOT_SENT", "FAILED", "SENT", "SUPPRESSED"])
+    : new Set<InvitationDeliveryStatus>(["NOT_SENT"])
+  const portalUrl = new URL(process.env.RESTAURANT_ADMIN_URL!)
+  return deliverExternalInvitation({
+    recipient: input.email,
+    claim: async (deliveryStatus) => {
+      if (!allowed.has(input.currentStatus)) return false
+      const claim = await input.admin.from("staff_invitations")
+        .update({ delivery_status: deliveryStatus, updated_at: new Date().toISOString() })
+        .eq("id", input.invitationId)
+        .eq("business_id", input.businessId)
+        .eq("status", "PENDING")
+        .eq("delivery_status", input.currentStatus)
+        .select("id")
+        .maybeSingle()
+      return !claim.error && Boolean(claim.data)
+    },
+    send: async () => input.admin.auth.admin.inviteUserByEmail(input.email, {
+      redirectTo: `${portalUrl.origin}/auth/callback`,
+      data: { invited_business_id: input.businessId, invited_role: "OWNER" },
+    }),
+    complete: async (deliveryStatus) => {
+      await input.admin.from("staff_invitations")
+        .update({ delivery_status: deliveryStatus, updated_at: new Date().toISOString() })
+        .eq("id", input.invitationId)
+        .eq("business_id", input.businessId)
+        .eq("delivery_status", "SENDING")
+    },
+  })
 }
 
 export async function provisionRestaurantAction(_: ActionState, form: FormData): Promise<ActionState> {
@@ -125,14 +168,16 @@ export async function provisionRestaurantAction(_: ActionState, form: FormData):
   }
   const admin = createPlatformAdminClient()
   if (admin && process.env.RESTAURANT_ADMIN_URL) {
-    const invitation = await admin.auth.admin.inviteUserByEmail(ownerEmail, {
-      redirectTo: `${process.env.RESTAURANT_ADMIN_URL.replace(/\/$/, "")}/auth/callback`,
-      data: { invited_business_id: data, invited_role: "OWNER" },
-    })
-    await admin.from("staff_invitations").update({
-      delivery_status: invitation.error ? "FAILED" : "SENT",
-      updated_at: new Date().toISOString(),
-    }).eq("business_id", data).eq("email", ownerEmail)
+    const invitation = await admin.from("staff_invitations").select("id,email,delivery_status").eq("business_id", data).eq("email", ownerEmail).eq("role", "OWNER").maybeSingle()
+    if (invitation.data) {
+      await deliverRestaurantOwnerInvitation({
+        admin,
+        businessId: String(data),
+        invitationId: String(invitation.data.id),
+        email: String(invitation.data.email),
+        currentStatus: String(invitation.data.delivery_status) as InvitationDeliveryStatus,
+      })
+    }
   }
   revalidatePath("/")
   revalidatePath("/restaurants")
@@ -224,20 +269,24 @@ export async function resendRestaurantOwnerInvitationAction(form: FormData) {
   if (!admin || !process.env.RESTAURANT_ADMIN_URL) redirect(`/restaurants/${businessId}?error=invite-configuration`)
   const scope = await verifyPlatformScope(admin, businessId, "")
   if (!scope?.businessId) redirect(`/restaurants/${businessId}?error=scope`)
-  const invitation = await admin.from("staff_invitations").select("id,email,role,status,is_active").eq("id", invitationId).eq("business_id", businessId).eq("role", "OWNER").maybeSingle()
+  const invitation = await admin.from("staff_invitations").select("id,email,role,status,is_active,delivery_status").eq("id", invitationId).eq("business_id", businessId).eq("role", "OWNER").maybeSingle()
   if (!invitation.data || invitation.data.status !== "PENDING" || !invitation.data.is_active) redirect(`/restaurants/${businessId}?error=invite-state`)
   let portalUrl: URL
   try { portalUrl = new URL(process.env.RESTAURANT_ADMIN_URL) } catch { redirect(`/restaurants/${businessId}?error=invite-configuration`) }
   if (!['http:', 'https:'].includes(portalUrl.protocol)) redirect(`/restaurants/${businessId}?error=invite-configuration`)
-  const result = await admin.auth.admin.inviteUserByEmail(String(invitation.data.email), {
-    redirectTo: `${portalUrl.origin}/auth/callback`,
-    data: { invited_business_id: businessId, invited_role: "OWNER" },
+  const result = await deliverRestaurantOwnerInvitation({
+    admin,
+    businessId,
+    invitationId,
+    email: String(invitation.data.email),
+    currentStatus: String(invitation.data.delivery_status) as InvitationDeliveryStatus,
+    allowManualResend: true,
   })
-  const deliveryStatus = result.error ? "FAILED" : "SENT"
-  await admin.from("staff_invitations").update({ delivery_status: deliveryStatus, updated_at: new Date().toISOString() }).eq("id", invitationId).eq("business_id", businessId)
+  if (!result.claimed) redirect(`/restaurants/${businessId}?error=invite-in-progress`)
+  const deliveryStatus = result.status
   await admin.from("platform_audit_logs").insert({
     actor_user_id: context.userId,
-    action: result.error ? "RESTAURANT_OWNER_INVITATION_FAILED" : "RESTAURANT_OWNER_INVITATION_RESENT",
+    action: deliveryStatus === "FAILED" ? "RESTAURANT_OWNER_INVITATION_FAILED" : deliveryStatus === "SUPPRESSED" ? "RESTAURANT_OWNER_INVITATION_SUPPRESSED" : "RESTAURANT_OWNER_INVITATION_RESENT",
     target_type: "staff_invitations",
     target_id: invitationId,
     business_id: businessId,
@@ -245,7 +294,7 @@ export async function resendRestaurantOwnerInvitationAction(form: FormData) {
     after_data: { email: invitation.data.email, role: invitation.data.role, delivery_status: deliveryStatus },
   })
   revalidatePath(`/restaurants/${businessId}`)
-  redirect(`/restaurants/${businessId}?${result.error ? "error=invite-delivery" : "invite=sent"}`)
+  redirect(`/restaurants/${businessId}?${deliveryStatus === "FAILED" ? "error=invite-delivery" : `invite=${deliveryStatus === "SUPPRESSED" ? "suppressed" : "sent"}`}`)
 }
 
 export async function setRestaurantOwnerInvitationStatusAction(form: FormData) {
@@ -425,7 +474,9 @@ export async function invitePlatformStaffAction(form: FormData) {
   const { data: role } = await admin.from("platform_roles").select("id,key").eq("key", roleKey).maybeSingle()
   if (!role || role.key === "PLATFORM_OWNER") redirect("/team?error=role")
   const redirectTo = `${(process.env.PLATFORM_PUBLIC_URL ?? "http://localhost:3002").replace(/\/$/, "")}/auth/callback`
-  const invited = await admin.auth.admin.inviteUserByEmail(email, { redirectTo, data: { full_name: displayName, qazipro_platform_invite: true } })
+  const invited = isSyntheticQaEmail(email)
+    ? await admin.auth.admin.generateLink({ type: "invite", email, options: { redirectTo, data: { full_name: displayName, qazipro_platform_invite: true } } })
+    : await admin.auth.admin.inviteUserByEmail(email, { redirectTo, data: { full_name: displayName, qazipro_platform_invite: true } })
   if (invited.error || !invited.data.user) redirect("/team?error=invite")
   await admin.from("platform_staff").upsert({ user_id: invited.data.user.id, display_name: displayName, email, status: "INVITED", mfa_required: form.get("mfaRequired") === "on", updated_at: new Date().toISOString() }, { onConflict: "user_id" })
   await admin.from("platform_staff_roles").upsert({ staff_user_id: invited.data.user.id, role_id: role.id, assigned_by: context.userId }, { onConflict: "staff_user_id,role_id" })

@@ -51,7 +51,7 @@ $env:ALLOW_STAGING_ACCEPTANCE = '1'
 $env:STAGING_QA_PASSWORD = "Qa!$([guid]::NewGuid().ToString('N'))a9"
 $target = if ($TargetUrl) { $TargetUrl.TrimEnd('/') } else { '' }
 $targetHost = if ($target) { ([uri]$target).Host } else { '' }
-$knownStagingDeployment = $targetHost -match '^qazi-pro-restaurant-platform-(super-admin|admin)-[a-z0-9]+\.vercel\.app$'
+$knownStagingDeployment = $targetHost -in @('qazi-pro-restaurant-platform-super.vercel.app','qazi-pro-restaurant-platform-admin.vercel.app') -or $targetHost -match '^qazi-pro-restaurant-platform-(super-admin|admin)-[a-z0-9]+\.vercel\.app$'
 if ($target -and $targetHost -notin @('localhost','127.0.0.1') -and $targetHost -notmatch 'staging' -and -not $knownStagingDeployment) {
   throw 'Acceptance may only target localhost or an explicitly named staging host.'
 }
