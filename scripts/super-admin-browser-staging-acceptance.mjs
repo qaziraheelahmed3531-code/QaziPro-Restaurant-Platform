@@ -12,10 +12,11 @@ const publicKey = process.env.STAGING_SUPABASE_PUBLISHABLE_KEY;
 const serviceKey = process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY;
 const appUrl = process.env.STAGING_SUPER_ADMIN_URL ?? "http://localhost:3102";
 const appHostname = new URL(appUrl).hostname;
+const isKnownStagingDeployment = /^qazi-pro-restaurant-platform-super-admin-[a-z0-9]+\.vercel\.app$/i.test(appHostname);
 const screenshotDir = process.env.STAGING_SCREENSHOT_DIR;
 if (process.env.ALLOW_STAGING_ACCEPTANCE !== "1" || process.env.STAGING_ENVIRONMENT !== "staging" ||
   ref !== "jzisqjvroxodvmqxzsob" || new URL(url).hostname !== `${ref}.supabase.co` ||
-  (!['localhost', '127.0.0.1'].includes(appHostname) && !/staging/i.test(appHostname)) || !publicKey || !serviceKey) {
+  (!['localhost', '127.0.0.1'].includes(appHostname) && !/staging/i.test(appHostname) && !isKnownStagingDeployment) || !publicKey || !serviceKey) {
   throw new Error("Refusing browser acceptance outside verified local/staging resources.");
 }
 
