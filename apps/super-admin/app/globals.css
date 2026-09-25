@@ -176,6 +176,8 @@ input,select,textarea { width:100%; min-height:44px; padding:9px 11px; border:1p
 textarea { resize:vertical; line-height:1.5; }
 input:focus,select:focus,textarea:focus { border-color:#c28815; box-shadow:0 0 0 3px #fff3d2; }
 label small,.form-help { color:var(--muted); font-size:9px; font-weight:500; line-height:1.5; }
+.inline-field-error { color:var(--danger); font-size:10px; font-weight:700; }
+input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="true"] { border-color:var(--danger); box-shadow:0 0 0 3px rgb(176 42 34 / .1); }
 .definition-list { display:grid; grid-template-columns:minmax(110px,.7fr) 1fr; gap:9px 16px; margin:0; font-size:10px; }
 .definition-list dt { color:var(--muted); }
 .definition-list dd { margin:0; color:var(--ink); font-weight:650; word-break:break-word; }
@@ -236,6 +238,7 @@ label small,.form-help { color:var(--muted); font-size:9px; font-weight:500; lin
 .review-section li { display:flex; align-items:center; gap:7px; color:var(--ink-soft); font-size:10px; }
 .review-section li svg { color:var(--success); }
 .wizard-actions { display:flex; justify-content:space-between; padding:14px 20px; border-top:1px solid var(--line); background:var(--paper-soft); }
+.wizard-validation-error { margin:0 20px 14px; }
 .login-page { min-height:100dvh; display:grid; place-items:center; padding:24px; background:radial-gradient(circle at 10% 10%,#fff7df 0,transparent 27%),#f1f3f5; }
 .login-card { width:min(100%,500px); padding:35px; border:1px solid var(--line); border-radius:20px; background:#fff; box-shadow:0 26px 70px rgb(16 24 40 / .12); }
 .login-brand { display:flex; align-items:center; gap:13px; margin-bottom:28px; }

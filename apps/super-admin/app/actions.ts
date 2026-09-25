@@ -7,6 +7,7 @@ import { requirePlatformPermission } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { createPlatformAdminClient } from "@/lib/supabase/admin"
 import { slugifyRestaurant, type RestaurantLifecycle } from "@/lib/platform"
+import { validateProvisioningRequiredFields } from "@/lib/onboarding"
 
 export type ActionState = { error?: string; requestId?: string }
 
@@ -19,34 +20,40 @@ export async function provisionRestaurantAction(_: ActionState, form: FormData):
   await requirePlatformPermission("onboarding.manage")
   const requestId = randomUUID()
   const name = text(form, "name")
+  const ownerName = text(form, "ownerName")
   const ownerEmail = text(form, "ownerEmail").toLowerCase()
+  const city = text(form, "city")
+  const packageId = text(form, "packageId")
   const slug = slugifyRestaurant(text(form, "slug") || name)
-  const branchNames = form.getAll("branchName").map(String).map((value) => value.trim()).filter(Boolean)
-  const branchCodes = form.getAll("branchCode").map(String).map((value) => value.trim()).filter(Boolean)
-  if (name.length < 2 || !slug || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail) || !branchNames.length) {
-    return { error: "Restaurant name, owner email and at least one branch are required.", requestId }
-  }
+  const branchNames = form.getAll("branchName").map(String).map((value) => value.trim())
+  const branchCodes = form.getAll("branchCode").map(String).map((value) => value.trim())
+  const validationError = validateProvisioningRequiredFields({ name, ownerName, ownerEmail, city, packageId, branchNames, branchCodes })
+  if (validationError || !slug) return { error: validationError ?? "Enter a valid public restaurant key.", requestId }
+  const supabase = await createClient()
+  const activePackage = await supabase.from("service_packages").select("id").eq("id", packageId).eq("is_active", true).maybeSingle()
+  if (activePackage.error) return { error: "Service package validation is temporarily unavailable.", requestId }
+  if (!activePackage.data) return { error: "Select an active service package before provisioning.", requestId }
   const services = form.getAll("services").map(String)
   const payload = {
     name,
     slug,
     legalName: text(form, "legalName"),
     description: text(form, "description"),
-    ownerName: text(form, "ownerName"),
+    ownerName,
     ownerEmail,
     ownerPhone: text(form, "ownerPhone"),
     contactName: text(form, "contactName"),
     contactTitle: text(form, "contactTitle"),
     phone: text(form, "phone"),
     address: text(form, "address"),
-    city: text(form, "city"),
+    city,
     countryCode: text(form, "countryCode").toUpperCase() || "PK",
     currency: text(form, "currency").toUpperCase() || "PKR",
     timezone: text(form, "timezone") || "Asia/Karachi",
     primaryColor: text(form, "primaryColor") || "#a92114",
     secondaryColor: text(form, "secondaryColor") || "#e7a81a",
     logoUrl: text(form, "logoUrl"),
-    packageId: text(form, "packageId"),
+    packageId,
     baseFee: money(form, "baseFee"),
     setupFee: money(form, "setupFee"),
     billingFrequency: text(form, "billingFrequency") || "MONTHLY",
@@ -70,7 +77,6 @@ export async function provisionRestaurantAction(_: ActionState, form: FormData):
     iosId: text(form, "iosId"),
     reason: "Guided Super Admin onboarding",
   }
-  const supabase = await createClient()
   const { data, error } = await supabase.rpc("platform_provision_restaurant", {
     p_request_key: text(form, "requestKey") || requestId,
     p_payload: payload,

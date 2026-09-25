@@ -24,6 +24,8 @@ const email = `qa-platform-browser-${randomUUID()}@qa.example`;
 const password = `${randomBytes(18).toString("base64url")}A1!`;
 let userId;
 let unauthorizedUserId;
+let provisionedBusinessId;
+let provisionedOwnerEmail;
 let browser;
 let assertions = 0;
 function check(condition, message) { assertions++; assert.ok(condition, message); }
@@ -76,6 +78,7 @@ try {
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
+  page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   const routes = ["/", "/restaurants", "/restaurants/a0000000-0000-4000-8000-000000000001", "/onboarding", "/onboarding/new", "/branches", "/apps", "/domains", "/deployments", "/health", "/support", "/billing", "/packages", "/tasks", "/team", "/integrations", "/audit"];
   for (const route of routes) {
     await page.goto(`${appUrl}${route}`, { waitUntil: "domcontentloaded" });
@@ -95,6 +98,36 @@ try {
       await page.screenshot({ path: join(screenshotDir, `platform-${route === "/" ? "overview" : route.slice(1)}-desktop.png`) });
     }
   }
+  const onboardingSuffix = `${Date.now()}-${randomBytes(3).toString("hex")}`;
+  provisionedOwnerEmail = `qa-onboarding-${onboardingSuffix}@staging.qazipro.invalid`;
+  let provisioningRequests = 0;
+  page.on("request", request => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/onboarding/new") provisioningRequests += 1;
+  });
+  await page.goto(`${appUrl}/onboarding/new`, { waitUntil: "domcontentloaded" });
+  await page.locator('[name="name"]').fill(`QA Browser Restaurant ${onboardingSuffix}`);
+  await page.locator('[name="slug"]').fill(`qa-browser-${onboardingSuffix}`);
+  await page.locator('[name="ownerName"]').fill("QA Browser Owner");
+  await page.locator('[name="ownerEmail"]').fill(provisionedOwnerEmail);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  check(await page.getByText("Select an active service package before continuing.").isVisible(), "Missing package did not show an inline error");
+  check(await page.locator('[name="packageId"]').isVisible(), "Missing package advanced away from the commercials step");
+  await page.locator('[name="packageId"]').selectOption({ index: 1 });
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.locator('[name="branchName"]').fill("QA Main Branch");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.locator("form.wizard").evaluate((form) => {
+    const wizard = form;
+    wizard.requestSubmit();
+    wizard.requestSubmit();
+  });
+  await page.waitForURL(value => /^\/restaurants\/[0-9a-f-]+$/.test(value.pathname), { timeout: 30000 });
+  provisionedBusinessId = new URL(page.url()).pathname.split("/").at(-1);
+  check(provisioningRequests === 1, `Provisioning submitted ${provisioningRequests} requests instead of one`);
+  check(Boolean(provisionedBusinessId), "Provisioning success did not navigate to the created restaurant");
   await page.waitForLoadState("networkidle");
   await page.keyboard.press("Control+k");
   await page.getByRole("dialog", { name: "Command palette" }).waitFor({ state: "visible", timeout: 10000 });
@@ -141,6 +174,22 @@ try {
   console.log(JSON.stringify({ ok: true, assertions, routes: routes.length, mobile: "PASS", unauthorized: "DENIED" }));
 } finally {
   if (browser) await browser.close();
+  if (provisionedBusinessId) {
+    for (const table of ["platform_tasks","support_tickets","platform_incidents","deployment_records","platform_integration_status","mobile_app_records","platform_domain_records","service_entitlements","restaurant_subscriptions"]) {
+      await service.from(table).delete().eq("business_id", provisionedBusinessId);
+    }
+    const onboarding = await service.from("restaurant_onboarding").select("id").eq("business_id", provisionedBusinessId);
+    for (const row of onboarding.data ?? []) await service.from("onboarding_documents").delete().eq("onboarding_id", row.id);
+    await service.from("staff_invitations").delete().eq("business_id", provisionedBusinessId);
+    await service.from("restaurant_onboarding").delete().eq("business_id", provisionedBusinessId);
+    await service.from("platform_audit_logs").delete().eq("business_id", provisionedBusinessId);
+    await service.from("businesses").delete().eq("id", provisionedBusinessId);
+  }
+  if (provisionedOwnerEmail) {
+    const invitedUsers = await service.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const invited = invitedUsers.data?.users.find(candidate => candidate.email?.toLowerCase() === provisionedOwnerEmail.toLowerCase());
+    if (invited) await service.auth.admin.deleteUser(invited.id);
+  }
   if (userId) {
     await service.from("platform_audit_logs").delete().eq("actor_user_id", userId);
     await service.from("platform_staff").delete().eq("user_id", userId);
