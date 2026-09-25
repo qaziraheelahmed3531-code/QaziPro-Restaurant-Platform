@@ -24,6 +24,7 @@ const email = `qa-platform-browser-${randomUUID()}@qa.example`;
 const password = `${randomBytes(18).toString("base64url")}A1!`;
 let userId;
 let unauthorizedUserId;
+let onboardingPackageId;
 let provisionedBusinessId;
 let provisionedOwnerEmail;
 let browser;
@@ -49,6 +50,19 @@ try {
   const client = createClient(url, publicKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const signed = checked(await client.auth.signInWithPassword({ email, password }), "QA session");
   if (!signed.session) throw new Error("QA session missing");
+  const packageCode = `QA_BROWSER_${Date.now()}`;
+  const onboardingPackage = checked(await service.from("service_packages").insert({
+    code: packageCode,
+    name: "QA Browser Package",
+    description: "Temporary package for the public staging onboarding acceptance flow.",
+    currency: "PKR",
+    base_fee: 10000,
+    setup_fee: 5000,
+    included_branches: 1,
+    billing_frequency: "MONTHLY",
+    is_active: true,
+  }).select("id").single(), "Create onboarding package fixture");
+  onboardingPackageId = onboardingPackage.id;
   checked(await client.from("platform_incidents").select("id,business_id,branch_id,severity,health_state,environment,component,title,status,occurrences,last_seen_at,assigned_staff_user_id,businesses(name)", { count: "exact" }).order("last_seen_at", { ascending: false }).range(0, 49), "Health data");
   checked(await client.from("businesses").select("id,name,slug,branches:branches!branches_business_id_fkey(id,name,code)").order("name").limit(500), "Business options");
   checked(await client.from("branches").select("id,business_id,name,restaurant_name,city,is_active,online_ordering_enabled,temporarily_closed,updated_at,businesses:businesses!branches_business_id_fkey(name)").order("updated_at", { ascending: false }).range(0, 49), "Branch directory data");
@@ -185,6 +199,7 @@ try {
     await service.from("platform_audit_logs").delete().eq("business_id", provisionedBusinessId);
     await service.from("businesses").delete().eq("id", provisionedBusinessId);
   }
+  if (onboardingPackageId) await service.from("service_packages").delete().eq("id", onboardingPackageId);
   if (provisionedOwnerEmail) {
     const invitedUsers = await service.auth.admin.listUsers({ page: 1, perPage: 1000 });
     const invited = invitedUsers.data?.users.find(candidate => candidate.email?.toLowerCase() === provisionedOwnerEmail.toLowerCase());
