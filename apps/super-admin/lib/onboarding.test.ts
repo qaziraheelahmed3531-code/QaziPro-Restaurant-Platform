@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { onboardingFieldMessage, validateProvisioningRequiredFields } from "./onboarding"
+import { appIdentifierPattern, onboardingFieldMessage, validateProvisioningRequiredFields } from "./onboarding"
 
 const valid = {
   name: "QaziPro QA Restaurant",
@@ -9,6 +9,9 @@ const valid = {
   packageId: "00000000-0000-4000-8000-000000000001",
   branchNames: ["Main Branch"],
   branchCodes: ["B1"],
+  branchCities: ["Islamabad"],
+  branchCountryCodes: ["PK"],
+  branchAddresses: ["Blue Area, Islamabad"],
 }
 
 describe("onboarding wizard validation", () => {
@@ -24,11 +27,20 @@ describe("onboarding wizard validation", () => {
     ["city", { city: "" }, "restaurant's city"],
     ["branchName", { branchNames: [""] }, "name for every branch"],
     ["branchCode", { branchCodes: [] }, "code for every branch"],
+    ["branchCity", { branchCities: [""] }, "city for every branch"],
+    ["branchCountryCode", { branchCountryCodes: ["Pakistan"] }, "two-letter country code"],
+    ["branchAddress", { branchAddresses: [""] }, "address for every branch"],
   ])("rejects the hidden required %s field when missing", (_field, patch, expected) => {
     expect(validateProvisioningRequiredFields({ ...valid, ...patch })).toContain(expected)
   })
 
   it("accepts a complete payload", () => {
     expect(validateProvisioningRequiredFields(valid)).toBeNull()
+  })
+
+  it("accepts only canonical reverse-domain mobile identifiers", () => {
+    expect(appIdentifierPattern.test("com.qazipro.kingscafe")).toBe(true)
+    expect(appIdentifierPattern.test("qazipro.kingscafe")).toBe(false)
+    expect(appIdentifierPattern.test("com.qazipro.KingsCafe")).toBe(false)
   })
 })

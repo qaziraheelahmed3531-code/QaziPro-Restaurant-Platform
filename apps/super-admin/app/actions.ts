@@ -7,13 +7,21 @@ import { requirePlatformPermission } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { createPlatformAdminClient } from "@/lib/supabase/admin"
 import { slugifyRestaurant, type RestaurantLifecycle } from "@/lib/platform"
-import { validateProvisioningRequiredFields } from "@/lib/onboarding"
+import { appIdentifierPattern, supportedServiceKeys, validateProvisioningRequiredFields } from "@/lib/onboarding"
 
 export type ActionState = { error?: string; requestId?: string }
 
 const text = (form: FormData, name: string) => String(form.get(name) ?? "").trim()
 const money = (form: FormData, name: string) => Math.max(0, Math.round(Number(form.get(name)) || 0))
 const tokenHash = (value: string) => createHash("sha256").update(value).digest("hex")
+const optionalNumber = (form: FormData, name: string) => {
+  const value = text(form, name)
+  return value === "" ? null : Number(value)
+}
+const safeReturnPath = (form: FormData, fallback: string) => {
+  const value = text(form, "returnTo")
+  return value.startsWith("/") && !value.startsWith("//") ? value : fallback
+}
 
 export async function provisionRestaurantAction(_: ActionState, form: FormData): Promise<ActionState> {
   await requirePlatformPermission("restaurants.create")
@@ -27,13 +35,46 @@ export async function provisionRestaurantAction(_: ActionState, form: FormData):
   const slug = slugifyRestaurant(text(form, "slug") || name)
   const branchNames = form.getAll("branchName").map(String).map((value) => value.trim())
   const branchCodes = form.getAll("branchCode").map(String).map((value) => value.trim())
-  const validationError = validateProvisioningRequiredFields({ name, ownerName, ownerEmail, city, packageId, branchNames, branchCodes })
+  const branchCities = branchNames.map((_, index) => text(form, `branchCity${index}`))
+  const branchCountryCodes = branchNames.map((_, index) => text(form, `branchCountryCode${index}`).toUpperCase())
+  const branchAddresses = branchNames.map((_, index) => text(form, `branchAddress${index}`))
+  const validationError = validateProvisioningRequiredFields({ name, ownerName, ownerEmail, city, packageId, branchNames, branchCodes, branchCities, branchCountryCodes, branchAddresses })
   if (validationError || !slug) return { error: validationError ?? "Enter a valid public restaurant key.", requestId }
   const supabase = await createClient()
   const activePackage = await supabase.from("service_packages").select("id").eq("id", packageId).eq("is_active", true).maybeSingle()
   if (activePackage.error) return { error: "Service package validation is temporarily unavailable.", requestId }
   if (!activePackage.data) return { error: "Select an active service package before provisioning.", requestId }
   const services = form.getAll("services").map(String)
+  if (services.some((service) => !supportedServiceKeys.has(service))) return { error: "One or more selected services are not supported.", requestId }
+  const androidId = text(form, "androidId").toLowerCase()
+  const iosId = text(form, "iosId").toLowerCase()
+  if (services.includes("mobile.android") && !appIdentifierPattern.test(androidId)) return { error: "Enter a valid Android package ID such as com.qazipro.restaurant.", requestId }
+  if (services.includes("mobile.ios") && !appIdentifierPattern.test(iosId)) return { error: "Enter a valid iOS bundle ID such as com.qazipro.restaurant.", requestId }
+  const branches = branchNames.map((branchName, index) => {
+    const latitude = optionalNumber(form, `branchLatitude${index}`)
+    const longitude = optionalNumber(form, `branchLongitude${index}`)
+    const hasOneCoordinate = latitude !== null || longitude !== null
+    const hasValidCoordinates = latitude !== null && longitude !== null && Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && (latitude !== 0 || longitude !== 0)
+    if (hasOneCoordinate && !hasValidCoordinates) return null
+    return {
+      name: branchName,
+      code: (branchCodes[index] || `B${index + 1}`).toUpperCase(),
+      phone: text(form, `branchPhone${index}`),
+      address: branchAddresses[index],
+      city: branchCities[index],
+      region: text(form, `branchRegion${index}`),
+      countryCode: branchCountryCodes[index],
+      countryName: text(form, `branchCountryName${index}`),
+      postalCode: text(form, `branchPostalCode${index}`),
+      latitude, longitude,
+      locationProvider: hasValidCoordinates ? text(form, `branchLocationProvider${index}`) || "geoapify" : "",
+      providerPlaceId: text(form, `branchProviderPlaceId${index}`),
+      locationName: text(form, `branchLocationName${index}`),
+      pickupEnabled: services.includes("ordering.pickup"),
+      deliveryEnabled: false,
+    }
+  })
+  if (branches.some((branch) => branch === null)) return { error: "Choose a complete valid location or clear both branch coordinates.", requestId }
   const payload = {
     name,
     slug,
@@ -59,22 +100,15 @@ export async function provisionRestaurantAction(_: ActionState, form: FormData):
     billingFrequency: text(form, "billingFrequency") || "MONTHLY",
     commercialNotes: text(form, "commercialNotes"),
     services,
-    branches: branchNames.map((branchName, index) => ({
-      name: branchName,
-      code: (branchCodes[index] || `B${index + 1}`).toUpperCase(),
-      address: text(form, `branchAddress${index}`) || text(form, "address"),
-      city: text(form, "city"),
-      pickupEnabled: true,
-      deliveryEnabled: form.get("deliveryEnabled") === "on",
-    })),
+    branches,
     customerDomain: text(form, "customerDomain"),
     adminDomain: text(form, "adminDomain"),
     androidEnabled: services.includes("mobile.android"),
     androidName: text(form, "androidName") || name,
-    androidId: text(form, "androidId"),
+    androidId,
     iosEnabled: services.includes("mobile.ios"),
     iosName: text(form, "iosName") || name,
-    iosId: text(form, "iosId"),
+    iosId,
     reason: "Guided Super Admin onboarding",
   }
   const { data, error } = await supabase.rpc("platform_provision_restaurant", {
@@ -121,21 +155,155 @@ export async function createServicePackageAction(form: FormData) {
   redirect(error ? "/packages?error=create" : "/packages?created=1")
 }
 
+export async function setServicePackageStatusAction(form: FormData) {
+  const context = await requirePlatformPermission("subscriptions.manage")
+  const admin = createPlatformAdminClient()
+  if (!admin) redirect("/packages?error=configuration")
+  const packageId = text(form, "packageId"), active = text(form, "active") === "true"
+  const before = await admin.from("service_packages").select("id,name,is_active").eq("id", packageId).maybeSingle()
+  if (!before.data) redirect("/packages?error=missing")
+  if (!active) {
+    const inUse = await admin.from("restaurant_subscriptions").select("id", { count: "exact", head: true }).eq("package_id", packageId).in("status", ["TRIAL", "ACTIVE", "PAST_DUE", "GRACE_PERIOD"])
+    if (inUse.error || Number(inUse.count) > 0) redirect("/packages?error=in-use")
+  }
+  const updated = await admin.from("service_packages").update({ is_active: active, updated_at: new Date().toISOString() }).eq("id", packageId)
+  if (updated.error) redirect("/packages?error=status")
+  await admin.from("platform_audit_logs").insert({ actor_user_id: context.userId, action: active ? "SERVICE_PACKAGE_ACTIVATED" : "SERVICE_PACKAGE_DEACTIVATED", target_type: "service_packages", target_id: packageId, reason: text(form, "reason") || "Service package lifecycle change", before_data: before.data, after_data: { is_active: active } })
+  revalidatePath("/packages")
+  revalidatePath("/onboarding/new")
+  redirect("/packages?updated=1")
+}
+
 export async function addBranchAction(form: FormData) {
   await requirePlatformPermission("branches.manage")
   const businessId = text(form, "businessId")
+  const returnTo = safeReturnPath(form, `/restaurants/${businessId}`)
   const supabase = await createClient()
   const { error } = await supabase.rpc("platform_add_branch", {
     p_business_id: businessId,
     p_payload: {
-      name: text(form, "name"), code: text(form, "code"), address: text(form, "address"), city: text(form, "city"),
-      countryCode: text(form, "countryCode").toUpperCase() || "PK", timezone: text(form, "timezone") || "Asia/Karachi",
+      name: text(form, "name"), code: text(form, "code"), phone: text(form, "phone"), address: text(form, "address"), city: text(form, "city"), region: text(form, "region"),
+      countryCode: text(form, "countryCode").toUpperCase() || "PK", countryName: text(form, "countryName"), postalCode: text(form, "postalCode"), timezone: text(form, "timezone") || "Asia/Karachi",
+      latitude: optionalNumber(form, "latitude"), longitude: optionalNumber(form, "longitude"), locationProvider: text(form, "locationProvider"), providerPlaceId: text(form, "providerPlaceId"), locationName: text(form, "locationName"),
       pickupEnabled: form.get("pickupEnabled") === "on", deliveryEnabled: form.get("deliveryEnabled") === "on", reason: text(form, "reason"),
     },
   })
   revalidatePath(`/restaurants/${businessId}`)
   revalidatePath("/branches")
-  redirect(error ? `/restaurants/${businessId}?error=branch` : `/restaurants/${businessId}?branch=created`)
+  redirect(error ? `${returnTo}?error=branch` : `${returnTo}?branch=created`)
+}
+
+export async function updateRestaurantAction(form: FormData) {
+  const context = await requirePlatformPermission("restaurants.edit")
+  const admin = createPlatformAdminClient()
+  const businessId = text(form, "businessId")
+  if (!admin) redirect(`/restaurants/${businessId}?error=configuration`)
+  const scope = await verifyPlatformScope(admin, businessId, "")
+  const name = text(form, "name"), ownerName = text(form, "ownerName"), ownerEmail = text(form, "ownerEmail").toLowerCase(), city = text(form, "city")
+  if (!scope?.businessId || name.length < 2 || ownerName.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail) || !city) redirect(`/restaurants/${businessId}?error=validation`)
+  const before = await admin.from("businesses").select("name,phone,email,address,city,currency,timezone").eq("id", businessId).maybeSingle()
+  if (!before.data) redirect(`/restaurants/${businessId}?error=scope`)
+  const businessValues = { name, phone: text(form, "phone") || null, email: ownerEmail, address: text(form, "address") || null, city, currency: text(form, "currency").toUpperCase() || "PKR", timezone: text(form, "timezone") || "Asia/Karachi", updated_at: new Date().toISOString() }
+  const [businessUpdate, onboardingUpdate, brandingUpdate] = await Promise.all([
+    admin.from("businesses").update(businessValues).eq("id", businessId),
+    admin.from("restaurant_onboarding").update({ owner_name: ownerName, owner_email: ownerEmail, owner_phone: text(form, "ownerPhone") || null, commercial_notes: text(form, "commercialNotes"), updated_at: new Date().toISOString() }).eq("business_id", businessId),
+    admin.from("business_branding").update({ display_name: text(form, "displayName") || name, updated_at: new Date().toISOString() }).eq("business_id", businessId),
+  ])
+  if (businessUpdate.error || onboardingUpdate.error || brandingUpdate.error) redirect(`/restaurants/${businessId}?error=save`)
+  await admin.from("platform_audit_logs").insert({ actor_user_id: context.userId, action: "RESTAURANT_PROFILE_UPDATED", target_type: "businesses", target_id: businessId, business_id: businessId, reason: text(form, "reason") || "Restaurant profile update", before_data: before.data, after_data: businessValues })
+  revalidatePath(`/restaurants/${businessId}`)
+  revalidatePath("/restaurants")
+  redirect(`/restaurants/${businessId}?profile=updated`)
+}
+
+export async function resendRestaurantOwnerInvitationAction(form: FormData) {
+  const context = await requirePlatformPermission("restaurants.edit")
+  const admin = createPlatformAdminClient()
+  const businessId = text(form, "businessId")
+  const invitationId = text(form, "invitationId")
+  if (!admin || !process.env.RESTAURANT_ADMIN_URL) redirect(`/restaurants/${businessId}?error=invite-configuration`)
+  const scope = await verifyPlatformScope(admin, businessId, "")
+  if (!scope?.businessId) redirect(`/restaurants/${businessId}?error=scope`)
+  const invitation = await admin.from("staff_invitations").select("id,email,role,status,is_active").eq("id", invitationId).eq("business_id", businessId).eq("role", "OWNER").maybeSingle()
+  if (!invitation.data || invitation.data.status !== "PENDING" || !invitation.data.is_active) redirect(`/restaurants/${businessId}?error=invite-state`)
+  let portalUrl: URL
+  try { portalUrl = new URL(process.env.RESTAURANT_ADMIN_URL) } catch { redirect(`/restaurants/${businessId}?error=invite-configuration`) }
+  if (!['http:', 'https:'].includes(portalUrl.protocol)) redirect(`/restaurants/${businessId}?error=invite-configuration`)
+  const result = await admin.auth.admin.inviteUserByEmail(String(invitation.data.email), {
+    redirectTo: `${portalUrl.origin}/auth/callback`,
+    data: { invited_business_id: businessId, invited_role: "OWNER" },
+  })
+  const deliveryStatus = result.error ? "FAILED" : "SENT"
+  await admin.from("staff_invitations").update({ delivery_status: deliveryStatus, updated_at: new Date().toISOString() }).eq("id", invitationId).eq("business_id", businessId)
+  await admin.from("platform_audit_logs").insert({
+    actor_user_id: context.userId,
+    action: result.error ? "RESTAURANT_OWNER_INVITATION_FAILED" : "RESTAURANT_OWNER_INVITATION_RESENT",
+    target_type: "staff_invitations",
+    target_id: invitationId,
+    business_id: businessId,
+    reason: text(form, "reason") || "Restaurant owner invitation resend",
+    after_data: { email: invitation.data.email, role: invitation.data.role, delivery_status: deliveryStatus },
+  })
+  revalidatePath(`/restaurants/${businessId}`)
+  redirect(`/restaurants/${businessId}?${result.error ? "error=invite-delivery" : "invite=sent"}`)
+}
+
+export async function setRestaurantOwnerInvitationStatusAction(form: FormData) {
+  const context = await requirePlatformPermission("restaurants.edit")
+  const admin = createPlatformAdminClient()
+  const businessId = text(form, "businessId")
+  const invitationId = text(form, "invitationId")
+  const active = text(form, "active") === "true"
+  if (!admin) redirect(`/restaurants/${businessId}?error=invite-configuration`)
+  const scope = await verifyPlatformScope(admin, businessId, "")
+  if (!scope?.businessId) redirect(`/restaurants/${businessId}?error=scope`)
+  const invitation = await admin.from("staff_invitations").select("id,email,role,status,is_active").eq("id", invitationId).eq("business_id", businessId).eq("role", "OWNER").maybeSingle()
+  if (!invitation.data || invitation.data.status !== "PENDING") redirect(`/restaurants/${businessId}?error=invite-state`)
+  const updated = await admin.from("staff_invitations").update({ is_active: active, updated_at: new Date().toISOString() }).eq("id", invitationId).eq("business_id", businessId).eq("status", "PENDING")
+  if (updated.error) redirect(`/restaurants/${businessId}?error=invite-update`)
+  await admin.from("platform_audit_logs").insert({
+    actor_user_id: context.userId,
+    action: active ? "RESTAURANT_OWNER_INVITATION_ACTIVATED" : "RESTAURANT_OWNER_INVITATION_DEACTIVATED",
+    target_type: "staff_invitations",
+    target_id: invitationId,
+    business_id: businessId,
+    reason: text(form, "reason") || "Restaurant owner pending invitation access control",
+    before_data: invitation.data,
+    after_data: { is_active: active },
+  })
+  revalidatePath(`/restaurants/${businessId}`)
+  redirect(`/restaurants/${businessId}?invite=updated`)
+}
+
+export async function updateBranchAction(form: FormData) {
+  const context = await requirePlatformPermission("branches.manage")
+  const admin = createPlatformAdminClient()
+  const businessId = text(form, "businessId"), branchId = text(form, "branchId")
+  if (!admin) redirect(`/restaurants/${businessId}?error=configuration`)
+  const scope = await verifyPlatformScope(admin, businessId, branchId)
+  const name = text(form, "name"), code = text(form, "code").toUpperCase(), address = text(form, "address"), city = text(form, "city"), countryCode = text(form, "countryCode").toUpperCase()
+  const latitude = optionalNumber(form, "latitude"), longitude = optionalNumber(form, "longitude")
+  const hasCoordinates = latitude !== null || longitude !== null
+  const coordinatesValid = latitude !== null && longitude !== null && Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && (latitude !== 0 || longitude !== 0)
+  if (!scope?.branchId || name.length < 2 || !code || !address || !city || !/^[A-Z]{2}$/.test(countryCode) || (hasCoordinates && !coordinatesValid)) redirect(`/restaurants/${businessId}?error=branch-validation`)
+  const before = await admin.from("branches").select("*").eq("id", branchId).eq("business_id", businessId).maybeSingle()
+  if (!before.data) redirect(`/restaurants/${businessId}?error=scope`)
+  const deliveryRule = await admin.from("delivery_rules").select("branch_id").eq("branch_id", branchId).maybeSingle()
+  const pickupEnabled = form.get("pickupEnabled") === "on"
+  const deliveryEnabled = form.get("deliveryEnabled") === "on" && Boolean(deliveryRule.data) && coordinatesValid
+  const values = {
+    name, code, phone: text(form, "phone") || null, address, formatted_address: address, city, region: text(form, "region") || null,
+    country_code: countryCode, country_name: text(form, "countryName") || null, postal_code: text(form, "postalCode") || null, timezone: text(form, "timezone") || "Asia/Karachi",
+    latitude: coordinatesValid ? latitude : null, longitude: coordinatesValid ? longitude : null, location_provider: coordinatesValid ? text(form, "locationProvider") || "geoapify" : null,
+    provider_place_id: coordinatesValid ? text(form, "providerPlaceId") || null : null, location_name: coordinatesValid ? text(form, "locationName") || null : null, location_locality: city,
+    pickup_enabled: pickupEnabled, delivery_enabled: deliveryEnabled, online_ordering_enabled: pickupEnabled || deliveryEnabled ? Boolean(before.data.online_ordering_enabled) : false, updated_at: new Date().toISOString(),
+  }
+  const updated = await admin.from("branches").update(values).eq("id", branchId).eq("business_id", businessId)
+  if (updated.error) redirect(`/restaurants/${businessId}?error=${updated.error.code === "23505" ? "branch-conflict" : "branch-save"}`)
+  await admin.from("platform_audit_logs").insert({ actor_user_id: context.userId, action: "BRANCH_UPDATED", target_type: "branches", target_id: branchId, business_id: businessId, reason: text(form, "reason") || "Branch configuration update", before_data: before.data, after_data: { ...values, deliveryRequested: form.get("deliveryEnabled") === "on", deliveryEnabled } })
+  revalidatePath(`/restaurants/${businessId}`)
+  revalidatePath("/branches")
+  redirect(`/restaurants/${businessId}?branch=updated${form.get("deliveryEnabled") === "on" && !deliveryEnabled ? "&delivery=pending" : ""}`)
 }
 
 export async function transitionRestaurantAction(form: FormData) {
@@ -368,25 +536,26 @@ export async function recordDeploymentAction(form: FormData) {
 export async function setBranchStatusAction(form: FormData) {
   const context = await requirePlatformPermission("branches.manage")
   const admin = createPlatformAdminClient()
-  if (!admin) redirect("/branches?error=configuration")
   const businessId = text(form, "businessId"), branchId = text(form, "branchId")
+  const returnTo = safeReturnPath(form, "/branches")
+  if (!admin) redirect(`${returnTo}?error=configuration`)
   const scope = await verifyPlatformScope(admin, businessId, branchId)
   const active = text(form, "active") === "true"
   const { data: before } = scope?.branchId
     ? await admin.from("branches").select("id,is_active,online_ordering_enabled").eq("id", scope.branchId).eq("business_id", businessId).maybeSingle()
     : { data: null }
-  if (!scope?.branchId || !before) redirect("/branches?error=scope")
+  if (!scope?.branchId || !before) redirect(`${returnTo}?error=scope`)
   if (!active) {
     const remaining = await admin.from("branches").select("id", { count: "exact", head: true }).eq("business_id", businessId).eq("is_active", true).neq("id", branchId)
-    if (remaining.error || !remaining.count) redirect("/branches?error=last-active")
+    if (remaining.error || !remaining.count) redirect(`${returnTo}?error=last-active`)
   }
   const patch = active ? { is_active: true } : { is_active: false, online_ordering_enabled: false }
   const { error } = await admin.from("branches").update(patch).eq("id", branchId).eq("business_id", businessId)
-  if (error) redirect("/branches?error=update")
+  if (error) redirect(`${returnTo}?error=update`)
   await admin.from("platform_audit_logs").insert({ actor_user_id: context.userId, action: active ? "BRANCH_ACTIVATED" : "BRANCH_DEACTIVATED", target_type: "branches", target_id: branchId, business_id: businessId, reason: text(form, "reason") || "Platform branch status change", before_data: before, after_data: patch })
   revalidatePath("/branches")
   revalidatePath(`/restaurants/${businessId}`)
-  redirect("/branches?updated=1")
+  redirect(`${returnTo}?branchStatus=updated`)
 }
 
 export async function upsertDomainAction(form: FormData) {
@@ -452,17 +621,18 @@ export async function updateSubscriptionAction(form: FormData) {
 export async function setEntitlementAction(form: FormData) {
   const context = await requirePlatformPermission("subscriptions.manage")
   const admin = createPlatformAdminClient()
-  if (!admin) redirect("/billing?error=configuration")
+  const returnTo = safeReturnPath(form, "/billing")
+  if (!admin) redirect(`${returnTo}?error=configuration`)
   const businessId = text(form, "businessId"), capability = text(form, "capability").toLowerCase()
   const scope = await verifyPlatformScope(admin, businessId, "")
-  if (!scope?.businessId || !/^[a-z][a-z0-9_.-]+$/.test(capability)) redirect("/billing?error=entitlement")
+  if (!scope?.businessId || !supportedServiceKeys.has(capability)) redirect(`${returnTo}?error=entitlement`)
   const values = { business_id: businessId, capability_key: capability, source: "OVERRIDE", enabled: text(form, "enabled") === "true", effective_until: text(form, "effectiveUntil") || null, notes: text(form, "notes"), updated_at: new Date().toISOString() }
   const result = await admin.from("service_entitlements").upsert(values, { onConflict: "business_id,capability_key,source" }).select("id").single()
-  if (result.error || !result.data) redirect("/billing?error=entitlement-save")
+  if (result.error || !result.data) redirect(`${returnTo}?error=entitlement-save`)
   await admin.from("platform_audit_logs").insert({ actor_user_id: context.userId, action: "ENTITLEMENT_OVERRIDE_SAVED", target_type: "service_entitlements", target_id: result.data.id, business_id: businessId, reason: text(form, "reason") || "Restaurant capability override", after_data: values })
   revalidatePath("/billing")
   revalidatePath(`/restaurants/${businessId}`)
-  redirect("/billing?entitlement=1")
+  redirect(`${returnTo}?entitlement=1`)
 }
 
 export async function upsertIntegrationStatusAction(form: FormData) {

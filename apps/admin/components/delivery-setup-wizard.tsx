@@ -25,6 +25,7 @@ export function DeliverySetupWizard({ businessId, branchId, locationOnly=false }
   const [placeId, setPlaceId] = useState("")
   const [selectedPlaceName, setSelectedPlaceName] = useState("")
   const [restaurantName, setRestaurantName] = useState("")
+  const [restaurantLogo, setRestaurantLogo] = useState("")
   const [savedCity, setSavedCity] = useState("")
   const [city, setCity] = useState("")
   const [region, setRegion] = useState("")
@@ -49,13 +50,15 @@ export function DeliverySetupWizard({ businessId, branchId, locationOnly=false }
     if (!branchId) { setLoading(false); return }
     setLoading(true); setError("")
     const supabase = createClient()
-    const [branchResult, areasResult] = await Promise.all([
+    const [branchResult, areasResult, brandingResult] = await Promise.all([
       supabase.from("branches").select("id,name,restaurant_name,location_revision,city,country_code,country_name,region,postal_code,google_place_id,google_locality,location_provider,provider_place_id,location_name,location_locality,address,formatted_address,latitude,longitude,timezone").eq("id", branchId).eq("business_id", businessId).single(),
       supabase.from("delivery_areas").select("id,name,parent_id,level,city").eq("branch_id", branchId).eq("is_active", true).order("sort_order").order("name"),
+      supabase.from("business_branding").select("logo_url").eq("business_id", businessId).maybeSingle(),
     ])
     if (branchResult.error) setError(branchResult.error.message)
     else { const value = branchResult.data as Branch; setCountryCode(value.country_code || "pk"); setCountryName(value.country_name || "Pakistan"); setPostalCode(value.postal_code || ""); setPlaceId(value.provider_place_id || ""); setSelectedPlaceName(value.location_name || ""); setRestaurantName(value.restaurant_name || value.name.split(" — ")[0] || ""); setCity(value.city || value.location_locality || value.google_locality || ""); setSavedCity(value.city || ""); setRegion(value.region || ""); setAddress(value.formatted_address || value.address || ""); setPoint(pointOf(value)) }
     setAreas((areasResult.data ?? []) as Area[])
+    setRestaurantLogo(String(brandingResult.data?.logo_url ?? ""))
     setLoading(false)
   }
   // The loader synchronizes this client editor with the selected branch.
@@ -173,7 +176,7 @@ export function DeliverySetupWizard({ businessId, branchId, locationOnly=false }
         <label><span>Province / state <small>Optional</small></span><input value={region} onChange={event => setRegion(event.target.value)} placeholder="Punjab" /></label></details>
         <div className="setup-actions"><button type="button" className="button button--outline" onClick={useCurrent} disabled={busy}><LocateFixed size={16} /> Use current location</button><button type="button" className="button" onClick={() => void save()} disabled={busy || !point}>{busy ? "Saving…" : "Save restaurant location"}</button></div>
       </div>
-      <LocationMap label="Restaurant location" point={point} center={point} onChange={value => void reversePoint(value)} />
+      <LocationMap label="Restaurant location" point={point} center={point} markerImageUrl={restaurantLogo} onChange={value => void reversePoint(value)} />
     </div>
     {!locationOnly&&<div className="delivery-discovery"><div><span className="eyebrow">CURRENT SERVICE AREA</span><h3>{city || "Choose a city"}</h3><p>{areas.length} active area{areas.length===1?"":"s"}. Provider suggestions are reviewed before import; manual Add Area remains available.</p></div><div className="setup-discovery-actions"><button type="button" className="button button--outline" onClick={() => void lookup("areas")} disabled={busy || !city.trim() || !point}><Sparkles size={16} /> Discover / refresh areas</button></div></div>}
     {candidates.length > 0 && <div className="candidate-list"><div className="candidate-list__header"><strong>{candidates.length} areas found for {city}</strong><div><button type="button" onClick={() => setSelected(candidates.filter(item=>!existingNames.has(item.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,""))).map(item => item.providerPlaceId || `${item.slug}:${item.latitude}`))}>Select all new</button><button type="button" onClick={() => setSelected([])}>Clear</button></div></div>{candidates.map(item => { const id = item.providerPlaceId || `${item.slug}:${item.latitude}`; const duplicate = existingNames.has(item.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,"")); return <label key={id} className={duplicate ? "is-duplicate" : undefined}><input type="checkbox" disabled={duplicate} checked={selected.includes(id)} onChange={event => setSelected(current => event.target.checked ? [...current, id] : current.filter(value => value !== id))} /><span><strong>{item.name}</strong><small>{item.formattedAddress}{duplicate ? " · already configured" : ""}</small></span></label> })}<div className="setup-actions"><button type="button" className="button button--outline" onClick={()=>void importAreas(candidates.filter(item=>!existingNames.has(item.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,""))).map(item=>item.providerPlaceId||`${item.slug}:${item.latitude}`))}>Import all</button><button data-import-areas type="button" className="button" onClick={() => void importAreas()} disabled={busy || selected.length === 0}>Import selected</button></div></div>}

@@ -31,6 +31,23 @@ let browser;
 let assertions = 0;
 function check(condition, message) { assertions++; assert.ok(condition, message); }
 function checked(result, label) { if (result.error) throw new Error(`${label}: ${result.error.message}`); return result.data; }
+async function waitForData(loader, predicate, message, timeout = 30000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const value = await loader();
+    if (predicate(value)) return value;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw new Error(message);
+}
+async function stableGoto(page, target) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try { await page.goto(target, { waitUntil: "domcontentloaded" }); return; }
+    catch (error) { lastError = error; await page.waitForTimeout(300); }
+  }
+  throw lastError;
+}
 function sessionCookies(session) {
   const encoded = `base64-${Buffer.from(JSON.stringify(session)).toString("base64url")}`;
   const pieces = encoded.match(/.{1,3000}/g) ?? [];
@@ -65,7 +82,7 @@ try {
   onboardingPackageId = onboardingPackage.id;
   checked(await client.from("platform_incidents").select("id,business_id,branch_id,severity,health_state,environment,component,title,status,occurrences,last_seen_at,assigned_staff_user_id,businesses(name)", { count: "exact" }).order("last_seen_at", { ascending: false }).range(0, 49), "Health data");
   checked(await client.from("businesses").select("id,name,slug,branches:branches!branches_business_id_fkey(id,name,code)").order("name").limit(500), "Business options");
-  checked(await client.from("branches").select("id,business_id,name,restaurant_name,city,is_active,online_ordering_enabled,temporarily_closed,updated_at,businesses:businesses!branches_business_id_fkey(name)").order("updated_at", { ascending: false }).range(0, 49), "Branch directory data");
+  checked(await client.from("branches").select("id,business_id,code,name,restaurant_name,phone,address,formatted_address,city,region,country_code,country_name,postal_code,timezone,latitude,longitude,location_provider,provider_place_id,location_name,pickup_enabled,delivery_enabled,is_active,online_ordering_enabled,temporarily_closed,updated_at,businesses:businesses!branches_business_id_fkey(name)").order("updated_at", { ascending: false }).range(0, 49), "Branch directory data");
   checked(await client.from("platform_staff").select("user_id,display_name,email,status,mfa_required,last_login_at,access_revoked_at,created_at,platform_staff_roles:platform_staff_roles!platform_staff_roles_staff_user_id_fkey(platform_roles(key,name)),platform_staff_permissions:platform_staff_permissions!platform_staff_permissions_staff_user_id_fkey(permission_key,allowed)").limit(10), "Team directory data");
   checked(await client.from("businesses").select("id,slug,name,short_description,phone,email,address,city,currency,timezone,is_active,created_at,business_branding(*),branches:branches!branches_business_id_fkey(*)").eq("id", "a0000000-0000-4000-8000-000000000001").maybeSingle(), "Restaurant 360 identity");
   const businessId = "a0000000-0000-4000-8000-000000000001";
@@ -80,6 +97,8 @@ try {
     ["tickets", client.from("support_tickets").select("*").eq("business_id", businessId)],
     ["devices", client.from("pos_offline_devices").select("id,branch_id,name:device_name,app_version,is_active,last_sync_at,updated_at").eq("business_id", businessId)],
     ["audit", client.from("platform_audit_logs").select("id,actor_user_id,action,target_type,reason,created_at").eq("business_id", businessId)],
+    ["invitations", client.from("staff_invitations").select("id,email,role,is_active,status,delivery_status,branch_id,branch_ids,created_at,updated_at").eq("business_id", businessId)],
+    ["memberships", client.from("staff_memberships").select("id,user_id,role,is_active,branch_id,created_at,updated_at").eq("business_id", businessId)],
   ];
   const workspaceResults = await Promise.all(workspaceQueries.map(([, query]) => query));
   const workspaceErrors = workspaceResults.flatMap((result, index) => result.error ? [`${workspaceQueries[index][0]}: ${result.error.message}`] : []);
@@ -90,12 +109,33 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.addCookies(sessionCookies(signed.session));
   const page = await context.newPage();
+  page.setDefaultNavigationTimeout(90000);
+  const liveLocationResponse = await context.request.get(`${appUrl}/api/location?mode=autocomplete&q=Islamabad&countryCode=pk`);
+  check(liveLocationResponse.status() === 200, `Authenticated Geoapify proxy returned ${liveLocationResponse.status()}`);
+  const liveLocationBody = await liveLocationResponse.json();
+  check(Array.isArray(liveLocationBody.candidates) && liveLocationBody.candidates.length > 0, "Authenticated Geoapify proxy returned no Islamabad candidates");
+  check(!JSON.stringify(liveLocationBody).includes(process.env.GEOAPIFY_API_KEY ?? "__never__"), "Geoapify server key leaked in the location response");
+  const locationCandidate = {
+    id: "geoapify:qa-islamabad",
+    name: "QA Blue Area Branch",
+    formattedAddress: "Jinnah Avenue, Blue Area, Islamabad, Pakistan",
+    city: "Islamabad",
+    region: "Islamabad Capital Territory",
+    countryCode: "pk",
+    countryName: "Pakistan",
+    postalCode: "44000",
+    latitude: 33.7077,
+    longitude: 73.0498,
+    provider: "geoapify",
+    providerPlaceId: "qa-islamabad-place",
+  };
+  await page.route("**/api/location?**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ candidates: [locationCandidate] }) }));
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
-  const routes = ["/", "/restaurants", "/restaurants/a0000000-0000-4000-8000-000000000001", "/onboarding", "/onboarding/new", "/branches", "/apps", "/domains", "/deployments", "/health", "/support", "/billing", "/packages", "/tasks", "/team", "/integrations", "/audit"];
+  const routes = ["/", "/restaurants", "/onboarding", "/onboarding/new", "/branches", "/apps", "/domains", "/deployments", "/health", "/support", "/billing", "/packages", "/tasks", "/team", "/integrations", "/audit"];
   for (const route of routes) {
-    await page.goto(`${appUrl}${route}`, { waitUntil: "domcontentloaded" });
+    await stableGoto(page, `${appUrl}${route}`);
     try {
       await page.locator(".platform-main h1").waitFor({ timeout: 20000 });
     } catch (error) {
@@ -124,6 +164,8 @@ try {
   await page.locator('[name="ownerName"]').fill("QA Browser Owner");
   await page.locator('[name="ownerEmail"]').fill(provisionedOwnerEmail);
   await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByText("Android App", { exact: true }).click();
+  await page.getByText("iOS App", { exact: true }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   check(await page.getByText("Select an active service package before continuing.").isVisible(), "Missing package did not show an inline error");
@@ -132,6 +174,17 @@ try {
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.locator('[name="branchName"]').fill("QA Main Branch");
+  await context.clearPermissions();
+  await page.getByRole("button", { name: "Use current location" }).click();
+  await page.getByText(/Location permission was denied|Current location is unavailable/).waitFor({ state: "visible", timeout: 15000 });
+  check(await page.getByText(/Location permission was denied|Current location is unavailable/).isVisible(), "Denied browser location did not show a manual-search fallback");
+  await page.getByPlaceholder("Search a business, street or address").fill("Blue Area Islamabad");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("option").click();
+  await page.locator('[name="androidName"]').fill("QA Android App");
+  await page.locator('[name="androidId"]').fill(`com.qazipro.qa${Date.now()}`);
+  await page.locator('[name="iosName"]').fill("QA iOS App");
+  await page.locator('[name="iosId"]').fill(`com.qazipro.iosqa${Date.now()}`);
   await page.getByRole("button", { name: "Continue" }).click();
   await page.locator("form.wizard").evaluate((form) => {
     const wizard = form;
@@ -142,6 +195,93 @@ try {
   provisionedBusinessId = new URL(page.url()).pathname.split("/").at(-1);
   check(provisioningRequests === 1, `Provisioning submitted ${provisioningRequests} requests instead of one`);
   check(Boolean(provisionedBusinessId), "Provisioning success did not navigate to the created restaurant");
+  const persistedBranches = checked(await service.from("branches").select("id,name,address,city,country_code,latitude,longitude,location_provider,provider_place_id,delivery_enabled").eq("business_id", provisionedBusinessId), "Provisioned branch location");
+  check(persistedBranches.length === 1, "Provisioning did not create exactly one initial branch");
+  check(Number(persistedBranches[0].latitude) === locationCandidate.latitude && Number(persistedBranches[0].longitude) === locationCandidate.longitude, "Geoapify coordinates were not persisted");
+  check(persistedBranches[0].provider_place_id === locationCandidate.providerPlaceId && persistedBranches[0].delivery_enabled === false, "Location metadata or safe delivery default was not persisted");
+  const appRecords = checked(await service.from("mobile_app_records").select("platform,enabled,application_identifier,release_status").eq("business_id", provisionedBusinessId), "Provisioned app registry");
+  check(appRecords.length === 2 && appRecords.every(record => record.enabled && record.release_status === "CONFIGURATION"), "Mobile app registry did not start in configuration state");
+  const provisionAudit = checked(await service.from("platform_audit_logs").select("action").eq("business_id", provisionedBusinessId).eq("action", "RESTAURANT_PROVISIONED"), "Provision audit");
+  check(provisionAudit.length === 1, "Provisioning did not create exactly one audit event");
+  check(await page.getByText("Invitation and membership state").isVisible(), "Restaurant 360 owner/access view is missing");
+  const invitation = checked(await service.from("staff_invitations").select("id,is_active,status").eq("business_id", provisionedBusinessId).eq("role", "OWNER").single(), "Owner invitation fixture");
+  check(invitation.status === "PENDING", "Owner invitation is not pending before access management");
+  await page.getByRole("button", { name: "Deactivate invitation" }).click();
+  await waitForData(async () => checked(await service.from("staff_invitations").select("is_active").eq("id", invitation.id).single(), "Disabled owner invitation"), value => value.is_active === false, "Owner invitation deactivation did not complete");
+  await page.getByText("Owner invitation state updated and audited.").waitFor({ state: "visible", timeout: 30000 });
+  await page.getByRole("button", { name: "Activate invitation" }).click();
+  await waitForData(async () => checked(await service.from("staff_invitations").select("is_active").eq("id", invitation.id).single(), "Enabled owner invitation"), value => value.is_active === true, "Owner invitation activation did not complete");
+  check(await page.getByText("Owner invitation state updated and audited.").isVisible(), "Owner invitation access feedback is missing");
+
+  const addBranchDetails = page.locator("#branches details.inline-create");
+  await addBranchDetails.locator("summary").click();
+  await addBranchDetails.locator('[name="name"]').fill("QA Second Branch");
+  await addBranchDetails.locator('[name="code"]').fill("QA2");
+  await addBranchDetails.getByPlaceholder("Search a business, street or address").fill("Blue Area Islamabad");
+  await addBranchDetails.getByRole("button", { name: "Search", exact: true }).click();
+  await addBranchDetails.getByRole("option").click();
+  await addBranchDetails.getByRole("button", { name: "Create branch safely" }).click();
+  await page.waitForURL(value => value.pathname === `/restaurants/${provisionedBusinessId}` && value.searchParams.get("branch") === "created", { timeout: 30000 });
+  let managedBranches = checked(await service.from("branches").select("id,name,is_active").eq("business_id", provisionedBusinessId).order("created_at"), "Second branch");
+  check(managedBranches.length === 2, "Restaurant 360 did not add the second branch");
+
+  let secondBranchCard = page.locator("#branches .branch-management-card").filter({ hasText: "QA Second Branch" });
+  await secondBranchCard.locator("summary", { hasText: "Edit branch" }).click();
+  await secondBranchCard.locator('[name="name"]').fill("QA Second Branch Updated");
+  await secondBranchCard.getByRole("button", { name: "Save branch" }).click();
+  await page.waitForURL(value => value.searchParams.get("branch") === "updated", { timeout: 30000 });
+  managedBranches = checked(await service.from("branches").select("id,name,is_active").eq("business_id", provisionedBusinessId).order("created_at"), "Edited branch");
+  check(managedBranches.some(branch => branch.name === "QA Second Branch Updated"), "Restaurant 360 did not persist the branch edit");
+
+  secondBranchCard = page.locator("#branches .branch-management-card").filter({ hasText: "QA Second Branch Updated" });
+  const secondBranchId = managedBranches.find(branch => branch.name === "QA Second Branch Updated").id;
+  await secondBranchCard.getByRole("button", { name: "Deactivate" }).click();
+  let secondBranchState = await waitForData(async () => checked(await service.from("branches").select("is_active").eq("id", secondBranchId).single(), "Deactivated branch"), value => value.is_active === false, "Branch deactivation did not complete");
+  await secondBranchCard.getByRole("button", { name: "Activate" }).waitFor({ state: "visible", timeout: 30000 });
+  await page.getByText("Change saved and audited.").waitFor({ state: "visible", timeout: 30000 });
+  check(await page.getByText("Change saved and audited.").isVisible(), "Branch deactivation did not show success feedback");
+  check(secondBranchState.is_active === false, "Branch deactivation was not persisted");
+  secondBranchCard = page.locator("#branches .branch-management-card").filter({ hasText: "QA Second Branch Updated" });
+  await secondBranchCard.getByRole("button", { name: "Activate" }).click();
+  secondBranchState = await waitForData(async () => checked(await service.from("branches").select("is_active").eq("id", secondBranchId).single(), "Reactivated branch"), value => value.is_active === true, "Branch reactivation did not complete");
+  await secondBranchCard.getByRole("button", { name: "Deactivate" }).waitFor({ state: "visible", timeout: 30000 });
+  check(await page.getByText("Change saved and audited.").isVisible(), "Branch reactivation did not show success feedback");
+  check(secondBranchState.is_active === true, "Branch reactivation was not persisted");
+
+  let websiteEntitlement = page.locator("#services .entitlement-list > div").filter({ hasText: "Customer Website" });
+  await websiteEntitlement.getByRole("button", { name: "Disable" }).click();
+  let entitlementOverride = await waitForData(async () => checked(await service.from("service_entitlements").select("enabled").eq("business_id", provisionedBusinessId).eq("capability_key", "website.ordering").eq("source", "OVERRIDE").single(), "Disabled entitlement override"), value => value.enabled === false, "Entitlement disable did not complete");
+  await websiteEntitlement.getByRole("button", { name: "Enable" }).waitFor({ state: "visible", timeout: 30000 });
+  await page.getByText("Change saved and audited.").waitFor({ state: "visible", timeout: 30000 });
+  check(await page.getByText("Change saved and audited.").isVisible(), "Entitlement disable did not show success feedback");
+  check(entitlementOverride.enabled === false, "Entitlement disable did not persist canonically");
+  websiteEntitlement = page.locator("#services .entitlement-list > div").filter({ hasText: "Customer Website" });
+  await websiteEntitlement.getByRole("button", { name: "Enable" }).click();
+  entitlementOverride = await waitForData(async () => checked(await service.from("service_entitlements").select("enabled").eq("business_id", provisionedBusinessId).eq("capability_key", "website.ordering").eq("source", "OVERRIDE").single(), "Enabled entitlement override"), value => value.enabled === true, "Entitlement enable did not complete");
+  await websiteEntitlement.getByRole("button", { name: "Disable" }).waitFor({ state: "visible", timeout: 30000 });
+  check(await page.getByText("Change saved and audited.").isVisible(), "Entitlement enable did not show success feedback");
+  check(entitlementOverride.enabled === true, "Entitlement enable did not persist canonically");
+
+  for (const nextLifecycle of ["STAGING", "CLIENT_REVIEW", "READY", "ACTIVE", "SUSPENDED", "ACTIVE"]) {
+    await stableGoto(page, `${appUrl}/restaurants/${provisionedBusinessId}`);
+    const lifecycleForm = page.locator(".transition-form");
+    await lifecycleForm.locator('[name="lifecycle"]').selectOption(nextLifecycle);
+    await lifecycleForm.locator('[name="reason"]').fill(`Browser acceptance ${nextLifecycle}`);
+    await Promise.all([
+      page.waitForURL(value => value.pathname === `/restaurants/${provisionedBusinessId}` && value.searchParams.get("updated") === "1", { waitUntil: "domcontentloaded", timeout: 30000 }),
+      lifecycleForm.getByRole("button", { name: "Apply transition" }).click(),
+    ]);
+    await waitForData(async () => checked(await service.from("restaurant_onboarding").select("lifecycle").eq("business_id", provisionedBusinessId).single(), `${nextLifecycle} transition`), value => value.lifecycle === nextLifecycle, `${nextLifecycle} transition did not complete`);
+    const lifecycleStatus = page.locator(".page-actions .status").filter({ hasText: nextLifecycle.replaceAll("_", " ") }).first();
+    await lifecycleStatus.waitFor({ state: "visible", timeout: 30000 });
+    check(await lifecycleStatus.isVisible(), `${nextLifecycle} transition was not visible after refresh`);
+  }
+  const activeRestaurant = checked(await service.from("businesses").select("is_active").eq("id", provisionedBusinessId).single(), "Restaurant reactivation");
+  check(activeRestaurant.is_active === true, "Restaurant suspend/reactivate flow did not restore runtime activation");
+
+  await page.goto(`${appUrl}/restaurants?q=${encodeURIComponent(provisionedOwnerEmail)}`, { waitUntil: "domcontentloaded" });
+  check(await page.getByText(`QA Browser Restaurant ${onboardingSuffix}`).isVisible(), "Restaurant directory search did not find the owner email");
+  await page.goto(`${appUrl}/restaurants/${provisionedBusinessId}`, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.keyboard.press("Control+k");
   await page.getByRole("dialog", { name: "Command palette" }).waitFor({ state: "visible", timeout: 10000 });
@@ -151,8 +291,15 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: "domcontentloaded" });
   check(await page.getByRole("button", { name: "Open menu" }).isVisible(), "Mobile navigation unavailable");
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-  check(!overflow, "Mobile viewport has horizontal page overflow");
+  const overflow = await page.evaluate(() => ({
+    active: document.documentElement.scrollWidth > window.innerWidth + 1,
+    width: document.documentElement.scrollWidth,
+    offenders: Array.from(document.querySelectorAll<HTMLElement>("body *")).map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { tag: element.tagName.toLowerCase(), className: element.className, right: Math.round(rect.right), width: Math.round(rect.width), text: (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 80) };
+    }).filter((item) => item.right > window.innerWidth + 1 || item.width > window.innerWidth + 1).slice(0, 8),
+  }));
+  check(!overflow.active, `Mobile viewport has horizontal page overflow (${overflow.width}px): ${JSON.stringify(overflow.offenders)}`);
   if (screenshotDir) await page.screenshot({ path: join(screenshotDir, "platform-audit-mobile.png") });
   check(errors.length === 0, `Browser runtime errors: ${errors.join("; ")}`);
 
@@ -166,6 +313,25 @@ try {
   await expiredContext.close();
 
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${appUrl}/restaurants/${provisionedBusinessId}`, { waitUntil: "domcontentloaded" });
+  for (const nextLifecycle of ["OFFBOARDING", "ARCHIVED"]) {
+    await stableGoto(page, `${appUrl}/restaurants/${provisionedBusinessId}`);
+    const lifecycleForm = page.locator(".transition-form");
+    await lifecycleForm.locator('[name="lifecycle"]').selectOption(nextLifecycle);
+    await lifecycleForm.locator('[name="reason"]').fill(`Browser acceptance ${nextLifecycle}`);
+    await Promise.all([
+      page.waitForURL(value => value.pathname === `/restaurants/${provisionedBusinessId}` && value.searchParams.get("updated") === "1", { waitUntil: "domcontentloaded", timeout: 30000 }),
+      lifecycleForm.getByRole("button", { name: "Apply transition" }).click(),
+    ]);
+    await waitForData(async () => checked(await service.from("restaurant_onboarding").select("lifecycle").eq("business_id", provisionedBusinessId).single(), `${nextLifecycle} archive transition`), value => value.lifecycle === nextLifecycle, `${nextLifecycle} archive transition did not complete`);
+    const lifecycleStatus = page.locator(".page-actions .status").filter({ hasText: nextLifecycle.replaceAll("_", " ") }).first();
+    await lifecycleStatus.waitFor({ state: "visible", timeout: 30000 });
+    check(await lifecycleStatus.isVisible(), `${nextLifecycle} archive transition was not visible after refresh`);
+  }
+  const archivedRestaurant = checked(await service.from("restaurant_onboarding").select("lifecycle").eq("business_id", provisionedBusinessId).single(), "Safe archive");
+  check(archivedRestaurant.lifecycle === "ARCHIVED" && await page.getByText("Archived records cannot transition further.").isVisible(), "Safe archive model did not preserve the restaurant in a final state");
+  check(await page.getByRole("button", { name: /Delete restaurant/i }).count() === 0, "An unsafe hard-delete action is exposed");
+
   await page.goto(`${appUrl}/`, { waitUntil: "domcontentloaded" });
   await page.locator(".account-menu summary").click();
   await page.getByRole("button", { name: "Sign out" }).click();

@@ -75,7 +75,7 @@ try {
 
   async function provision(suffix, services, branchCount, androidEnabled) {
     const requestKey = randomUUID()
-    const payload = { name: `QA Restaurant ${suffix}`, slug: `${marker}-${suffix.toLowerCase()}`, ownerName: `Owner ${suffix}`, ownerEmail: `${marker}-${suffix.toLowerCase()}@qa.example`, city: "Islamabad", countryCode: "PK", currency: "PKR", timezone: "Asia/Karachi", packageId, services, branches: Array.from({ length: branchCount }, (_, i) => ({ name: `${suffix} Branch ${i + 1}`, code: `${suffix}${i + 1}`, city: "Islamabad", pickupEnabled: true, deliveryEnabled: i === 0 })), customerDomain: `${marker}-${suffix.toLowerCase()}.example.test`, androidEnabled, androidName: `QA ${suffix}`, androidId: androidEnabled ? `com.qazipro.${marker.replaceAll("-", "")}.${suffix.toLowerCase()}` : "", iosEnabled: false, reason: "Staging acceptance" }
+    const payload = { name: `QA Restaurant ${suffix}`, slug: `${marker}-${suffix.toLowerCase()}`, ownerName: `Owner ${suffix}`, ownerEmail: `${marker}-${suffix.toLowerCase()}@qa.example`, city: "Islamabad", countryCode: "PK", currency: "PKR", timezone: "Asia/Karachi", packageId, services, branches: Array.from({ length: branchCount }, (_, i) => ({ name: `${suffix} Branch ${i + 1}`, code: `${suffix}${i + 1}`, address: `${i + 1} QA Avenue, Islamabad`, city: "Islamabad", countryCode: "PK", pickupEnabled: true, deliveryEnabled: false })), customerDomain: `${marker}-${suffix.toLowerCase()}.example.test`, androidEnabled, androidName: `QA ${suffix}`, androidId: androidEnabled ? `com.qazipro.${marker.replaceAll("-", "")}.${suffix.toLowerCase()}` : "", iosEnabled: false, reason: "Staging acceptance" }
     const first = await ownerClient.rpc("platform_provision_restaurant", { p_request_key: requestKey, p_payload: payload })
     if (first.error) throw first.error
     businesses.push(first.data)
@@ -87,7 +87,7 @@ try {
 
   const restaurantA = await provision("A", ["admin.restaurant","pos.web","website.ordering","mobile.android"], 2, true)
   const restaurantB = await provision("B", ["admin.restaurant","pos.desktop"], 1, false)
-  const added = await ownerClient.rpc("platform_add_branch", { p_business_id: restaurantA, p_payload: { name: "A Branch 3", code: "A3", city: "Islamabad", countryCode: "PK", reason: "Staging acceptance expansion" } })
+  const added = await ownerClient.rpc("platform_add_branch", { p_business_id: restaurantA, p_payload: { name: "A Branch 3", code: "A3", address: "3 QA Avenue, Islamabad", city: "Islamabad", countryCode: "PK", reason: "Staging acceptance expansion" } })
   if (added.error) throw added.error
   const [branchesA, branchesB, appsA, appsB, entitlementsB] = await Promise.all([
     service.from("branches").select("id").eq("business_id", restaurantA), service.from("branches").select("id").eq("business_id", restaurantB),

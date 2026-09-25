@@ -2,9 +2,11 @@
 
 import { useActionState, useCallback, useMemo, useRef, useState } from "react"
 import type { FormEvent } from "react"
+import Link from "next/link"
 import { provisionRestaurantAction, type ActionState } from "@/app/actions"
+import { BranchLocationFields } from "@/components/branch-location-fields"
 import { randomUUID } from "@/lib/browser-id"
-import { onboardingFieldMessage } from "@/lib/onboarding"
+import { appIdentifierPattern, onboardingFieldMessage, supportedServices } from "@/lib/onboarding"
 import { Check, ChevronLeft, ChevronRight, Plus, Rocket, Trash2 } from "lucide-react"
 
 export type OnboardingPackage = {
@@ -20,16 +22,12 @@ export type OnboardingPackage = {
 
 const initial: ActionState = {}
 const steps = ["Business", "Services", "Commercials", "Brand & domains", "Branches & apps", "Review"]
-const services = [
-  ["admin.restaurant", "Restaurant Admin"], ["pos.web", "Web POS"], ["pos.desktop", "Desktop POS"],
-  ["inventory", "Inventory"], ["kitchen", "Kitchen / KDS"], ["waiter", "Waiter"], ["rider", "Rider"],
-  ["website.ordering", "Online Ordering Website"], ["ordering.delivery", "Delivery Orders"], ["ordering.pickup", "Pickup Orders"], ["loyalty", "Loyalty"], ["reports.advanced", "Advanced Reports"],
-  ["mobile.android", "Android App"], ["mobile.ios", "iOS App"],
-]
+const defaultServices = ["admin.restaurant", "pos.web", "pos.desktop", "website.ordering", "ordering.delivery", "ordering.pickup"]
 type WizardControl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
 type ValidationError = { field: string; message: string; step: number }
+type ReviewData = { business: string; owner: string; services: string; package: string; commercials: string; domains: string; branches: string; apps: string }
 
-export function OnboardingWizard({ packages }: { packages: OnboardingPackage[] }) {
+export function OnboardingWizard({ packages, packageError }: { packages: OnboardingPackage[]; packageError?: string | null }) {
   const submissionLock = useRef(false)
   const [submissionStarted, setSubmissionStarted] = useState(false)
   const guardedAction = useCallback(async (previous: ActionState, form: FormData) => {
@@ -43,6 +41,12 @@ export function OnboardingWizard({ packages }: { packages: OnboardingPackage[] }
   const [state, action, pending] = useActionState(guardedAction, initial)
   const [step, setStep] = useState(0)
   const [branchCount, setBranchCount] = useState(1)
+  const [selectedServices, setSelectedServices] = useState(() => new Set(defaultServices))
+  const [selectedPackageId, setSelectedPackageId] = useState("")
+  const [baseFee, setBaseFee] = useState(0)
+  const [setupFee, setSetupFee] = useState(0)
+  const [billingFrequency, setBillingFrequency] = useState("MONTHLY")
+  const [review, setReview] = useState<ReviewData | null>(null)
   const [validationError, setValidationError] = useState<ValidationError | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
   const requestKey = useMemo(() => randomUUID(), [])
@@ -67,6 +71,10 @@ export function OnboardingWizard({ packages }: { packages: OnboardingPackage[] }
   }
 
   function validateStep(stepIndex: number) {
+    if (stepIndex === 2 && packages.length === 0) {
+      setValidationError({ field: "packageId", message: packageError || "No active service packages are available.", step: stepIndex })
+      return false
+    }
     const invalid = firstInvalidControl(stepIndex)
     if (invalid) {
       showValidation(stepIndex, invalid)
@@ -78,7 +86,45 @@ export function OnboardingWizard({ packages }: { packages: OnboardingPackage[] }
 
   function continueToNextStep() {
     if (!validateStep(step)) return
+    if (step === steps.length - 2) setReview(buildReview())
     setStep((value) => Math.min(steps.length - 1, value + 1))
+  }
+
+  function buildReview(): ReviewData {
+    const form = formRef.current
+    if (!form) return { business: "", owner: "", services: "", package: "", commercials: "", domains: "", branches: "", apps: "" }
+    const values = new FormData(form)
+    const packageValue = packages.find((item) => item.id === String(values.get("packageId") ?? ""))
+    const branchNames = values.getAll("branchName").map(String).filter(Boolean)
+    const enabledServices = values.getAll("services").map(String)
+    const labels = new Map(supportedServices)
+    return {
+      business: `${values.get("name") || "—"} · ${values.get("city") || "—"}`,
+      owner: `${values.get("ownerName") || "—"} · ${values.get("ownerEmail") || "—"}`,
+      services: enabledServices.map((key) => labels.get(key as typeof supportedServices[number][0]) ?? key).join(", ") || "None selected",
+      package: packageValue?.name ?? "Not selected",
+      commercials: `${values.get("currency") || "PKR"} ${Number(values.get("baseFee") || 0).toLocaleString()} / ${String(values.get("billingFrequency") || "MONTHLY").toLowerCase()} · setup ${Number(values.get("setupFee") || 0).toLocaleString()}`,
+      domains: [values.get("customerDomain"), values.get("adminDomain")].filter(Boolean).join(" · ") || "Configure later",
+      branches: branchNames.join(", ") || "No branches",
+      apps: [enabledServices.includes("mobile.android") ? values.get("androidId") || "Android ID missing" : null, enabledServices.includes("mobile.ios") ? values.get("iosId") || "iOS ID missing" : null].filter(Boolean).join(" · ") || "No mobile apps",
+    }
+  }
+
+  function choosePackage(packageId: string) {
+    setSelectedPackageId(packageId)
+    const selected = packages.find((item) => item.id === packageId)
+    if (!selected) return
+    setBaseFee(selected.base_fee)
+    setSetupFee(selected.setup_fee)
+    setBillingFrequency(selected.billing_frequency)
+  }
+
+  function toggleService(key: string, enabled: boolean) {
+    setSelectedServices((current) => {
+      const next = new Set(current)
+      if (enabled) next.add(key); else next.delete(key)
+      return next
+    })
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -126,11 +172,11 @@ export function OnboardingWizard({ packages }: { packages: OnboardingPackage[] }
         <label>Timezone<input name="timezone" defaultValue="Asia/Karachi"/></label>
         <label className="span-2">Primary address<textarea name="address" rows={2}/></label>
       </div></section>
-      <section data-wizard-step="1" hidden={step!==1} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 2</p><h2>Services and entitlements</h2><p>Capabilities are stored centrally and enforced independently from navigation visibility.</p></div><div className="service-grid">{services.map(([value,label])=><label className="service-option" key={value}><input type="checkbox" name="services" value={value} defaultChecked={["admin.restaurant","pos.web","pos.desktop","website.ordering","ordering.delivery","ordering.pickup"].includes(value)}/><span><Check/>{label}</span></label>)}</div></section>
+      <section data-wizard-step="1" hidden={step!==1} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 2</p><h2>Services and entitlements</h2><p>Choose only the services this restaurant will use. Runtime enforcement remains server-authoritative.</p></div><div className="service-grid">{supportedServices.map(([value,label])=><label className="service-option" key={value}><input type="checkbox" name="services" value={value} checked={selectedServices.has(value)} onChange={(event)=>toggleService(value,event.target.checked)}/><span><Check/>{label}</span></label>)}</div></section>
       <section data-wizard-step="2" hidden={step!==2} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 3</p><h2>Package and commercials</h2><p>Pricing is configuration, not hardcoded product logic.</p></div><div className="form-grid">
-        <label className="span-2">Service package<select name="packageId" required defaultValue="" aria-invalid={validationError?.field==="packageId"} aria-describedby={validationError?.field==="packageId"?"packageId-error":undefined}><option value="" disabled>Select an active package</option>{packages.map((item)=><option value={item.id} key={item.id}>{item.name} · {item.currency} {item.base_fee.toLocaleString()}/{item.billing_frequency.toLowerCase()}</option>)}</select>{validationError?.field==="packageId"?<small id="packageId-error" className="inline-field-error" role="alert">{validationError.message}</small>:null}</label>
-        <label>Monthly/base fee<input name="baseFee" type="number" min="0" defaultValue="0"/></label><label>Setup fee<input name="setupFee" type="number" min="0" defaultValue="0"/></label>
-        <label>Billing frequency<select name="billingFrequency"><option>MONTHLY</option><option>QUARTERLY</option><option>ANNUAL</option><option>CUSTOM</option></select></label>
+        <label className="span-2">Service package<select name="packageId" required value={selectedPackageId} disabled={packages.length===0} onChange={(event)=>choosePackage(event.target.value)} aria-invalid={validationError?.field==="packageId"} aria-describedby={validationError?.field==="packageId"?"packageId-error":undefined}><option value="" disabled>{packages.length?"Select an active package":"No active service packages are available"}</option>{packages.map((item)=><option value={item.id} key={item.id}>{item.name} · {item.currency} {item.base_fee.toLocaleString()}/{item.billing_frequency.toLowerCase()} · setup {item.setup_fee.toLocaleString()}</option>)}</select>{validationError?.field==="packageId"?<small id="packageId-error" className="inline-field-error" role="alert">{validationError.message}</small>:null}{packages.length===0?<small className="package-empty-state">No active service packages are available. <Link href="/packages">Manage service packages</Link>.</small>:null}</label>
+        <label>Monthly/base fee<input name="baseFee" type="number" min="0" value={baseFee} onChange={(event)=>setBaseFee(Math.max(0,Number(event.target.value)||0))}/></label><label>Setup fee<input name="setupFee" type="number" min="0" value={setupFee} onChange={(event)=>setSetupFee(Math.max(0,Number(event.target.value)||0))}/></label>
+        <label>Billing frequency<select name="billingFrequency" value={billingFrequency} onChange={(event)=>setBillingFrequency(event.target.value)}><option>MONTHLY</option><option>QUARTERLY</option><option>ANNUAL</option><option>CUSTOM</option></select></label>
         <label className="span-2">Commercial notes<textarea name="commercialNotes" rows={4} placeholder="Approved discounts, exclusions and internal commercial context"/></label>
       </div></section>
       <section data-wizard-step="3" hidden={step!==3} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 4</p><h2>Brand and domains</h2><p>All clients load branding from the restaurant configuration.</p></div><div className="form-grid">
@@ -139,8 +185,8 @@ export function OnboardingWizard({ packages }: { packages: OnboardingPackage[] }
         <label>Customer domain<input name="customerDomain" placeholder="orders.restaurant.com"/></label><label>Admin domain<input name="adminDomain" placeholder="admin.restaurant.com"/></label>
         <p className="form-help span-2">DNS, SSL and Auth callback status remain UNKNOWN until verified by a real health check.</p>
       </div></section>
-      <section data-wizard-step="4" hidden={step!==4} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 5</p><h2>Branches and app identities</h2><p>Add initial locations. More branches remain centrally manageable.</p></div><div className="branch-stack">{Array.from({length:branchCount},(_,index)=><fieldset key={index}><legend>Branch {index+1}</legend><div className="form-grid"><label>Branch name<input name="branchName" required placeholder={index===0?"Islamabad":"Lahore"}/></label><label>Branch code<input name="branchCode" required defaultValue={`B${index+1}`}/></label><label className="span-2">Branch address<input name={`branchAddress${index}`}/></label></div>{branchCount>1?<button type="button" className="text-button danger" onClick={()=>setBranchCount((value)=>Math.max(1,value-1))}><Trash2/>Remove last branch</button>:null}</fieldset>)}</div><button type="button" className="button button-secondary" onClick={()=>setBranchCount((value)=>Math.min(20,value+1))}><Plus/>Add another branch</button><label className="check-row"><input name="deliveryEnabled" type="checkbox" defaultChecked/>Enable delivery after branch location/rules are configured</label><div className="form-grid app-identifiers"><label>Android app name<input name="androidName"/></label><label>Android package ID<input name="androidId" placeholder="com.qazipro.restaurant"/></label><label>iOS app name<input name="iosName"/></label><label>iOS bundle ID<input name="iosId" placeholder="com.qazipro.restaurant"/></label></div></section>
-      <section data-wizard-step="5" hidden={step!==5} className="form-section review-section"><div className="review-icon"><Rocket/></div><div className="section-heading"><p className="eyebrow">FINAL REVIEW</p><h2>Provision safely</h2><p>This creates one canonical restaurant, its branches, commercial record, service entitlements, app registry and domain checks in one audited transaction.</p></div><ul><li><Check/>Retry-safe request key</li><li><Check/>Restaurant inactive until lifecycle activation</li><li><Check/>No owner password handled by QaziPro</li><li><Check/>All app and domain health starts UNKNOWN/PENDING</li></ul></section>
+      <section data-wizard-step="4" hidden={step!==4} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 5</p><h2>Branches and app identities</h2><p>Add the first operating locations. Delivery remains disabled until location and delivery rules are verified.</p></div><div className="branch-stack">{Array.from({length:branchCount},(_,index)=><fieldset key={index}><legend>Branch {index+1}</legend><div className="form-grid"><label>Branch name<input name="branchName" required placeholder={index===0?"Islamabad":"Lahore"}/></label><label>Branch code<input name="branchCode" required defaultValue={`B${index+1}`}/></label><BranchLocationFields prefix="branch" index={index}/></div>{branchCount>1?<button type="button" className="text-button danger" onClick={()=>setBranchCount((value)=>Math.max(1,value-1))}><Trash2/>Remove last branch</button>:null}</fieldset>)}</div><button type="button" className="button button-secondary" onClick={()=>setBranchCount((value)=>Math.min(20,value+1))}><Plus/>Add another branch</button>{selectedServices.has("ordering.delivery")?<p className="form-help">Delivery service is requested. Each new branch starts with delivery safely disabled until its location and delivery rules are reviewed.</p>:null}<div className="form-grid app-identifiers">{selectedServices.has("mobile.android")?<><label>Android app name<input name="androidName" required/></label><label>Android package ID<input name="androidId" required pattern={appIdentifierPattern.source} placeholder="com.qazipro.restaurant"/></label></>:null}{selectedServices.has("mobile.ios")?<><label>iOS app name<input name="iosName" required/></label><label>iOS bundle ID<input name="iosId" required pattern={appIdentifierPattern.source} placeholder="com.qazipro.restaurant"/></label></>:null}</div></section>
+      <section data-wizard-step="5" hidden={step!==5} className="form-section review-section"><div className="review-icon"><Rocket/></div><div className="section-heading"><p className="eyebrow">FINAL REVIEW</p><h2>Provision safely</h2><p>This creates one canonical restaurant and all supported linked records in one retry-safe audited transaction.</p></div>{review?<dl className="review-summary"><dt>Business</dt><dd>{review.business}</dd><dt>Owner</dt><dd>{review.owner}</dd><dt>Services</dt><dd>{review.services}</dd><dt>Package</dt><dd>{review.package}</dd><dt>Commercials</dt><dd>{review.commercials}</dd><dt>Domains</dt><dd>{review.domains}</dd><dt>Branches</dt><dd>{review.branches}</dd><dt>Apps</dt><dd>{review.apps}</dd></dl>:null}<div className="review-edit-links">{steps.slice(0,5).map((label,index)=><button type="button" key={label} onClick={()=>setStep(index)}>Edit {label}</button>)}</div><ul><li><Check/>Retry-safe request key</li><li><Check/>Restaurant inactive until lifecycle activation</li><li><Check/>Delivery disabled until rules are verified</li><li><Check/>Domains and apps start pending</li></ul></section>
       {validationError&&validationError.field!=="packageId"?<div className="form-error wizard-validation-error" role="alert"><strong>Complete this step before continuing.</strong><span>{validationError.message}</span></div>:null}
       {state.error?<div className="form-error" role="alert"><strong>Provisioning stopped safely.</strong><span>{state.error}</span><small>Request ID: {state.requestId}</small></div>:null}
       <footer className="wizard-actions"><button className="button button-secondary" type="button" disabled={step===0||submitting} onClick={()=>{setValidationError(null);setStep((value)=>Math.max(0,value-1))}}><ChevronLeft/>Back</button>{step<steps.length-1?<button className="button" type="button" disabled={submitting} onClick={continueToNextStep}>Continue<ChevronRight/></button>:<button className="button" type="submit" disabled={submitting}>{submitting?"Provisioning…":"Provision restaurant"}<Rocket/></button>}</footer>

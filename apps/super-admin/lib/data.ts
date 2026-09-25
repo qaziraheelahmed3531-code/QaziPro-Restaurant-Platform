@@ -63,12 +63,25 @@ export async function getRestaurants(query = "", page = 1, status = "all") {
   const supabase = await createClient()
   const pageSize = 25
   const safePage = Number.isFinite(page) ? Math.min(10000, Math.max(1, Math.floor(page))) : 1
-  const safeQuery = query.trim().replace(/[^a-zA-Z0-9 _-]/g, "").slice(0, 80)
+  const safeQuery = query.trim().replace(/[^a-zA-Z0-9 @.+_-]/g, "").slice(0, 80)
+  let relatedIds: string[] = []
+  if (safeQuery) {
+    const pattern = `%${safeQuery}%`
+    const [owners, branches, domains] = await Promise.all([
+      supabase.from("restaurant_onboarding").select("business_id").or(`owner_name.ilike.${pattern},owner_email.ilike.${pattern},owner_phone.ilike.${pattern}`).limit(250),
+      supabase.from("branches").select("business_id").or(`name.ilike.${pattern},phone.ilike.${pattern},city.ilike.${pattern},address.ilike.${pattern}`).limit(250),
+      supabase.from("platform_domain_records").select("business_id").ilike("hostname", pattern).limit(250),
+    ])
+    relatedIds = [...new Set([...owners.data ?? [], ...branches.data ?? [], ...domains.data ?? []].map((item) => String(item.business_id)))]
+  }
   let request = supabase.from("businesses").select(
-    "id,slug,name,city,currency,timezone,is_active,created_at,branches:branches!branches_business_id_fkey(id,is_active),restaurant_onboarding(lifecycle,owner_name,owner_email,updated_at),restaurant_subscriptions(status,service_packages(name)),mobile_app_records(platform,enabled,release_status),platform_domain_records(hostname,purpose,verification_status,dns_status,ssl_status)",
+    "id,slug,name,phone,email,city,currency,timezone,is_active,created_at,branches:branches!branches_business_id_fkey(id,is_active),restaurant_onboarding(lifecycle,owner_name,owner_email,updated_at),restaurant_subscriptions(status,service_packages(name)),mobile_app_records(platform,enabled,release_status),platform_domain_records(hostname,purpose,verification_status,dns_status,ssl_status),service_entitlements(capability_key,enabled)",
     { count: "exact" },
   ).order("created_at", { ascending: false }).range((safePage - 1) * pageSize, safePage * pageSize - 1)
-  if (safeQuery) request = request.or(`name.ilike.%${safeQuery}%,slug.ilike.%${safeQuery}%,city.ilike.%${safeQuery}%`)
+  if (safeQuery) {
+    const localFilters = `name.ilike.%${safeQuery}%,slug.ilike.%${safeQuery}%,city.ilike.%${safeQuery}%,phone.ilike.%${safeQuery}%,email.ilike.%${safeQuery}%`
+    request = request.or(relatedIds.length ? `${localFilters},id.in.(${relatedIds.join(",")})` : localFilters)
+  }
   if (status === "active") request = request.eq("is_active", true)
   if (status === "inactive") request = request.eq("is_active", false)
   const result = await request
@@ -78,7 +91,7 @@ export async function getRestaurants(query = "", page = 1, status = "all") {
 export async function getRestaurant(id: string) {
   await requirePlatformPermission("restaurants.view")
   const supabase = await createClient()
-  const [business, onboarding, subscription, entitlements, apps, domains, deployments, incidents, tickets, devices, audit] = await Promise.all([
+  const [business, onboarding, subscription, entitlements, apps, domains, deployments, incidents, tickets, devices, audit, invitations, memberships] = await Promise.all([
     supabase.from("businesses").select("id,slug,name,short_description,phone,email,address,city,currency,timezone,is_active,created_at,business_branding(*),branches:branches!branches_business_id_fkey(*)").eq("id", id).maybeSingle(),
     supabase.from("restaurant_onboarding").select("*").eq("business_id", id).maybeSingle(),
     supabase.from("restaurant_subscriptions").select("*,service_packages(name,code)").eq("business_id", id).maybeSingle(),
@@ -90,8 +103,10 @@ export async function getRestaurant(id: string) {
     supabase.from("support_tickets").select("*").eq("business_id", id).order("created_at", { ascending: false }).limit(10),
     supabase.from("pos_offline_devices").select("id,branch_id,name:device_name,app_version,is_active,last_sync_at,updated_at").eq("business_id", id).order("updated_at", { ascending: false }),
     supabase.from("platform_audit_logs").select("id,actor_user_id,action,target_type,reason,created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20),
+    supabase.from("staff_invitations").select("id,email,role,is_active,status,delivery_status,branch_id,branch_ids,created_at,updated_at").eq("business_id", id).order("created_at", { ascending: false }),
+    supabase.from("staff_memberships").select("id,user_id,role,is_active,branch_id,created_at,updated_at").eq("business_id", id).order("created_at", { ascending: false }),
   ])
-  const firstError = [business.error,onboarding.error,subscription.error,entitlements.error,apps.error,domains.error,deployments.error,incidents.error,tickets.error,devices.error,audit.error].find(Boolean)
+  const firstError = [business.error,onboarding.error,subscription.error,entitlements.error,apps.error,domains.error,deployments.error,incidents.error,tickets.error,devices.error,audit.error,invitations.error,memberships.error].find(Boolean)
   return {
     data: business.data ? {
       business: business.data as Row,
@@ -100,6 +115,7 @@ export async function getRestaurant(id: string) {
       entitlements: (entitlements.data ?? []) as Row[],
       apps: (apps.data ?? []) as Row[], domains: (domains.data ?? []) as Row[], deployments: (deployments.data ?? []) as Row[],
       incidents: (incidents.data ?? []) as Row[], tickets: (tickets.data ?? []) as Row[], devices: (devices.data ?? []) as Row[], audit: (audit.data ?? []) as Row[],
+      invitations: (invitations.data ?? []) as Row[], memberships: (memberships.data ?? []) as Row[],
     } : null,
     error: firstError ? safeMessage(firstError.code) : null,
   }
@@ -107,7 +123,7 @@ export async function getRestaurant(id: string) {
 
 const moduleTables: Partial<Record<PlatformModule, { table: string; select: string; order: string }>> = {
   onboarding: { table: "restaurant_onboarding", select: "id,business_id,lifecycle,owner_name,owner_email,blockers,assigned_staff_user_id,updated_at,businesses(name,slug)", order: "updated_at" },
-  branches: { table: "branches", select: "id,business_id,name,restaurant_name,city,is_active,online_ordering_enabled,temporarily_closed,updated_at,businesses:businesses!branches_business_id_fkey(name)", order: "updated_at" },
+  branches: { table: "branches", select: "id,business_id,code,name,restaurant_name,phone,address,formatted_address,city,region,country_code,country_name,postal_code,timezone,latitude,longitude,location_provider,provider_place_id,location_name,pickup_enabled,delivery_enabled,is_active,online_ordering_enabled,temporarily_closed,updated_at,businesses:businesses!branches_business_id_fkey(name)", order: "updated_at" },
   apps: { table: "mobile_app_records", select: "id,business_id,platform,enabled,app_name,application_identifier,version_name,build_number,credential_status,push_status,release_status,last_release_at,businesses(name)", order: "updated_at" },
   domains: { table: "platform_domain_records", select: "id,business_id,hostname,purpose,verification_status,dns_status,ssl_status,auth_redirect_ready,last_checked_at,failure_summary,businesses(name)", order: "updated_at" },
   deployments: { table: "deployment_records", select: "id,business_id,component,environment,version,commit_sha,provider,status,started_at,finished_at,error_summary,businesses(name)", order: "created_at" },

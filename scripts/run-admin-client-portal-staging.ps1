@@ -1,6 +1,6 @@
 # Requires an authenticated Supabase CLI. Does not write credentials to the repo.
 param(
-  [ValidateSet('admin', 'super-admin', 'super-admin-browser', 'serve-admin', 'serve-super-admin')][string]$Suite = 'admin',
+  [ValidateSet('admin', 'super-admin', 'super-admin-browser', 'ensure-package', 'serve-admin', 'serve-super-admin')][string]$Suite = 'admin',
   [ValidateRange(0, 65535)][int]$Port = 0,
   [string]$TargetUrl = '',
   [switch]$WithFixtures
@@ -74,13 +74,20 @@ try {
       $env:PLATFORM_PUBLIC_URL = "http://localhost:$servePort"
       $env:RESTAURANT_ADMIN_URL = 'http://localhost:3101'
       $env:NEXT_DIST_DIR = '.next-stage-platform'
+      $geoConfigPath = Join-Path $PSScriptRoot '../apps/admin/.env.local'
+      if (Test-Path -LiteralPath $geoConfigPath) {
+        foreach ($geoName in @('GEOAPIFY_API_KEY','NEXT_PUBLIC_GEOAPIFY_MAPS_KEY')) {
+          $geoLine = Get-Content -LiteralPath $geoConfigPath | Where-Object { $_ -match "^$geoName=" } | Select-Object -First 1
+          if ($geoLine) { Set-Item -Path "Env:$geoName" -Value ($geoLine.Substring($geoName.Length + 1).Trim('"')) }
+        }
+      }
       $appDirectory = Join-Path $PSScriptRoot '../apps/super-admin'
     }
     Push-Location -LiteralPath $appDirectory
     try { & npx --yes --offline next dev -p $servePort } finally { Pop-Location }
     exit $LASTEXITCODE
   }
-  $acceptanceScript = if ($Suite -eq 'super-admin') { 'super-admin-staging-acceptance.mjs' } elseif ($Suite -eq 'super-admin-browser') { 'super-admin-browser-staging-acceptance.mjs' } else { 'admin-client-portal-staging-acceptance.mjs' }
+  $acceptanceScript = if ($Suite -eq 'super-admin') { 'super-admin-staging-acceptance.mjs' } elseif ($Suite -eq 'super-admin-browser') { 'super-admin-browser-staging-acceptance.mjs' } elseif ($Suite -eq 'ensure-package') { 'ensure-super-admin-staging-package.mjs' } else { 'admin-client-portal-staging-acceptance.mjs' }
   node (Join-Path $PSScriptRoot $acceptanceScript)
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {

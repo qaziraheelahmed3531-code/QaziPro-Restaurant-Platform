@@ -4,7 +4,7 @@ import { normalizeSocialUrl } from "@italian-pizza/shared/social"
 import { parseBoundary, validPoint } from "@italian-pizza/shared/location"
 import { AppLoader } from "@italian-pizza/shared/app-loader"
 import dynamic from "next/dynamic"
-import { Search, X } from "lucide-react"
+import { LocateFixed, Search, X } from "lucide-react"
 import Image from "next/image"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
@@ -54,6 +54,8 @@ export function ResourceManager({ config, businessId, role, selectedBranchId, as
   const [relations, setRelations] = useState<RelationOptions>({})
   const [branchId, setBranchId] = useState<string | null>(null)
   const [branchCity, setBranchCity] = useState("")
+  const [branchPoint, setBranchPoint] = useState<{ latitude: number; longitude: number }>()
+  const [restaurantLogo, setRestaurantLogo] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [query, setQuery] = useState("")
@@ -73,12 +75,17 @@ export function ResourceManager({ config, businessId, role, selectedBranchId, as
       let resolvedBranchId: string | null = null
       let resolvedBranchCity = ""
       if (config.scope === "branch") {
-        const { data: branch, error: branchError } = await supabase.from("branches").select("id,city").eq("business_id", businessId).eq("is_active", true).order("sort_order").eq("id", selectedBranchId ?? "").limit(1).maybeSingle()
+        const { data: branch, error: branchError } = await supabase.from("branches").select("id,city,latitude,longitude").eq("business_id", businessId).eq("is_active", true).order("sort_order").eq("id", selectedBranchId ?? "").limit(1).maybeSingle()
         if (branchError) throw branchError
         resolvedBranchId = branch ? String(branch.id) : null
         resolvedBranchCity = String(branch?.city ?? "")
         setBranchId(resolvedBranchId)
         setBranchCity(resolvedBranchCity)
+        setBranchPoint(branch?.latitude != null && branch.longitude != null && validPoint({ latitude: Number(branch.latitude), longitude: Number(branch.longitude) }) ? { latitude: Number(branch.latitude), longitude: Number(branch.longitude) } : undefined)
+        if (config.key === "areas") {
+          const branding = await supabase.from("business_branding").select("logo_url").eq("business_id", businessId).maybeSingle()
+          setRestaurantLogo(String(branding.data?.logo_url ?? ""))
+        }
       }
 
       if (config.scope === "branch" && !resolvedBranchId) {
@@ -163,7 +170,7 @@ export function ResourceManager({ config, businessId, role, selectedBranchId, as
   const openEditor = (row?: Row) => {
     setEditing(row ?? null)
     const next=initialDraft(config,row)
-    if(config.key==="areas"&&!row){next.city=branchCity;next.group_name=branchCity;next.country_code="pk"}
+    if(config.key==="areas"&&!row){next.city=branchCity;next.group_name=branchCity;next.country_code="pk";next.boundary_type="RADIUS";next.service_radius_meters=3000}
     setDraft(next)
     setDirty(false)
   }
@@ -176,6 +183,14 @@ export function ResourceManager({ config, businessId, role, selectedBranchId, as
 
   const setValue = (key: string, value: unknown) => {
     setDraft((current) => ({ ...current, [key]: value })); setDirty(true)
+  }
+
+  const useCurrentAreaLocation = () => {
+    if (!window.isSecureContext || !navigator.geolocation) { setToast({ message: "Current location is unavailable. Click the map to choose the area centre.", error: true }); return }
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      setDraft(current => ({ ...current, center_lat: coords.latitude, center_lng: coords.longitude }))
+      setDirty(true)
+    }, () => setToast({ message: "Location permission was denied. Click the map to choose the area centre.", error: true }), { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 })
   }
 
   const save = async () => {
@@ -250,7 +265,7 @@ export function ResourceManager({ config, businessId, role, selectedBranchId, as
     {loading ? <div className="state-box state-box--loading" role="status"><AppLoader active delay={0} label="Loading database records"/><span>Loading database records…</span></div> : error ? <div className="state-box"><div><strong>Could not load this section</strong><p>{error}</p><button className="button button--outline" onClick={() => void load()}>Retry</button></div></div> : filteredRows.length === 0 ? <div className="state-box"><div><strong>No records yet</strong><p>Create the first record when this section is ready.</p>{canManage && <button className="button" onClick={() => openEditor()}>Configure now</button>}</div></div> : <div className="data-table-wrap"><table className="data-table"><thead><tr>{config.columns.map((column) => <th key={column}>{config.fields.find((field) => field.key === column)?.label ?? column.replaceAll("_"," ")}</th>)}{canManage && <th>Actions</th>}</tr></thead><tbody>{filteredRows.map((row, index) => <tr key={String(row.id ?? row.business_id ?? row.branch_id ?? index)}>{config.columns.map((column) => <td key={column} data-label={config.fields.find((field) => field.key === column)?.label ?? column}>{displayCell(config, row, column, assetOrigin)}</td>)}{canManage && <td data-label="Actions"><div className="table-actions"><button type="button" onClick={() => openEditor(row)}>Edit</button>{Boolean(row.id) && (config.allowArchive || config.allowDelete) && <button type="button" className="is-danger" onClick={() => void remove(row)}>Delete</button>}</div></td>}</tr>)}</tbody></table></div>}
 
     <div className="heading-actions section-gap"><button className="button button--outline" disabled={page===0||loading} onClick={()=>setPage(value=>value-1)}>Previous</button><span>Page {page+1} · {total} records · search applies to this page</span><button className="button button--outline" disabled={(page+1)*50>=total||loading} onClick={()=>setPage(value=>value+1)}>Next</button></div>
-    {editing !== undefined && <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor() }}><section className="editor" role="dialog" aria-modal="true" aria-labelledby="editor-title"><header><h2 id="editor-title">{editing ? `Edit ${config.title}` : `Add ${config.title}`}</h2><button className="icon-action" type="button" onClick={closeEditor} aria-label="Close editor"><X/></button></header><div className="editor-form">{config.key === "areas" && <div className="is-wide"><p>Set the centre on the map, or enter both coordinates below. A centre alone does not authorize delivery. Use Sort order to reorder areas.</p><LocationMap label="Area centre" point={draft.center_lat !== "" && draft.center_lat != null && draft.center_lng !== "" && draft.center_lng != null ? { latitude: Number(draft.center_lat), longitude: Number(draft.center_lng) } : undefined} radiusMeters={draft.boundary_type === "RADIUS" ? Number(draft.service_radius_meters) : undefined} onChange={point => { setDraft(current => ({ ...current, center_lat: point.latitude, center_lng: point.longitude })); setDirty(true) }} /></div>}{config.fields.map((field) => {
+    {editing !== undefined && <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor() }}><section className="editor" role="dialog" aria-modal="true" aria-labelledby="editor-title"><header><h2 id="editor-title">{editing ? `Edit ${config.title}` : `Add ${config.title}`}</h2><button className="icon-action" type="button" onClick={closeEditor} aria-label="Close editor"><X/></button></header><div className="editor-form">{config.key === "areas" && <div className="is-wide"><p>Click the map for the area centre, use your current location, then set the radius. The restaurant logo marks the saved branch origin. Provider-discovered sectors should be imported above for locality coverage.</p><button className="button button--outline" type="button" onClick={useCurrentAreaLocation}><LocateFixed size={16}/> Use current location for area</button><LocationMap label="Area centre" center={branchPoint} originPoint={branchPoint} originImageUrl={restaurantLogo} originLabel="Restaurant origin" point={draft.center_lat !== "" && draft.center_lat != null && draft.center_lng !== "" && draft.center_lng != null ? { latitude: Number(draft.center_lat), longitude: Number(draft.center_lng) } : undefined} radiusMeters={draft.boundary_type === "RADIUS" ? Number(draft.service_radius_meters) : undefined} onChange={point => { setDraft(current => ({ ...current, center_lat: point.latitude, center_lng: point.longitude })); setDirty(true) }} /></div>}{config.fields.map((field) => {
       const value = draft[field.key]
       const className = field.wide ? "is-wide" : undefined
       if (field.type === "boolean") return <label key={field.key} className={`checkbox-field ${className ?? ""}`}><input type="checkbox" checked={Boolean(value)} onChange={(event) => setValue(field.key,event.target.checked)}/><span>{field.label}</span></label>
