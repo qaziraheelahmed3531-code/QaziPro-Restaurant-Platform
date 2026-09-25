@@ -107,6 +107,7 @@ const order = load('apps/customer/lib/orders/server.ts',{
   'server-only':{},'node:crypto':require('node:crypto'),'@italian-pizza/shared/location':coverage,
   '@italian-pizza/shared/commerce':commerce,'@/lib/location/validate-delivery':validation,
   '@/lib/geoapify/routing':{getDrivingRoute:async()=>{routeCount++;return{distanceKm:7}}},
+  '@/lib/entitlements/server':{requireRuntimeEntitlements:async()=>{}},
   '@/lib/restrictions/server':{assertCustomerIdentityAllowed:async()=>{}},
   '@/lib/supabase/server':{isSupabaseConfigured:()=>false},
   '@/lib/supabase/admin':{createAdminClient:()=>({rpc:async(_name,{p_payload})=>{rpcCount++;assert.equal(p_payload.distanceKm,7);assert.equal(p_payload.locationSource,'MAP_PIN');return{data:{ok:true},error:null}}})},

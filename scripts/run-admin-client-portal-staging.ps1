@@ -18,7 +18,7 @@ if (Test-Path -LiteralPath $envFile) {
   }
   if (([uri]$entries['NEXT_PUBLIC_SUPABASE_URL']).Host -ne "$expectedRef.supabase.co" -or
       $entries['APP_ENVIRONMENT'] -ne 'staging' -or
-      -not $entries['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']) {
+      -not ([string]$entries['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']).StartsWith('sb_publishable_')) {
     throw 'Dedicated Admin Vercel environment is not the linked staging Supabase project.'
   }
 }
@@ -29,14 +29,10 @@ $raw = (& npx --yes --offline supabase projects api-keys --project-ref $expected
 $ErrorActionPreference = $previousErrorPreference
 if ($LASTEXITCODE -ne 0) { throw 'Staging service key lookup failed.' }
 try { $keys = ($raw | ConvertFrom-Json -ErrorAction Stop).keys } catch { throw 'Staging service key response was invalid.' }
-$serviceKey = ($keys | Where-Object { $_.name -eq 'service_role' } | Select-Object -First 1).api_key
+$serviceKey = ($keys | Where-Object { $_.type -eq 'secret' } | Select-Object -First 1).api_key
 if (-not $serviceKey) { throw 'Staging service key unavailable.' }
 $stagingUrl = "https://$expectedRef.supabase.co"
-$publicKey = if ($entries.ContainsKey('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')) {
-  $entries['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']
-} else {
-  ($keys | Where-Object { $_.name -eq 'anon' } | Select-Object -First 1).api_key
-}
+$publicKey = ($keys | Where-Object { $_.type -eq 'publishable' } | Select-Object -First 1).api_key
 if (-not $publicKey) { throw 'Staging public key unavailable.' }
 
 $env:STAGING_SUPABASE_PROJECT_REF = $expectedRef
@@ -53,11 +49,12 @@ $env:NEXT_PUBLIC_APP_ENVIRONMENT = 'staging'
 $env:STAGING_ENVIRONMENT = 'staging'
 $env:ALLOW_STAGING_ACCEPTANCE = '1'
 $env:STAGING_QA_PASSWORD = "Qa!$([guid]::NewGuid().ToString('N'))a9"
-$env:STAGING_ADMIN_URL = if ($TargetUrl) { $TargetUrl.TrimEnd('/') } else { 'http://localhost:3101' }
-if (([uri]$env:STAGING_ADMIN_URL).Host -notin @('localhost','127.0.0.1') -and ([uri]$env:STAGING_ADMIN_URL).Host -notmatch 'staging') {
-  throw 'Admin acceptance may only target localhost or an explicitly named staging host.'
+$target = if ($TargetUrl) { $TargetUrl.TrimEnd('/') } else { '' }
+if ($target -and ([uri]$target).Host -notin @('localhost','127.0.0.1') -and ([uri]$target).Host -notmatch 'staging') {
+  throw 'Acceptance may only target localhost or an explicitly named staging host.'
 }
-$env:STAGING_SUPER_ADMIN_URL = 'http://localhost:3102'
+$env:STAGING_ADMIN_URL = if ($Suite -eq 'admin' -and $target) { $target } else { 'http://localhost:3101' }
+$env:STAGING_SUPER_ADMIN_URL = if ($Suite -like 'super-admin*' -and $target) { $target } else { 'http://localhost:3102' }
 
 try {
   if ($WithFixtures -and $Suite -notlike 'serve-*') {

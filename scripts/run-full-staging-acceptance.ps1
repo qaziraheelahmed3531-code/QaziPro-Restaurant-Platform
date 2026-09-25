@@ -22,8 +22,8 @@ $ErrorActionPreference = $previousErrorPreference
 if ($LASTEXITCODE -ne 0) { throw 'Staging key lookup failed.' }
 
 try { $keys = ($raw | ConvertFrom-Json -ErrorAction Stop).keys } catch { throw 'Staging key response was invalid.' }
-$serviceKey = ($keys | Where-Object { $_.name -eq 'service_role' } | Select-Object -First 1).api_key
-$publicKey = ($keys | Where-Object { $_.name -eq 'anon' } | Select-Object -First 1).api_key
+$serviceKey = ($keys | Where-Object { $_.type -eq 'secret' } | Select-Object -First 1).api_key
+$publicKey = ($keys | Where-Object { $_.type -eq 'publishable' } | Select-Object -First 1).api_key
 if (-not $serviceKey -or -not $publicKey) { throw 'Required staging keys are unavailable.' }
 
 $env:STAGING_ENVIRONMENT = 'staging'

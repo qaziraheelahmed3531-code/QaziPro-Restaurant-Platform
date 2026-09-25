@@ -11,10 +11,11 @@ const url = process.env.STAGING_SUPABASE_URL;
 const publicKey = process.env.STAGING_SUPABASE_PUBLISHABLE_KEY;
 const serviceKey = process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY;
 const appUrl = process.env.STAGING_SUPER_ADMIN_URL ?? "http://localhost:3102";
+const appHostname = new URL(appUrl).hostname;
 const screenshotDir = process.env.STAGING_SCREENSHOT_DIR;
 if (process.env.ALLOW_STAGING_ACCEPTANCE !== "1" || process.env.STAGING_ENVIRONMENT !== "staging" ||
   ref !== "jzisqjvroxodvmqxzsob" || new URL(url).hostname !== `${ref}.supabase.co` ||
-  new URL(appUrl).hostname !== "localhost" || !publicKey || !serviceKey) {
+  (!['localhost', '127.0.0.1'].includes(appHostname) && !/staging/i.test(appHostname)) || !publicKey || !serviceKey) {
   throw new Error("Refusing browser acceptance outside verified local/staging resources.");
 }
 
@@ -78,7 +79,13 @@ try {
   const routes = ["/", "/restaurants", "/restaurants/a0000000-0000-4000-8000-000000000001", "/onboarding", "/onboarding/new", "/branches", "/apps", "/domains", "/deployments", "/health", "/support", "/billing", "/packages", "/tasks", "/team", "/integrations", "/audit"];
   for (const route of routes) {
     await page.goto(`${appUrl}${route}`, { waitUntil: "domcontentloaded" });
-    await page.locator(".platform-main h1").waitFor({ timeout: 20000 });
+    try {
+      await page.locator(".platform-main h1").waitFor({ timeout: 20000 });
+    } catch (error) {
+      const title = await page.title();
+      const body = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 500);
+      throw new Error(`Route ${route} did not render the platform shell (url=${page.url()}, title=${title}, body=${body})`, { cause: error });
+    }
     check(new URL(page.url()).pathname === route, `${route} redirected unexpectedly`);
     check((await page.locator(".platform-main h1").innerText()).trim().length > 0, `${route} has no heading`);
     check(await page.getByText("Platform data is temporarily unavailable.").count() === 0, `${route} reports unavailable platform data`);
@@ -101,6 +108,22 @@ try {
   check(!overflow, "Mobile viewport has horizontal page overflow");
   if (screenshotDir) await page.screenshot({ path: join(screenshotDir, "platform-audit-mobile.png") });
   check(errors.length === 0, `Browser runtime errors: ${errors.join("; ")}`);
+
+  const expiredContext = await browser.newContext();
+  const expiredSession = { access_token: "expired", refresh_token: "expired", expires_at: 1, token_type: "bearer" };
+  await expiredContext.addCookies(sessionCookies(expiredSession));
+  const expiredPage = await expiredContext.newPage();
+  await expiredPage.goto(`${appUrl}/restaurants`, { waitUntil: "domcontentloaded" });
+  await expiredPage.waitForURL(value => value.pathname === "/login", { timeout: 15000 });
+  check(new URL(expiredPage.url()).pathname === "/login", "Expired session was not redirected to login");
+  await expiredContext.close();
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${appUrl}/`, { waitUntil: "domcontentloaded" });
+  await page.locator(".account-menu summary").click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL(value => value.pathname === "/login", { timeout: 15000 });
+  check(new URL(page.url()).pathname === "/login", "Sign out did not clear the platform session");
 
   const unauthorizedEmail = `qa-platform-denied-${randomUUID()}@qa.example`;
   const unauthorized = checked(await service.auth.admin.createUser({ email: unauthorizedEmail, password, email_confirm: true }), "Create unauthorized identity");

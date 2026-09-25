@@ -54,6 +54,7 @@ const health=await request("/api/v1/health",{host:"localhost"})
 assert(health.response.status===200&&health.json?.data?.dependencies?.database==="ok","health endpoint failed")
 assert(Boolean(health.response.headers.get("x-request-id")),"health request id missing")
 pass("Health and request correlation")
+await resetQaRateLimits()
 
 const unresolved=await request("/api/v1/storefront/context")
 assert(unresolved.response.status===409&&unresolved.json?.error?.code==="BRANCH_REQUIRED","A domain did not require explicit branch")
@@ -104,7 +105,10 @@ assert(invalidTracking.status===404,"Invalid guest tracking token was accepted")
 pass("Guest tracking and invalid-token rejection")
 
 const conflict=await request("/api/v1/orders",{branch:ids.branchA1,method:"POST",body:{...orderPayload,customerName:"Changed payload"}})
-assert(conflict.response.status===400,"Idempotency payload conflict accepted")
+assert(
+  conflict.response.status===409&&conflict.json?.error?.code==="IDEMPOTENCY_CONFLICT",
+  `Idempotency payload conflict returned ${conflict.response.status}/${conflict.json?.error?.code??"UNKNOWN"}`,
+)
 pass("Idempotency key conflict rejected")
 
 const deliveryPayload={...orderPayload,idempotencyKey:`staging-delivery-${Date.now()}`,serviceMode:"DELIVERY",promoCode:undefined,deliveryAreaId:ids.areaA1,deliveryAddress:"STAGING QA delivery point, Islamabad",locationSource:"GPS",latitude:33.7100,longitude:73.0550}
