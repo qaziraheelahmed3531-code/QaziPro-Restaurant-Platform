@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 
-export function LoginForm({ initialError = "", googleStatus = "unknown" }: { initialError?: string; googleStatus?: "enabled" | "disabled" | "invalid-client" | "unknown" }) {
+export function LoginForm({ authCallbackUrl, initialError = "", googleStatus = "unknown" }: { authCallbackUrl: string; initialError?: string; googleStatus?: "enabled" | "disabled" | "invalid-client" | "unknown" }) {
   const configured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
   const [email, setEmail] = useState("")
   const [busy, setBusy] = useState(false)
@@ -24,7 +24,7 @@ export function LoginForm({ initialError = "", googleStatus = "unknown" }: { ini
     try {
       const { error } = await createClient().auth.signInWithOtp({
         email: email.trim().toLowerCase(),
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback`, shouldCreateUser: false },
+        options: { emailRedirectTo: authCallbackUrl, shouldCreateUser: false },
       })
       if (error) throw error
       setMessage("Secure sign-in link sent. Check your work email.")
@@ -38,7 +38,7 @@ export function LoginForm({ initialError = "", googleStatus = "unknown" }: { ini
     try {
       const { error } = await createClient().auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
+        options: { redirectTo: authCallbackUrl },
       })
       if (error) throw error
     } catch {

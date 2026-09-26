@@ -6,6 +6,7 @@ import { DataNotice, EmptyState, PageHeader, StatusBadge } from "@/components/ui
 import { CopyLinkButton } from "@/components/copy-link-button"
 import { requirePlatformStaff } from "@/lib/auth"
 import { getOnboardingAgreement } from "@/lib/data"
+import { getPlatformPublicOrigin } from "@/lib/public-origin"
 
 type Row = Record<string, unknown>
 
@@ -19,7 +20,7 @@ export default async function AgreementPage({ params, searchParams }: { params: 
   const business = onboarding.businesses as Row | null
   const subscription = result.data.subscription
   const packageValue = subscription?.service_packages as Row | null
-  const publicBase = (process.env.PLATFORM_PUBLIC_URL ?? "http://localhost:3002").replace(/\/$/, "")
+  const publicBase = getPlatformPublicOrigin()
   const shareUrl = notice.share ? `${publicBase}/agreement/${notice.share}` : ""
   return <PlatformShell context={context}>
     <Link className="back-link" href="/onboarding"><ArrowLeft/>Onboarding queue</Link>

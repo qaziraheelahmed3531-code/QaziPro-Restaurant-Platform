@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { LoginForm } from "@/components/login-form"
 import { getPlatformContext } from "@/lib/auth"
 import { isSupabaseConfigured } from "@/lib/supabase/server"
+import { getPlatformAuthCallbackUrl } from "@/lib/public-origin"
 
 const messages: Record<string, string> = {
   configuration: "Platform authentication is not configured for this environment.",
@@ -44,5 +45,5 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     }
   }
   const initialError = params.error === "configuration" && configured ? "" : messages[params.error ?? ""]
-  return <main className="login-page"><LoginForm initialError={initialError} googleStatus={googleStatus}/></main>
+  return <main className="login-page"><LoginForm authCallbackUrl={getPlatformAuthCallbackUrl()} initialError={initialError} googleStatus={googleStatus}/></main>
 }

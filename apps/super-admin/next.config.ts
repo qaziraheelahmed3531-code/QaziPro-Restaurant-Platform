@@ -1,5 +1,14 @@
 import type { NextConfig } from "next"
 
+const serverActionOrigins = Array.from(new Set([
+  "localhost:3002",
+  "superadmin.qazipro.com",
+  ...(process.env.PLATFORM_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
+]))
+
 const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   agentRules: false,
@@ -10,10 +19,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      allowedOrigins: (process.env.PLATFORM_ALLOWED_ORIGINS ?? "localhost:3002")
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean),
+      allowedOrigins: serverActionOrigins,
     },
   },
 }

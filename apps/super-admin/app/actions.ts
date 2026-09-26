@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createPlatformAdminClient } from "@/lib/supabase/admin"
 import { slugifyRestaurant, type RestaurantLifecycle } from "@/lib/platform"
 import { appIdentifierPattern, supportedServiceKeys, validateProvisioningRequiredFields } from "@/lib/onboarding"
+import { getPlatformAuthCallbackUrl } from "@/lib/public-origin"
 
 export type ActionState = { error?: string; requestId?: string; success?: boolean; enabled?: boolean }
 
@@ -503,7 +504,7 @@ export async function invitePlatformStaffAction(form: FormData) {
   if (!admin) redirect("/team?error=configuration")
   const { data: role } = await admin.from("platform_roles").select("id,key").eq("key", roleKey).maybeSingle()
   if (!role || role.key === "PLATFORM_OWNER") redirect("/team?error=role")
-  const redirectTo = `${(process.env.PLATFORM_PUBLIC_URL ?? "http://localhost:3002").replace(/\/$/, "")}/auth/callback`
+  const redirectTo = getPlatformAuthCallbackUrl()
   const invited = isSyntheticQaEmail(email)
     ? await admin.auth.admin.generateLink({ type: "invite", email, options: { redirectTo, data: { full_name: displayName, qazipro_platform_invite: true } } })
     : await admin.auth.admin.inviteUserByEmail(email, { redirectTo, data: { full_name: displayName, qazipro_platform_invite: true } })
