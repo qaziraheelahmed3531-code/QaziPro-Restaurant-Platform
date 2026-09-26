@@ -15,7 +15,8 @@
     "./social-icons": "./src/social-icons.ts",
     "./motion": "./src/motion.ts",
     "./app-loader": "./src/app-loader.tsx",
-    "./mobile-api": "./src/mobile-api.ts"
+    "./mobile-api": "./src/mobile-api.ts",
+    "./domains": "./src/domains.ts"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

@@ -1,6 +1,7 @@
 ﻿import "server-only"
 
 import { createClient } from "@supabase/supabase-js"
+import { normalizeHostname, requestHostname } from "@italian-pizza/shared/domains"
 import { cookies, headers } from "next/headers"
 import { fallbackStorefront } from "@/lib/storefront/fallback"
 import type { AreaGroupId, LocationArea, MenuSection, Product, ProductModifierGroup, StorefrontSnapshot } from "@/types"
@@ -85,10 +86,6 @@ function todayHoursLabel(branch: Row, timezone: string) {
 
 export type StorefrontRequestContext = { hostname?: string | null; businessSlug?: string | null; branchId?: string | null }
 
-function normalizedHostname(value: string | null | undefined) {
-  return (value ?? "").split(",")[0].trim().toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "")
-}
-
 export async function getStorefrontSnapshot(explicit: StorefrontRequestContext = {}): Promise<StorefrontSnapshot> {
   const supabase = databaseClient()
   const demoEnabled = process.env.NODE_ENV === "development" && process.env.ENABLE_DEMO_STOREFRONT === "true"
@@ -106,8 +103,14 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
   try {
     const requestHeaders = await headers()
     const cookieStore = await cookies()
-    const hostname = normalizedHostname(explicit.hostname ?? requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"))
-    const platformDomain = normalizedHostname(process.env.QAZIPRO_PLATFORM_DOMAIN)
+    const platformDomain = normalizeHostname(process.env.QAZIPRO_PLATFORM_DOMAIN)
+    const hostname = explicit.hostname !== undefined
+      ? normalizeHostname(explicit.hostname)
+      : requestHostname({
+          host: requestHeaders.get("host"),
+          forwardedHost: requestHeaders.get("x-forwarded-host"),
+          platformDomain,
+        })
     let businessId: string | null = null
     let businessSlug = text(explicit.businessSlug ?? requestHeaders.get("x-qazipro-business-slug"))
     const localDevelopment = process.env.NODE_ENV === "development" && (

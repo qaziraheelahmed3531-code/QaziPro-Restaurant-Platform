@@ -55,4 +55,9 @@ describe("platform authorization and lifecycle", () => {
   it("bounds public keys to a DNS-safe label length", () => {
     expect(slugifyRestaurant("a".repeat(90))).toHaveLength(63)
   })
+
+  it("rejects reserved platform keys", () => {
+    expect(slugifyRestaurant("admin")).toBe("")
+    expect(slugifyRestaurant("API")).toBe("")
+  })
 })

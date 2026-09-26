@@ -1,6 +1,7 @@
 import "server-only"
 
 import { branchContextHeader, clientPlatformHeader, restaurantContextHeader, type MobileRestaurantBootstrap } from "@italian-pizza/shared/mobile-api"
+import { requestHostname } from "@italian-pizza/shared/domains"
 import type { NextRequest } from "next/server"
 
 import { ApiProblem } from "@/lib/api/v1"
@@ -43,7 +44,11 @@ function clientCapability(request: NextRequest) {
 }
 
 function hostname(request: NextRequest) {
-  return request.headers.get("x-forwarded-host") ?? request.headers.get("host")
+  return requestHostname({
+    host: request.headers.get("host"),
+    forwardedHost: request.headers.get("x-forwarded-host"),
+    platformDomain: process.env.QAZIPRO_PLATFORM_DOMAIN,
+  })
 }
 
 function resolutionProblem(snapshot: StorefrontSnapshot): never {

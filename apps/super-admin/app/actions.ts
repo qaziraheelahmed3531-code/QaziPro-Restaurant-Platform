@@ -2,6 +2,7 @@
 
 import { createHash, randomBytes, randomUUID } from "node:crypto"
 import { deliverExternalInvitation, isSyntheticQaEmail, type InvitationDeliveryStatus } from "@italian-pizza/shared"
+import { normalizeHostname, stagingHostnameForSlug } from "@italian-pizza/shared/domains"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { requirePlatformPermission } from "@/lib/auth"
@@ -76,6 +77,9 @@ export async function provisionRestaurantAction(_: ActionState, form: FormData):
   const city = text(form, "city")
   const packageId = text(form, "packageId")
   const slug = slugifyRestaurant(text(form, "slug") || name)
+  const platformDomain = normalizeHostname(process.env.QAZIPRO_CUSTOMER_PLATFORM_DOMAIN || (process.env.APP_ENVIRONMENT === "staging" ? "staging.qazipro.com" : ""))
+  const requestedCustomerDomain = text(form, "customerDomain")
+  const customerDomain = normalizeHostname(requestedCustomerDomain) || stagingHostnameForSlug(slug, platformDomain)
   const branchNames = form.getAll("branchName").map(String).map((value) => value.trim())
   const branchCodes = form.getAll("branchCode").map(String).map((value) => value.trim())
   const branchCities = branchNames.map((_, index) => text(form, `branchCity${index}`))
@@ -83,6 +87,8 @@ export async function provisionRestaurantAction(_: ActionState, form: FormData):
   const branchAddresses = branchNames.map((_, index) => text(form, `branchAddress${index}`))
   const validationError = validateProvisioningRequiredFields({ name, ownerName, ownerEmail, city, packageId, branchNames, branchCodes, branchCities, branchCountryCodes, branchAddresses })
   if (validationError || !slug) return { error: validationError ?? "Enter a valid public restaurant key.", requestId }
+  if (requestedCustomerDomain && !normalizeHostname(requestedCustomerDomain)) return { error: "Enter a valid customer hostname without a path or query string.", requestId }
+  if (!customerDomain) return { error: "Configure a valid customer platform domain before provisioning.", requestId }
   const supabase = await createClient()
   const activePackage = await supabase.from("service_packages").select("id").eq("id", packageId).eq("is_active", true).maybeSingle()
   if (activePackage.error) return { error: "Service package validation is temporarily unavailable.", requestId }
@@ -144,7 +150,7 @@ export async function provisionRestaurantAction(_: ActionState, form: FormData):
     commercialNotes: text(form, "commercialNotes"),
     services,
     branches,
-    customerDomain: text(form, "customerDomain"),
+    customerDomain,
     adminDomain: text(form, "adminDomain"),
     androidEnabled: services.includes("mobile.android"),
     androidName: text(form, "androidName") || name,
@@ -635,20 +641,41 @@ export async function setBranchStatusAction(form: FormData) {
 
 export async function upsertDomainAction(form: FormData) {
   const context = await requirePlatformPermission("domains.manage")
-  const admin = createPlatformAdminClient()
-  if (!admin) redirect("/domains?error=configuration")
+  const supabase = await createClient()
   const businessId = text(form, "businessId"), purpose = text(form, "purpose")
-  const hostname = text(form, "hostname").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "")
-  const scope = await verifyPlatformScope(admin, businessId, "")
-  if (!scope?.businessId || !["CUSTOMER", "ADMIN", "APP_LINKS", "OTHER"].includes(purpose) || !/^(?=.{4,253}$)(?!-)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(hostname)) redirect("/domains?error=validation")
-  const existing = await admin.from("platform_domain_records").select("id,business_id,hostname,purpose").eq("hostname", hostname).maybeSingle()
-  if (existing.data && existing.data.business_id !== businessId) redirect("/domains?error=conflict")
-  const values = { business_id: businessId, hostname, purpose, verification_status: "PENDING", dns_status: "UNKNOWN", ssl_status: "UNKNOWN", auth_redirect_ready: false, failure_summary: null, updated_at: new Date().toISOString() }
-  const result = existing.data
-    ? await admin.from("platform_domain_records").update(values).eq("id", existing.data.id).select("id").single()
-    : await admin.from("platform_domain_records").insert(values).select("id").single()
-  if (result.error || !result.data) redirect("/domains?error=save")
-  await admin.from("platform_audit_logs").insert({ actor_user_id: context.userId, action: existing.data ? "DOMAIN_CONFIGURATION_UPDATED" : "DOMAIN_CONFIGURATION_CREATED", target_type: "platform_domain_records", target_id: result.data.id, business_id: businessId, reason: text(form, "reason") || "Domain configuration recorded", before_data: existing.data, after_data: { hostname, purpose, verification_status: "PENDING" } })
+  const hostname = normalizeHostname(text(form, "hostname"))
+  if (!businessId || !hostname || !["CUSTOMER", "ADMIN", "APP_LINKS", "OTHER"].includes(purpose)) redirect("/domains?error=validation")
+  const result = await supabase.rpc("platform_manage_domain", {
+    p_business_id: businessId,
+    p_action: "ADD",
+    p_domain_id: null,
+    p_hostname: hostname,
+    p_purpose: purpose,
+    p_reason: text(form, "reason") || `Domain added by ${context.email}`,
+  })
+  if (result.error || !result.data) redirect(`/domains?error=${result.error?.code === "23505" ? "conflict" : "save"}`)
+  revalidatePath("/domains")
+  revalidatePath(`/restaurants/${businessId}`)
+  redirect("/domains?saved=1")
+}
+
+export async function manageDomainAction(form: FormData) {
+  await requirePlatformPermission("domains.manage")
+  const supabase = await createClient()
+  const businessId = text(form, "businessId")
+  const domainId = text(form, "domainId")
+  const action = text(form, "domainAction").toUpperCase()
+  const hostname = action === "EDIT_PENDING" ? normalizeHostname(text(form, "hostname")) : ""
+  if (!businessId || !domainId || !["EDIT_PENDING", "SET_PRIMARY", "DEACTIVATE"].includes(action) || (action === "EDIT_PENDING" && !hostname)) redirect("/domains?error=validation")
+  const result = await supabase.rpc("platform_manage_domain", {
+    p_business_id: businessId,
+    p_action: action,
+    p_domain_id: domainId,
+    p_hostname: hostname || null,
+    p_purpose: "CUSTOMER",
+    p_reason: text(form, "reason") || "Domain registry action",
+  })
+  if (result.error || !result.data) redirect(`/domains?error=${result.error?.code === "23505" ? "conflict" : "action"}`)
   revalidatePath("/domains")
   revalidatePath(`/restaurants/${businessId}`)
   redirect("/domains?saved=1")

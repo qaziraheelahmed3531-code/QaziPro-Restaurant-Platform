@@ -1,3 +1,5 @@
+import { normalizeRestaurantSlug } from "@italian-pizza/shared/domains"
+
 export const platformPermissions = [
   "restaurants.view",
   "restaurants.create",
@@ -72,12 +74,7 @@ export function healthFromSignals(signals: Array<"HEALTHY" | "WARNING" | "CRITIC
 }
 
 export function slugifyRestaurant(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 63)
+  return normalizeRestaurantSlug(value)
 }
 
 export const modules = {

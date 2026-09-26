@@ -9,6 +9,13 @@ insert into public.businesses(id,slug,name,city) values
 insert into public.business_domains(business_id,hostname,domain_type,is_primary,is_active,verified_at) values
   ('a0000000-0000-4000-8000-000000000001','a.qa.example','CUSTOM',true,true,now()),
   ('b0000000-0000-4000-8000-000000000001','b.qa.example','CUSTOM',true,true,now());
+insert into public.service_entitlements(business_id,capability_key,enabled,source) values
+  ('a0000000-0000-4000-8000-000000000001','website.ordering',true,'PACKAGE'),
+  ('a0000000-0000-4000-8000-000000000001','ordering.pickup',true,'PACKAGE'),
+  ('a0000000-0000-4000-8000-000000000001','pos.web',true,'PACKAGE'),
+  ('b0000000-0000-4000-8000-000000000001','website.ordering',true,'PACKAGE'),
+  ('b0000000-0000-4000-8000-000000000001','ordering.pickup',true,'PACKAGE'),
+  ('b0000000-0000-4000-8000-000000000001','pos.web',true,'PACKAGE');
 insert into public.branches(id,business_id,code,slug,name,city) values
   ('a0000000-0000-4000-8000-000000000101','a0000000-0000-4000-8000-000000000001','A1','a1','A Branch 1','Islamabad'),
   ('a0000000-0000-4000-8000-000000000102','a0000000-0000-4000-8000-000000000001','A2','a2','A Branch 2','Rawalpindi'),
@@ -65,10 +72,13 @@ declare a_payload jsonb:=jsonb_build_object(
 begin
   select * into resolution from public.resolve_storefront_business('a.qa.example','platform.qa.example',null);
   if resolution.resolved_business_id<>'a0000000-0000-4000-8000-000000000001' or resolution.resolution<>'DOMAIN' then raise exception 'Custom domain resolved the wrong restaurant'; end if;
+  select * into resolution from public.resolve_storefront_business('b.qa.example','platform.qa.example',null);
+  if resolution.resolved_business_id<>'b0000000-0000-4000-8000-000000000001' or resolution.resolution<>'DOMAIN' then raise exception 'Canonical domain resolved the wrong restaurant'; end if;
+  select * into resolution from public.resolve_storefront_business('',null,'qa-restaurant-a');
+  if resolution.resolved_business_id<>'a0000000-0000-4000-8000-000000000001' or resolution.resolution<>'PUBLIC_KEY' then raise exception 'Explicit public key resolved the wrong restaurant'; end if;
+  resolution:=null;
   select * into resolution from public.resolve_storefront_business('qa-restaurant-b.platform.qa.example','platform.qa.example',null);
-  if resolution.resolved_business_id<>'b0000000-0000-4000-8000-000000000001' or resolution.resolution<>'SUBDOMAIN' then raise exception 'Platform subdomain resolved the wrong restaurant'; end if;
-  select * into resolution from public.resolve_storefront_business('localhost',null,'qa-restaurant-a');
-  if resolution.resolved_business_id<>'a0000000-0000-4000-8000-000000000001' or resolution.resolution<>'SLUG' then raise exception 'Explicit slug fallback resolved the wrong restaurant'; end if;
+  if resolution.resolved_business_id is not null then raise exception 'Unregistered wildcard hostname resolved by slug'; end if;
 
   a1:=public.create_order_authoritative(a_payload,null);
   a1_retry:=public.create_order_authoritative(a_payload,null);

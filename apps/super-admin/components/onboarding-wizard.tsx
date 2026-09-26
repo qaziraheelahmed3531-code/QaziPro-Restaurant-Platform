@@ -7,6 +7,7 @@ import { provisionRestaurantAction, type ActionState } from "@/app/actions"
 import { BranchLocationFields } from "@/components/branch-location-fields"
 import { randomUUID } from "@/lib/browser-id"
 import { appIdentifierPattern, onboardingFieldMessage, supportedServices } from "@/lib/onboarding"
+import { normalizeRestaurantSlug, stagingHostnameForSlug } from "@italian-pizza/shared/domains"
 import { Check, ChevronLeft, ChevronRight, Plus, Rocket, Trash2 } from "lucide-react"
 
 export type OnboardingPackage = {
@@ -27,7 +28,7 @@ type WizardControl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
 type ValidationError = { field: string; message: string; step: number }
 type ReviewData = { business: string; owner: string; services: string; package: string; commercials: string; domains: string; branches: string; apps: string }
 
-export function OnboardingWizard({ packages, packageError }: { packages: OnboardingPackage[]; packageError?: string | null }) {
+export function OnboardingWizard({ packages, packageError, platformDomain }: { packages: OnboardingPackage[]; packageError?: string | null; platformDomain: string }) {
   const submissionLock = useRef(false)
   const [submissionStarted, setSubmissionStarted] = useState(false)
   const guardedAction = useCallback(async (previous: ActionState, form: FormData) => {
@@ -48,6 +49,11 @@ export function OnboardingWizard({ packages, packageError }: { packages: Onboard
   const [billingFrequency, setBillingFrequency] = useState("MONTHLY")
   const [review, setReview] = useState<ReviewData | null>(null)
   const [validationError, setValidationError] = useState<ValidationError | null>(null)
+  const [brandName, setBrandName] = useState("")
+  const [publicSlug, setPublicSlug] = useState("")
+  const [customerDomain, setCustomerDomain] = useState("")
+  const slugManuallyEdited = useRef(false)
+  const domainManuallyEdited = useRef(false)
   const formRef = useRef<HTMLFormElement>(null)
   const requestKey = useMemo(() => randomUUID(), [])
   const submitting = pending || submissionStarted
@@ -127,6 +133,21 @@ export function OnboardingWizard({ packages, packageError }: { packages: Onboard
     })
   }
 
+  function updateBrandName(value: string) {
+    setBrandName(value)
+    if (slugManuallyEdited.current) return
+    const nextSlug = normalizeRestaurantSlug(value)
+    setPublicSlug(nextSlug)
+    if (!domainManuallyEdited.current) setCustomerDomain(stagingHostnameForSlug(nextSlug, platformDomain))
+  }
+
+  function updatePublicSlug(value: string) {
+    slugManuallyEdited.current = true
+    const nextSlug = normalizeRestaurantSlug(value)
+    setPublicSlug(nextSlug)
+    if (!domainManuallyEdited.current) setCustomerDomain(stagingHostnameForSlug(nextSlug, platformDomain))
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     if (step < steps.length - 1) {
       event.preventDefault()
@@ -160,8 +181,8 @@ export function OnboardingWizard({ packages, packageError }: { packages: Onboard
     <ol className="wizard-steps">{steps.map((label,index) => <li key={label} className={index===step?"active":index<step?"done":""}><span>{index<step?<Check/>:index+1}</span><small>{label}</small></li>)}</ol>
     <div className="wizard-card">
       <section data-wizard-step="0" hidden={step!==0} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 1</p><h2>Restaurant and owner</h2><p>Create the canonical business identity. The internal <code>business_id</code> is generated server-side.</p></div><div className="form-grid">
-        <label>Brand name<input name="name" required minLength={2} placeholder="King's Cafe"/></label>
-        <label>Public restaurant key<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="kings-cafe"/><small>Stable public key; never the private business ID.</small></label>
+        <label>Brand name<input name="name" required minLength={2} placeholder="King's Cafe" value={brandName} onChange={(event)=>updateBrandName(event.target.value)}/></label>
+        <label>Public restaurant key<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="kings-cafe" value={publicSlug} onChange={(event)=>updatePublicSlug(event.target.value)}/><small>Unique URL-safe key. Reserved platform names are rejected.</small></label>
         <label>Legal name (optional)<input name="legalName"/></label>
         <label>Owner name<input name="ownerName" required minLength={2}/></label>
         <label>Owner email<input name="ownerEmail" type="email" required/><small>The owner receives an invitation; QaziPro never stores their password.</small></label>
@@ -182,8 +203,8 @@ export function OnboardingWizard({ packages, packageError }: { packages: Onboard
       <section data-wizard-step="3" hidden={step!==3} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 4</p><h2>Brand and domains</h2><p>All clients load branding from the restaurant configuration.</p></div><div className="form-grid">
         <label>Primary colour<input name="primaryColor" type="color" defaultValue="#a92114"/></label><label>Secondary colour<input name="secondaryColor" type="color" defaultValue="#e7a81a"/></label>
         <label className="span-2">Logo URL<input name="logoUrl" type="url" placeholder="Secure storage URL (optional during onboarding)"/></label>
-        <label>Customer domain<input name="customerDomain" placeholder="orders.restaurant.com"/></label><label>Admin domain<input name="adminDomain" placeholder="admin.restaurant.com"/></label>
-        <p className="form-help span-2">DNS, SSL and Auth callback status remain UNKNOWN until verified by a real health check.</p>
+        <label>Customer staging domain<input name="customerDomain" required={Boolean(platformDomain)} placeholder="kings-cafe.staging.qazipro.com" value={customerDomain} onChange={(event)=>{domainManuallyEdited.current=true;setCustomerDomain(event.target.value)}}/><small>{platformDomain ? `Wildcard infrastructure: configured for *.${platformDomain}. The restaurant mapping is created during provisioning.` : "Configure QAZIPRO_CUSTOMER_PLATFORM_DOMAIN to generate managed domains."}</small></label><label>Admin domain<input name="adminDomain" placeholder="admin.restaurant.com"/></label>
+        <p className="form-help span-2">Managed staging hostnames use the configured wildcard. External domains remain pending until real DNS and SSL evidence exists.</p>
       </div></section>
       <section data-wizard-step="4" hidden={step!==4} className="form-section"><div className="section-heading"><p className="eyebrow">STEP 5</p><h2>Branches and app identities</h2><p>Add the first operating locations. Delivery remains disabled until location and delivery rules are verified.</p></div><div className="branch-stack">{Array.from({length:branchCount},(_,index)=><fieldset key={index}><legend>Branch {index+1}</legend><div className="form-grid"><label>Branch name<input name="branchName" required placeholder={index===0?"Islamabad":"Lahore"}/></label><label>Branch code<input name="branchCode" required defaultValue={`B${index+1}`}/></label><BranchLocationFields prefix="branch" index={index}/></div>{branchCount>1?<button type="button" className="text-button danger" onClick={()=>setBranchCount((value)=>Math.max(1,value-1))}><Trash2/>Remove last branch</button>:null}</fieldset>)}</div><button type="button" className="button button-secondary" onClick={()=>setBranchCount((value)=>Math.min(20,value+1))}><Plus/>Add another branch</button>{selectedServices.has("ordering.delivery")?<p className="form-help">Delivery service is requested. Each new branch starts with delivery safely disabled until its location and delivery rules are reviewed.</p>:null}<div className="form-grid app-identifiers">{selectedServices.has("mobile.android")?<><label>Android app name<input name="androidName" required/></label><label>Android package ID<input name="androidId" required pattern={appIdentifierPattern.source} placeholder="com.qazipro.restaurant"/></label></>:null}{selectedServices.has("mobile.ios")?<><label>iOS app name<input name="iosName" required/></label><label>iOS bundle ID<input name="iosId" required pattern={appIdentifierPattern.source} placeholder="com.qazipro.restaurant"/></label></>:null}</div></section>
       <section data-wizard-step="5" hidden={step!==5} className="form-section review-section"><div className="review-icon"><Rocket/></div><div className="section-heading"><p className="eyebrow">FINAL REVIEW</p><h2>Provision safely</h2><p>This creates one canonical restaurant and all supported linked records in one retry-safe audited transaction.</p></div>{review?<dl className="review-summary"><dt>Business</dt><dd>{review.business}</dd><dt>Owner</dt><dd>{review.owner}</dd><dt>Services</dt><dd>{review.services}</dd><dt>Package</dt><dd>{review.package}</dd><dt>Commercials</dt><dd>{review.commercials}</dd><dt>Domains</dt><dd>{review.domains}</dd><dt>Branches</dt><dd>{review.branches}</dd><dt>Apps</dt><dd>{review.apps}</dd></dl>:null}<div className="review-edit-links">{steps.slice(0,5).map((label,index)=><button type="button" key={label} onClick={()=>setStep(index)}>Edit {label}</button>)}</div><ul><li><Check/>Retry-safe request key</li><li><Check/>Restaurant inactive until lifecycle activation</li><li><Check/>Delivery disabled until rules are verified</li><li><Check/>Domains and apps start pending</li></ul></section>
