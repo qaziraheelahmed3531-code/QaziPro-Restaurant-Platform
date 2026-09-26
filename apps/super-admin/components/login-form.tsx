@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react"
 import Image from "next/image"
+import { PlatformLogo } from "./platform-branding"
 import { createClient } from "@/lib/supabase/client"
 
 export function LoginForm({ authCallbackUrl, initialError = "", googleStatus = "unknown" }: { authCallbackUrl: string; initialError?: string; googleStatus?: "enabled" | "disabled" | "invalid-client" | "unknown" }) {
@@ -48,7 +49,7 @@ export function LoginForm({ authCallbackUrl, initialError = "", googleStatus = "
   }
 
   return <section className="login-card">
-    <div className="login-brand"><Image src="/qazipro-logo.png" alt="QaziPro" width={70} height={70} priority/><div><strong>QaziPro</strong><span>Platform Control Center</span></div></div>
+    <div className="login-brand"><PlatformLogo size={70}/><div><strong>QaziPro</strong><span>Platform Control Center</span></div></div>
     <p className="eyebrow">INTERNAL OPERATIONS</p>
     <h1>Run every restaurant from one calm command center.</h1>
     <p className="login-copy">Restricted to authorized QaziPro company staff. Restaurant owner accounts cannot enter this portal.</p>

@@ -1,3 +1,5 @@
+import { MutationForm } from "@/components/mutation-form"
+import { SubmitButton } from "@/components/submit-button"
 import { GitBranch, Power } from "lucide-react"
 import { addBranchAction, setBranchStatusAction } from "@/app/actions"
 import { BranchLocationFields } from "@/components/branch-location-fields"
@@ -21,7 +23,7 @@ export default async function BranchesPage({ searchParams }: { searchParams: Pro
     <div className="workspace-grid">
       <section className="panel">
         <header><div><p className="eyebrow">ADD LOCATION</p><h2>New branch</h2></div><GitBranch/></header>
-        <form action={addBranchAction} className="form-grid compact-form">
+        <MutationForm action={addBranchAction} className="form-grid compact-form">
           <input type="hidden" name="returnTo" value="/branches"/>
           <label className="span-2">Restaurant<select name="businessId" required><option value="">Select restaurant</option>{options.data.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.name)}</option>)}</select></label>
           <label>Branch name<input name="name" required/></label><label>Code<input name="code" required placeholder="ISB-01"/></label>
@@ -29,14 +31,14 @@ export default async function BranchesPage({ searchParams }: { searchParams: Pro
           <label>Timezone<input name="timezone" defaultValue="Asia/Karachi" required/></label><label>Reason<input name="reason" required defaultValue="New client location"/></label>
           <label className="check-row"><input type="checkbox" name="pickupEnabled" defaultChecked/>Pickup</label><label className="check-row"><input type="checkbox" name="deliveryEnabled"/>Request delivery</label>
           <p className="form-help span-2">Delivery stays disabled until coordinates and the existing delivery rule are both verified.</p>
-          <button className="button span-2"><GitBranch/>Create branch</button>
-        </form>
+          <SubmitButton className="button span-2"><GitBranch/>Create branch</SubmitButton>
+        </MutationForm>
       </section>
       <section className="panel">
         <header><div><p className="eyebrow">SAFE STATUS</p><h2>Activation controls</h2></div><Power/></header>
         <div className="record-list">{result.data.map((row: Row) => <article className="record-row record-row-stack" key={String(row.id)}>
           <div><strong>{String(row.name)}</strong><span>{String((row.businesses as Row | null)?.name ?? "Restaurant")} · {String(row.city ?? "No city")}</span></div>
-          <form action={setBranchStatusAction} className="inline-action"><input type="hidden" name="returnTo" value="/branches"/><input type="hidden" name="businessId" value={String(row.business_id)}/><input type="hidden" name="branchId" value={String(row.id)}/><input type="hidden" name="active" value={row.is_active ? "false" : "true"}/><input type="hidden" name="reason" value="QaziPro branch lifecycle control"/><button className={`button button-small ${row.is_active ? "button-danger" : "button-secondary"}`}>{row.is_active ? "Deactivate" : "Activate"}</button></form>
+          <MutationForm action={setBranchStatusAction} className="inline-action" confirmation="Changing branch availability affects staff and customer ordering at this location. Confirm the selected action."><input type="hidden" name="returnTo" value="/branches"/><input type="hidden" name="businessId" value={String(row.business_id)}/><input type="hidden" name="branchId" value={String(row.id)}/><input type="hidden" name="active" value={row.is_active ? "false" : "true"}/><input type="hidden" name="reason" value="QaziPro branch lifecycle control"/><SubmitButton className={`button button-small ${row.is_active ? "button-danger" : "button-secondary"}`}>{row.is_active ? "Deactivate" : "Activate"}</SubmitButton></MutationForm>
         </article>)}</div>
       </section>
     </div>

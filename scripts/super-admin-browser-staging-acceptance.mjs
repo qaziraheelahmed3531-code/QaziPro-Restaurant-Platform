@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
-import { chromium } from "playwright";
+import { chromium, expect } from "playwright/test";
 
 const ref = process.env.STAGING_SUPABASE_PROJECT_REF;
 const url = process.env.STAGING_SUPABASE_URL;
@@ -12,7 +12,7 @@ const publicKey = process.env.STAGING_SUPABASE_PUBLISHABLE_KEY;
 const serviceKey = process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY;
 const appUrl = process.env.STAGING_SUPER_ADMIN_URL ?? "http://localhost:3102";
 const appHostname = new URL(appUrl).hostname;
-const isKnownStagingDeployment = appHostname === "qazi-pro-restaurant-platform-super.vercel.app" || /^qazi-pro-restaurant-platform-super-admin-[a-z0-9]+\.vercel\.app$/i.test(appHostname);
+const isKnownStagingDeployment = appHostname === "superadmin.qazipro.com" || appHostname === "qazi-pro-restaurant-platform-super.vercel.app" || /^qazi-pro-restaurant-platform-super-admin-[a-z0-9]+\.vercel\.app$/i.test(appHostname);
 const screenshotDir = process.env.STAGING_SCREENSHOT_DIR;
 if (process.env.ALLOW_STAGING_ACCEPTANCE !== "1" || process.env.STAGING_ENVIRONMENT !== "staging" ||
   ref !== "jzisqjvroxodvmqxzsob" || new URL(url).hostname !== `${ref}.supabase.co` ||
@@ -30,24 +30,22 @@ let provisionedBusinessId;
 let provisionedOwnerEmail;
 let browser;
 let assertions = 0;
-function check(condition, message) { assertions++; assert.ok(condition, message); }
+function check(condition, message) { assertions++; assert.ok(condition, message); console.log(`PASS check ${assertions}`); }
 function checked(result, label) { if (result.error) throw new Error(`${label}: ${result.error.message}`); return result.data; }
 async function waitForData(loader, predicate, message, timeout = 30000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    const value = await loader();
-    if (predicate(value)) return value;
-    await new Promise(resolve => setTimeout(resolve, 250));
-  }
-  throw new Error(message);
+  let value;
+  await expect.poll(async () => { value = await loader(); return predicate(value); }, { message, timeout }).toBe(true);
+  return value;
 }
 async function stableGoto(page, target) {
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try { await page.goto(target, { waitUntil: "domcontentloaded" }); return; }
-    catch (error) { lastError = error; await page.waitForTimeout(300); }
-  }
-  throw lastError;
+  await page.goto(target, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole('button', { name: /Search restaurants/ })).toBeEnabled();
+}
+async function confirmChange(page, button) {
+  await button.click();
+  const dialog = page.getByRole('dialog', { name:'Confirm change', exact:true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name:'Confirm change', exact:true }).click();
 }
 function sessionCookies(session) {
   const encoded = `base64-${Buffer.from(JSON.stringify(session)).toString("base64url")}`;
@@ -206,16 +204,13 @@ try {
   check(appRecords.length === 2 && appRecords.every(record => record.enabled && record.release_status === "CONFIGURATION"), "Mobile app registry did not start in configuration state");
   const provisionAudit = checked(await service.from("platform_audit_logs").select("action").eq("business_id", provisionedBusinessId).eq("action", "RESTAURANT_PROVISIONED"), "Provision audit");
   check(provisionAudit.length === 1, "Provisioning did not create exactly one audit event");
-  check(await page.getByText("Invitation and membership state").isVisible(), "Restaurant 360 owner/access view is missing");
+  await expect(page.getByRole('heading', { name:'Invitation and membership state' })).toBeVisible({ timeout:30000 });
   const invitation = checked(await service.from("staff_invitations").select("id,is_active,status,delivery_status").eq("business_id", provisionedBusinessId).eq("role", "OWNER").single(), "Owner invitation fixture");
   check(invitation.status === "PENDING" && invitation.delivery_status === "SUPPRESSED", "Synthetic owner invitation was not safely suppressed");
-  await page.getByRole("button", { name: "Deactivate invitation" }).click();
+  await confirmChange(page, page.getByRole("button", { name: "Revoke invitation" }));
   await waitForData(async () => checked(await service.from("staff_invitations").select("is_active").eq("id", invitation.id).single(), "Disabled owner invitation"), value => value.is_active === false, "Owner invitation deactivation did not complete");
   await page.getByText("Owner invitation state updated and audited.").waitFor({ state: "visible", timeout: 30000 });
-  await page.getByRole("button", { name: "Activate invitation" }).click();
-  await waitForData(async () => checked(await service.from("staff_invitations").select("is_active").eq("id", invitation.id).single(), "Enabled owner invitation"), value => value.is_active === true, "Owner invitation activation did not complete");
-  check(await page.getByText("Owner invitation state updated and audited.").isVisible(), "Owner invitation access feedback is missing");
-  await page.getByRole("button", { name: "Resend invitation" }).click();
+  await page.getByRole("button", { name: "Issue new invitation" }).click();
   await page.waitForURL(value => value.pathname === `/restaurants/${provisionedBusinessId}` && value.searchParams.get("invite") === "suppressed", { timeout: 30000 });
   const suppressedInvite = checked(await service.from("staff_invitations").select("delivery_status").eq("id", invitation.id).single(), "Suppressed owner invitation resend");
   check(suppressedInvite.delivery_status === "SUPPRESSED", "Synthetic owner invitation resend reached an external transport");
@@ -244,30 +239,30 @@ try {
 
   secondBranchCard = page.locator("#branches .branch-management-card").filter({ hasText: "QA Second Branch Updated" });
   const secondBranchId = managedBranches.find(branch => branch.name === "QA Second Branch Updated").id;
-  await secondBranchCard.getByRole("button", { name: "Deactivate" }).click();
+  await confirmChange(page, secondBranchCard.getByRole("button", { name: "Deactivate" }));
   let secondBranchState = await waitForData(async () => checked(await service.from("branches").select("is_active").eq("id", secondBranchId).single(), "Deactivated branch"), value => value.is_active === false, "Branch deactivation did not complete");
   await secondBranchCard.getByRole("button", { name: "Activate" }).waitFor({ state: "visible", timeout: 30000 });
   await page.getByText("Change saved and audited.").waitFor({ state: "visible", timeout: 30000 });
   check(await page.getByText("Change saved and audited.").isVisible(), "Branch deactivation did not show success feedback");
   check(secondBranchState.is_active === false, "Branch deactivation was not persisted");
   secondBranchCard = page.locator("#branches .branch-management-card").filter({ hasText: "QA Second Branch Updated" });
-  await secondBranchCard.getByRole("button", { name: "Activate" }).click();
+  await confirmChange(page, secondBranchCard.getByRole("button", { name: "Activate" }));
   secondBranchState = await waitForData(async () => checked(await service.from("branches").select("is_active").eq("id", secondBranchId).single(), "Reactivated branch"), value => value.is_active === true, "Branch reactivation did not complete");
   await secondBranchCard.getByRole("button", { name: "Deactivate" }).waitFor({ state: "visible", timeout: 30000 });
   check(await page.getByText("Change saved and audited.").isVisible(), "Branch reactivation did not show success feedback");
   check(secondBranchState.is_active === true, "Branch reactivation was not persisted");
 
   let websiteEntitlement = page.locator("#services .entitlement-list > div").filter({ hasText: "Customer Website" });
-  await websiteEntitlement.getByRole("button", { name: "Disable" }).click();
+  await websiteEntitlement.getByRole("button", { name: "Disable Customer Website", exact: true }).click();
   let entitlementOverride = await waitForData(async () => checked(await service.from("service_entitlements").select("enabled").eq("business_id", provisionedBusinessId).eq("capability_key", "website.ordering").eq("source", "OVERRIDE").single(), "Disabled entitlement override"), value => value.enabled === false, "Entitlement disable did not complete");
-  await websiteEntitlement.getByRole("button", { name: "Enable" }).waitFor({ state: "visible", timeout: 30000 });
+  await websiteEntitlement.getByRole("button", { name: "Enable Customer Website", exact: true }).waitFor({ state: "visible", timeout: 30000 });
   await page.getByText("Change saved and audited.").waitFor({ state: "visible", timeout: 30000 });
   check(await page.getByText("Change saved and audited.").isVisible(), "Entitlement disable did not show success feedback");
   check(entitlementOverride.enabled === false, "Entitlement disable did not persist canonically");
   websiteEntitlement = page.locator("#services .entitlement-list > div").filter({ hasText: "Customer Website" });
-  await websiteEntitlement.getByRole("button", { name: "Enable" }).click();
+  await websiteEntitlement.getByRole("button", { name: "Enable Customer Website", exact: true }).click();
   entitlementOverride = await waitForData(async () => checked(await service.from("service_entitlements").select("enabled").eq("business_id", provisionedBusinessId).eq("capability_key", "website.ordering").eq("source", "OVERRIDE").single(), "Enabled entitlement override"), value => value.enabled === true, "Entitlement enable did not complete");
-  await websiteEntitlement.getByRole("button", { name: "Disable" }).waitFor({ state: "visible", timeout: 30000 });
+  await websiteEntitlement.getByRole("button", { name: "Disable Customer Website", exact: true }).waitFor({ state: "visible", timeout: 30000 });
   check(await page.getByText("Change saved and audited.").isVisible(), "Entitlement enable did not show success feedback");
   check(entitlementOverride.enabled === true, "Entitlement enable did not persist canonically");
 
@@ -278,7 +273,7 @@ try {
     await lifecycleForm.locator('[name="reason"]').fill(`Browser acceptance ${nextLifecycle}`);
     await Promise.all([
       page.waitForURL(value => value.pathname === `/restaurants/${provisionedBusinessId}` && value.searchParams.get("updated") === "1", { waitUntil: "domcontentloaded", timeout: 30000 }),
-      lifecycleForm.getByRole("button", { name: "Apply transition" }).click(),
+      confirmChange(page, lifecycleForm.getByRole("button", { name: "Apply transition" })),
     ]);
     await waitForData(async () => checked(await service.from("restaurant_onboarding").select("lifecycle").eq("business_id", provisionedBusinessId).single(), `${nextLifecycle} transition`), value => value.lifecycle === nextLifecycle, `${nextLifecycle} transition did not complete`);
     const lifecycleStatus = page.locator(".page-actions .status").filter({ hasText: nextLifecycle.replaceAll("_", " ") }).first();
@@ -293,17 +288,17 @@ try {
   await page.goto(`${appUrl}/restaurants/${provisionedBusinessId}`, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.keyboard.press("Control+k");
-  await page.getByRole("dialog", { name: "Command palette" }).waitFor({ state: "visible", timeout: 10000 });
-  check(await page.getByRole("dialog", { name: "Command palette" }).isVisible(), "Command palette did not open");
+  await page.getByRole("dialog", { name: "Search QaziPro" }).waitFor({ state: "visible", timeout: 10000 });
+  check(await page.getByRole("dialog", { name: "Search QaziPro" }).isVisible(), "Command palette did not open");
   await page.keyboard.press("Escape");
-  check(await page.getByRole("dialog", { name: "Command palette" }).count() === 0, "Command palette did not close");
+  await expect(page.getByRole("dialog", { name: "Search QaziPro" })).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: "domcontentloaded" });
   check(await page.getByRole("button", { name: "Open menu" }).isVisible(), "Mobile navigation unavailable");
   const overflow = await page.evaluate(() => ({
     active: document.documentElement.scrollWidth > window.innerWidth + 1,
     width: document.documentElement.scrollWidth,
-    offenders: Array.from(document.querySelectorAll<HTMLElement>("body *")).map((element) => {
+    offenders: Array.from(document.querySelectorAll("body *")).map((element) => {
       const rect = element.getBoundingClientRect();
       return { tag: element.tagName.toLowerCase(), className: element.className, right: Math.round(rect.right), width: Math.round(rect.width), text: (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 80) };
     }).filter((item) => item.right > window.innerWidth + 1 || item.width > window.innerWidth + 1).slice(0, 8),
@@ -330,7 +325,7 @@ try {
     await lifecycleForm.locator('[name="reason"]').fill(`Browser acceptance ${nextLifecycle}`);
     await Promise.all([
       page.waitForURL(value => value.pathname === `/restaurants/${provisionedBusinessId}` && value.searchParams.get("updated") === "1", { waitUntil: "domcontentloaded", timeout: 30000 }),
-      lifecycleForm.getByRole("button", { name: "Apply transition" }).click(),
+      confirmChange(page, lifecycleForm.getByRole("button", { name: "Apply transition" })),
     ]);
     await waitForData(async () => checked(await service.from("restaurant_onboarding").select("lifecycle").eq("business_id", provisionedBusinessId).single(), `${nextLifecycle} archive transition`), value => value.lifecycle === nextLifecycle, `${nextLifecycle} archive transition did not complete`);
     const lifecycleStatus = page.locator(".page-actions .status").filter({ hasText: nextLifecycle.replaceAll("_", " ") }).first();
@@ -361,6 +356,14 @@ try {
   await deniedContext.close();
   await context.close();
   console.log(JSON.stringify({ ok: true, assertions, routes: routes.length, mobile: "PASS", unauthorized: "DENIED" }));
+} catch (error) {
+  if (screenshotDir && browser) {
+    await mkdir(screenshotDir, {recursive:true});
+    const page = browser.contexts()[0]?.pages()[0];
+    if (page) await page.screenshot({path:join(screenshotDir,'onboarding-failure.png')}).catch(()=>{});
+  }
+  console.error(JSON.stringify({ok:false,assertions,error:error.message.split('\n').slice(0,7).join('\n')}));
+  process.exitCode=1;
 } finally {
   if (browser) await browser.close();
   if (provisionedBusinessId) {

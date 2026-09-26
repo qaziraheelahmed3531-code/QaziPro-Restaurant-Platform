@@ -95,7 +95,7 @@ export async function getRestaurant(id: string) {
     supabase.from("businesses").select("id,slug,name,short_description,phone,email,address,city,currency,timezone,is_active,created_at,business_branding(*),branches:branches!branches_business_id_fkey(*)").eq("id", id).maybeSingle(),
     supabase.from("restaurant_onboarding").select("*").eq("business_id", id).maybeSingle(),
     supabase.from("restaurant_subscriptions").select("*,service_packages(name,code)").eq("business_id", id).maybeSingle(),
-    supabase.from("service_entitlements").select("capability_key,enabled,source,effective_from,effective_until,limit_value").eq("business_id", id).order("capability_key"),
+    supabase.from("service_entitlements").select("capability_key,enabled,source,effective_from,effective_until,limit_value,updated_at").eq("business_id", id).order("capability_key"),
     supabase.from("mobile_app_records").select("*").eq("business_id", id).order("platform"),
     supabase.from("platform_domain_records").select("*").eq("business_id", id).order("purpose"),
     supabase.from("deployment_records").select("*").eq("business_id", id).order("created_at", { ascending: false }).limit(10),

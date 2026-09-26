@@ -12,7 +12,7 @@ import { slugifyRestaurant, type RestaurantLifecycle } from "@/lib/platform"
 import { appIdentifierPattern, supportedServiceKeys, validateProvisioningRequiredFields } from "@/lib/onboarding"
 import { getPlatformAuthCallbackUrl } from "@/lib/public-origin"
 
-export type ActionState = { error?: string; requestId?: string; success?: boolean; enabled?: boolean }
+export type ActionState = { error?: string; requestId?: string; success?: boolean; enabled?: boolean; updatedAt?: string }
 
 const text = (form: FormData, name: string) => String(form.get(name) ?? "").trim()
 const money = (form: FormData, name: string) => Math.max(0, Math.round(Number(form.get(name)) || 0))
@@ -739,26 +739,18 @@ export async function setEntitlementAction(form: FormData) {
 }
 
 export async function setEntitlementInstantAction(_: ActionState, form: FormData): Promise<ActionState> {
+  await requirePlatformPermission("subscriptions.manage")
   const requestId = randomUUID()
+  const businessId = text(form, "businessId"), capability = text(form, "capability").toLowerCase()
+  const enabled = text(form, "enabled") === "true"
+  if (!supportedServiceKeys.has(capability) || !["true", "false"].includes(text(form, "enabled"))) return { error: "Invalid service change.", requestId }
   try {
-    const context = await requirePlatformPermission("subscriptions.manage")
-    const admin = createPlatformAdminClient()
-    const businessId = text(form, "businessId"), capability = text(form, "capability").toLowerCase()
-    const enabled = text(form, "enabled") === "true"
-    if (!admin || !businessId || !supportedServiceKeys.has(capability)) return { error: "This entitlement change is not valid.", requestId }
-    const scope = await verifyPlatformScope(admin, businessId, "")
-    if (!scope?.businessId) return { error: "The restaurant could not be verified.", requestId }
-    const before = await admin.from("service_entitlements").select("id,enabled,source,effective_until,notes").eq("business_id", businessId).eq("capability_key", capability).eq("source", "OVERRIDE").maybeSingle()
-    const values = { business_id: businessId, capability_key: capability, source: "OVERRIDE", enabled, effective_until: null, notes: "Restaurant 360 service override", updated_at: new Date().toISOString() }
-    const result = await admin.from("service_entitlements").upsert(values, { onConflict: "business_id,capability_key,source" }).select("id").single()
-    if (result.error || !result.data) return { error: "The entitlement could not be saved. No change was confirmed.", requestId }
-    const audit = await admin.from("platform_audit_logs").insert({ actor_user_id: context.userId, action: "ENTITLEMENT_OVERRIDE_SAVED", target_type: "service_entitlements", target_id: result.data.id, business_id: businessId, reason: "Restaurant 360 service override", request_id: requestId, before_data: before.data, after_data: values })
-    if (audit.error) return { error: "The entitlement changed, but its audit record failed. Refresh before retrying.", requestId }
+    const client = await createClient()
+    const result = await client.rpc("platform_set_entitlement", { p_business_id: businessId, p_capability: capability, p_enabled: enabled, p_expected_updated_at: text(form, "updatedAt") || null, p_request_id: requestId })
+    if (result.error) return { error: result.error.code === "PT409" ? "This service changed in another session. Refresh before retrying." : "The service could not be updated. No change was saved.", requestId }
     revalidatePath(`/restaurants/${businessId}`)
-    return { success: true, enabled, requestId }
-  } catch {
-    return { error: "The entitlement change was rejected safely.", requestId }
-  }
+    return { success: true, enabled, updatedAt: result.data, requestId }
+  } catch { return { error: "The result could not be confirmed. Refresh before retrying.", requestId } }
 }
 
 export async function upsertIntegrationStatusAction(form: FormData) {

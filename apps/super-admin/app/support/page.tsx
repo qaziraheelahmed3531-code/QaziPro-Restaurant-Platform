@@ -1,3 +1,5 @@
+import { MutationForm } from "@/components/mutation-form"
+import { SubmitButton } from "@/components/submit-button"
 import { Headphones, TicketPlus } from "lucide-react"
 import { createSupportTicketAction } from "@/app/actions"
 import { OperationsTable } from "@/components/operations-table"
@@ -16,15 +18,15 @@ export default async function SupportPage({ searchParams }: { searchParams: Prom
     {notice.created ? <div className="success-banner">Support ticket opened and audited.</div> : null}
     {notice.error ? <div className="form-error">Support action was rejected safely ({notice.error}).</div> : null}
     <div className="workspace-grid">
-      <section className="panel"><header><div><p className="eyebrow">NEW TICKET</p><h2>Record client issue</h2></div><TicketPlus/></header><form action={createSupportTicketAction} className="form-grid compact-form">
+      <section className="panel"><header><div><p className="eyebrow">NEW TICKET</p><h2>Record client issue</h2></div><TicketPlus/></header><MutationForm action={createSupportTicketAction} className="form-grid compact-form">
         <label className="span-2">Restaurant<select name="businessId" required defaultValue=""><option value="" disabled>Select restaurant</option>{businesses.data.map((item) => <option value={String(item.id)} key={String(item.id)}>{String(item.name)}</option>)}</select></label>
         <label>Category<input name="category" required placeholder="ORDERING"/></label>
         <label>Severity<select name="severity" defaultValue="NORMAL"><option>LOW</option><option>NORMAL</option><option>HIGH</option><option>CRITICAL</option></select></label>
         <label className="span-2">Subject<input name="subject" required/></label>
         <label className="span-2">Description<textarea name="description" required rows={5}/></label>
         <label className="span-2">Audit reason<input name="reason" required defaultValue="Client support request"/></label>
-        <button className="button span-2"><Headphones/>Open ticket</button>
-      </form></section>
+        <SubmitButton className="button span-2"><Headphones/>Open ticket</SubmitButton>
+      </MutationForm></section>
       <section className="panel"><header><div><p className="eyebrow">SAFE SUPPORT</p><h2>Access boundary</h2></div></header><p className="muted">This workspace never requests owner passwords and provides no unsafe remote-control capability. Any future support elevation must remain explicit, time-limited, read-only by default and audited.</p></section>
     </div>
     <OperationsTable rows={result.data} page={result.page} count={result.count} pageSize={result.pageSize} href="/support" columns={["ticket_number","businesses","subject","category","severity","status","created_at"]} empty="No support tickets"/>

@@ -1,12 +1,14 @@
 "use client"
 
-import { useEffect, useMemo, useState, type ReactNode } from "react"
-import Image from "next/image"
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
+import { PlatformLogo } from "./platform-branding"
+import { CommandPalette } from "./command-palette"
+import { SubmitButton } from "./submit-button"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
   Activity, AppWindow, Bell, Blocks, Building2, ChevronLeft, ChevronRight,
-  CircleDollarSign, ClipboardCheck, CloudCog, Command, FileClock, Inbox,
+  CircleDollarSign, ClipboardCheck, CloudCog, FileClock, Inbox,
   Globe2, Headphones, LayoutDashboard, Menu, Network, PackageCheck, Plus,
   Search, Settings, ShieldCheck, Store, Users, X, ListTodo,
 } from "lucide-react"
@@ -25,9 +27,13 @@ const icons: Record<PlatformModule, typeof Store> = {
 }
 
 const hrefFor = (key: PlatformModule) => key === "overview" ? "/" : `/${key}`
+const subscribe = () => () => {}
 
 export function PlatformShell({ context, children }: { context: PlatformContext; children: ReactNode }) {
-  const pathname = usePathname(), router = useRouter()
+  const pathname = usePathname()
+  const interactive = useSyncExternalStore(subscribe, () => true, () => false)
+  const sidebar = useRef<HTMLElement>(null)
+  const body = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -45,27 +51,50 @@ export function PlatformShell({ context, children }: { context: PlatformContext;
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
+  useEffect(() => {
+    if (!mobileOpen) return
+    const trigger = document.activeElement as HTMLElement
+    const menu = sidebar.current
+    const pageBody = body.current
+    if (!menu || !pageBody) return
+    pageBody.inert = true
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    const controls = () => Array.from(menu.querySelectorAll<HTMLElement>('a,button')).filter(item => item.getClientRects().length && !item.hasAttribute('disabled'))
+    controls()[0]?.focus()
+    const trap = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false)
+      if (event.key !== "Tab") return
+      const items = controls(), first = items[0], last = items.at(-1)
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }
+    menu.addEventListener("keydown", trap)
+    return () => { pageBody.inert = false; document.body.style.overflow = overflow; menu.removeEventListener("keydown", trap); trigger?.focus() }
+  }, [mobileOpen])
+
   return <div className={`platform-shell ${collapsed ? "is-collapsed" : ""}`}>
-    <aside className={`platform-sidebar ${mobileOpen ? "is-open" : ""}`}>
-      <div className="platform-brand"><Image src="/qazipro-logo.png" alt="QaziPro" width={44} height={44}/><span><strong>QaziPro</strong><small>CONTROL CENTER</small></span><button className="icon-button mobile-only" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X/></button></div>
+    <a className="skip-link" href="#main-content">Skip to content</a>
+    <aside ref={sidebar} role={mobileOpen ? "dialog" : undefined} aria-modal={mobileOpen || undefined} aria-label="Navigation" className={`platform-sidebar ${mobileOpen ? "is-open" : ""}`}>
+      <div className="platform-brand"><PlatformLogo compact={collapsed}/><span><strong>QaziPro</strong><small>CONTROL CENTER</small></span><button className="icon-button mobile-only" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X/></button></div>
       <nav className="platform-nav" aria-label="Platform navigation">
-        {allowed.map(([key, item]) => { const Icon=icons[key], href=hrefFor(key), active=href === "/" ? pathname === "/" : pathname.startsWith(href); return <Link key={key} href={href} aria-current={active ? "page" : undefined} title={collapsed ? item.title : undefined} onClick={() => setMobileOpen(false)}><Icon/><span>{item.title}</span></Link> })}
+        {allowed.map(([key, item]) => { const Icon=icons[key], href=hrefFor(key), active=href === "/" ? pathname === "/" : pathname.startsWith(href); return <Link key={key} href={href} prefetch={false} aria-current={active ? "page" : undefined} title={collapsed ? item.title : undefined} onClick={() => setMobileOpen(false)}><Icon/><span>{item.title}</span></Link> })}
       </nav>
       <div className="sidebar-foot"><ShieldCheck/><span><strong>Internal only</strong><small>Actions are audited</small></span></div>
       <button className="collapse-button desktop-only" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}>{collapsed ? <ChevronRight/> : <ChevronLeft/>}</button>
     </aside>
-    <div className="platform-body">
+    <div ref={body} className="platform-body">
       <header className="platform-header">
-        <button className="icon-button mobile-only" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu/></button>
-        <button className="command-trigger" onClick={() => setPaletteOpen(true)}><Search/><span>Search restaurants, branches, domains…</span><kbd>Ctrl K</kbd></button>
+        <button className="icon-button mobile-only" disabled={!interactive} onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu/></button>
+        <button className="command-trigger" disabled={!interactive} onClick={() => setPaletteOpen(true)}><Search/><span>Search restaurants, branches, domains…</span><kbd>Ctrl K</kbd></button>
         <span className={`environment-badge environment-${(process.env.NEXT_PUBLIC_APP_ENVIRONMENT ?? "local").toLowerCase()}`}>{process.env.NEXT_PUBLIC_APP_ENVIRONMENT ?? "LOCAL"}</span>
         {context.permissions.includes("restaurants.create") && context.permissions.includes("onboarding.manage") ? <Link className="quick-create" href="/onboarding/new"><Plus/> <span>New restaurant</span></Link> : null}
-        <Link className="icon-button" href="/health" aria-label="Attention center"><Bell/></Link>
-        <details className="account-menu"><summary><span>{context.displayName.slice(0,1).toUpperCase()}</span><div><strong>{context.displayName}</strong><small>{context.roleNames[0] ?? "Platform staff"}</small></div></summary><div><p>{context.email}</p><form action={signOutAction}><button type="submit">Sign out</button></form></div></details>
+        {context.permissions.includes("incidents.manage") ? <Link className="icon-button" href="/health" prefetch={false} aria-label="Attention center"><Bell/></Link> : null}
+        <details className="account-menu"><summary><span>{context.displayName.slice(0,1).toUpperCase()}</span><div><strong>{context.displayName}</strong><small>{context.roleNames[0] ?? "Platform staff"}</small></div></summary><div><p>{context.email}</p><form action={signOutAction}><SubmitButton pendingLabel="Signing out…">Sign out</SubmitButton></form></div></details>
       </header>
-      <main className="platform-main">{children}</main>
+      <main id="main-content" tabIndex={-1} className="platform-main">{children}</main>
     </div>
     {mobileOpen ? <button className="sidebar-scrim" onClick={() => setMobileOpen(false)} aria-label="Close menu"/> : null}
-    {paletteOpen ? <div className="palette-backdrop" role="presentation" onMouseDown={() => setPaletteOpen(false)}><section className="command-palette" role="dialog" aria-modal="true" aria-label="Command palette" onMouseDown={(event) => event.stopPropagation()}><div className="palette-input"><Command/><input autoFocus placeholder="Type a destination or restaurant name" onKeyDown={(event) => { if (event.key === "Enter" && event.currentTarget.value.trim() && context.permissions.includes("restaurants.view")) { router.push(`/restaurants?q=${encodeURIComponent(event.currentTarget.value.trim())}`); setPaletteOpen(false) } }}/><button onClick={() => setPaletteOpen(false)} aria-label="Close"><X/></button></div><p>QUICK ACTIONS</p><div className="palette-actions">{context.permissions.includes("restaurants.create") && context.permissions.includes("onboarding.manage") ? <Link href="/onboarding/new" onClick={() => setPaletteOpen(false)}><Plus/>Create restaurant</Link> : null}{allowed.slice(0,7).map(([key,item]) => {const Icon=icons[key];return <Link key={key} href={hrefFor(key)} onClick={() => setPaletteOpen(false)}><Icon/>{item.title}</Link>})}</div></section></div> : null}
+    {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} destinations={allowed.map(([key, item]) => ({ label: item.title, href: hrefFor(key) }))}/> : null}
   </div>
 }
