@@ -39,7 +39,7 @@ async function account(staff=false) {
  assert.equal(checked(await fresh.auth.getUser(),'Restore session').user.id,created.user.id)
  return {id:created.user.id,membership:membership?.id,cookie:()=>[...jar].map(([name,value])=>`${name}=${value}`).join('; ')}
 }
-async function request(person,port,path){return fetch(`http://localhost:${port}${path}`,{headers:{Cookie:person.cookie()},redirect:'manual',signal:AbortSignal.timeout(45000)})}
+async function request(person,port,path){return fetch(`http://localhost:${port}${path}`,{headers:{Cookie:person.cookie(),"x-qazipro-business-slug":"italian-pizza"},redirect:'manual',signal:AbortSignal.timeout(45000)})}
 try {
  stage='Customer OTP verification and restoration';const customer=await account()
  for(let i=0;i<2;i++){const response=await request(customer,3100,'/account');assert.equal(response.status,200);assert.ok((await response.text()).includes('SIGNED IN WITH'),'Fresh /account request shows authenticated state')}
@@ -51,7 +51,7 @@ try {
  const menu=await request(staff,3101,'/menu');assert.equal(menu.status,200);await menu.body?.cancel()
  const payments=await request(staff,3101,'/payments');const paymentsBody=await payments.text();assert.ok((payments.status>=300&&payments.status<400)||paymentsBody.includes('NEXT_REDIRECT')||paymentsBody.includes('__next-page-redirect'))
  checked(await provider.from('staff_memberships').update({is_active:false}).eq('id',staff.membership),'Deactivate temporary staff')
- const revoked=await request(staff,3101,'/auth/complete');assert.equal(new URL(revoked.headers.get('location')).searchParams.get('error'),'unauthorized')
+ const revoked=await request(staff,3101,'/auth/complete');assert.equal(new URL(revoked.headers.get('location')).searchParams.get('error'),'membership-inactive')
  console.log('PASS: staff real OTP/session restoration, exact landing route, denied Payments and immediately revoked inactive membership')
 }catch(error){failed=true;console.error(`FAIL: ${stage}; ${error instanceof Error?error.message:'details omitted'}`)}
 finally{
