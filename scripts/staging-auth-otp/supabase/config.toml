@@ -1,0 +1,10 @@
+# Narrow staging-only config. Do not push the root development config remotely.
+# Always preview with --project-ref jzisqjvroxodvmqxzsob before applying.
+project_id = "qazipro-staging-email-otp"
+
+[auth.email]
+otp_length = 8
+
+[auth.email.template.magic_link]
+subject = "Your QaziPro sign-in code"
+content_path = "./supabase/templates/sign-in-code.html"
