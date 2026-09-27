@@ -7,6 +7,7 @@ import "./email-otp.css"
 import "./interaction-polish.css"
 import "./client-portal.css"
 import "./portal-skeleton.css"
+import "./login-experience.css"
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" })
 

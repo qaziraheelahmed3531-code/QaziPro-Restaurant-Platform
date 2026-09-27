@@ -9,7 +9,10 @@
     "lint": "eslint",
     "test:loading": "node scripts/test-portal-skeleton.mjs",
     "test:tables": "node scripts/test-table-manager.mjs",
-    "test:availability": "node scripts/test-product-availability.mjs"
+    "test:availability": "node scripts/test-product-availability.mjs",
+    "test:login": "node scripts/test-login-experience.mjs",
+    "test:email": "node scripts/test-customer-broadcast-safety.mjs && node scripts/test-broadcast-manager.mjs",
+    "test:email:database": "node scripts/test-broadcast-database.mjs"
   },
   "dependencies": {
     "@italian-pizza/shared": "file:../../packages/shared",
