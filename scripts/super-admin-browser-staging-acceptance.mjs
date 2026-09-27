@@ -332,6 +332,7 @@ try {
   await expect(page.getByRole("dialog", { name: "Search QaziPro" })).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", {level:1, name:`QA Browser Restaurant ${onboardingSuffix}`, exact:true})).toBeVisible({timeout:30000});
   check(await page.getByRole("button", { name: "Open menu" }).isVisible(), "Mobile navigation unavailable");
   const overflow = await page.evaluate(() => ({
     active: document.documentElement.scrollWidth > window.innerWidth + 1,
@@ -342,7 +343,7 @@ try {
     }).filter((item) => item.right > window.innerWidth + 1 || item.width > window.innerWidth + 1).slice(0, 8),
   }));
   check(!overflow.active, `Mobile viewport has horizontal page overflow (${overflow.width}px): ${JSON.stringify(overflow.offenders)}`);
-  if (screenshotDir) await page.screenshot({ path: join(screenshotDir, "platform-audit-mobile.png") });
+  if (screenshotDir) await page.screenshot({ path: join(screenshotDir, "platform-restaurant-mobile.png") });
   check(errors.length === 0, `Browser runtime errors: ${errors.join("; ")}`);
 
   const expiredContext = await browser.newContext();

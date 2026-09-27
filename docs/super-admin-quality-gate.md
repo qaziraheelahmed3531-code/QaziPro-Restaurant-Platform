@@ -117,3 +117,44 @@ real Google login, external provider delivery and the full 58-item matrix must n
   invitation concurrency guard, branch changes and lifecycle/archive transitions.
 - Final continuation unit tests: 82 PASS; typecheck, lint and optimized build PASS. Public HTTPS
   rerun of this final hydration/review/retry patch remains pending its Git-integrated deployment.
+
+### Public acceptance — application commit `6ac916b`
+
+- Existing Super Admin deployment `dpl_GUupzcnja5qs7TDcL3Bt1yu9MRWh` reached READY and
+  `https://superadmin.qazipro.com` points to it. Exact source:
+  `6ac916b121d3c748e01cfe2a724aad21071458c0`.
+- Public onboarding acceptance: 104 assertions / 16 routes PASS, including explicit review before
+  submission, a rejected-package retry with retained values, one-request double submit, invitation
+  suppression, branch changes, lifecycle/archive, session expiry and nonstaff denial.
+- Public quality acceptance: 50 assertions PASS. Search errors 400/401/403/409/500 and aborted
+  transport, 360/390/768/1366/1920 layouts, focus/inert behavior, branding upload/restore,
+  session restore/logout, entitlement replay and stale-write rejection passed.
+- Public notification/read-receipt isolation suite PASS; package edit/audit/conflict and
+  business/network form-error retention suite PASS; eight module scenarios PASS (tasks,
+  support, app identity, pending domain editing/deactivation, incidents, deployments and audit).
+- Error-level Vercel log query for this deployment over the last 15 minutes returned no records.
+  This is a bounded sample, not a claim that production monitoring is configured.
+- All acceptance fixtures were isolated and cleaned by their scripts. Branding restored with a
+  version check. No external QA email, production data, DNS or app-store mutation.
+- Mobile acceptance was tightened to wait for the actual Restaurant 360 heading before measuring
+  overflow or taking its screenshot (not the streaming skeleton). Public rerun: 104/104 PASS;
+  the loaded 390px layout was visually inspected. Current-run QA browser business count: zero.
+
+### Final gate limitation
+
+**SUPER ADMIN FINAL QUALITY GATE: FAIL (full acceptance is incomplete).** The scoped browser
+and code checks above pass; they do not prove the entire requested matrix.
+
+Still required before a full PASS:
+
+- Authorized owner's real Google login and real-inbox invitation acceptance. Automated tests use
+  controlled password sessions and suppressed synthetic recipients; no real delivery claim.
+- Figma source/node for design-system parity (connection inspected, no design context supplied).
+- Remaining full-matrix acceptance, including lead mutations, domain primary switching and the
+  complete operator permission matrix. These are not covered merely by successful route loads.
+- QaziPro-controlled email-template branding audit. Other application branding consumers are
+  a later phase; Restaurant Admin/POS/desktop/marketing propagation is not claimed here.
+- Final manual visual/accessibility review. Keyboard/dialog/viewport checks are not a WCAG audit.
+
+The default QaziPro design language was retained; shared states and interaction safety were
+improved instead of replacing the product identity. No production deployment is authorized.
