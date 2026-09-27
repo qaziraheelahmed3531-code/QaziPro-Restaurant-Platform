@@ -12,7 +12,7 @@ export default async function Page(){
  const db=content?await createClient():null
  const [deals,campaigns]=db?await Promise.all([
   db.from("deals").select("id,name,deal_price").eq("business_id",context.businessId).eq("is_active",true).order("sort_order"),
-  db.from("customer_broadcasts").select("id,subject,status,recipient_count,sent_count,failed_count,created_at").eq("business_id",context.businessId).order("created_at",{ascending:false}).limit(20),
+  db.from("customer_broadcasts").select("id,subject,status,recipient_count,sent_count,failed_count,created_at").eq("business_id",context.businessId).eq("channel","EMAIL").order("created_at",{ascending:false}).limit(20),
  ]):[{data:[]},{data:[]}]
  return <>
   {content&&<ResourceScreen resource="settings"/>}

@@ -1,84 +1,29 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
+import { getStorefrontSnapshot } from "@/lib/storefront/server"
+import { getCachedRestaurantGooglePlacesReviews } from "@/lib/google-places/cache"
 
-import { clearGooglePlacesReviewsCacheForDevelopment, getCachedAmsGooglePlacesReviews } from "@/lib/google-places/cache"
-import { GooglePlacesServiceError } from "@/lib/google-places/client"
-import { amsGooglePlacesConfig } from "@/lib/google-places/config"
-import type { GooglePlacesReviewsUnavailablePayload } from "@/lib/google-places/types"
-
-const emptyLinks = { placeUri: null, reviewsUri: null, writeAReviewUri: null } as const
-
-function developmentDiagnostic(details: {
-  httpStatus: number
-  googleErrorStatus: string | null
-  googleErrorMessage: string
-  stage: "places-search" | "place-details" | "legacy-place-details" | "parsing"
-  rawReviewsFieldPresent?: boolean
-  rawReviewsCount?: number
-  normalizedReviewsCount?: number
-  textSearchRawReviewsCount?: number
-  legacyHttpStatus?: number | null
-  legacyGoogleStatus?: string | null
-  legacyReviewsFieldPresent?: boolean
-  legacyRawReviewCount?: number
-  legacyNormalizedReviewCount?: number
-  placesWorking?: boolean
-  sociableKitConfigured?: boolean
-  sociableKitHttpStatus?: number | null
-  sociableKitReviewCount?: number
-  finalReviewCount?: number
-  sociableKitErrorCode?: string | null
-  sociableKitErrorMessage?: string | null
-}) {
-  if (process.env.NODE_ENV === "development") console.error(`[google-reviews] ${JSON.stringify(details)}`)
-}
-
-export async function GET(request: NextRequest) {
-  if (request.nextUrl.searchParams.get("refresh") === "1") {
-    clearGooglePlacesReviewsCacheForDevelopment()
-  }
+export async function GET() {
+  const storefront = await getStorefrontSnapshot()
+  const { business, branch } = storefront
+  const headers = { "Cache-Control": "private, no-store" }
+  const unavailable = (code: string, status = 200) => NextResponse.json({
+    ok: false, available: false, source: "google-places-new", stage: "parsing", status,
+    code, message: "Google reviews are currently unavailable for this restaurant.",
+    businessName: storefront.orderPersistence === "database" ? business.name : "Restaurant",
+    reviews: [], rating: null, totalReviewCount: null,
+    googleMapsLinks: { placeUri: null, reviewsUri: null, writeAReviewUri: null },
+  }, { status, headers })
+  if (storefront.orderPersistence !== "database" || !business.id || !branch.id) return unavailable("RESTAURANT_UNAVAILABLE", 404)
+  if (!business.reviewsEnabled || !branch.googlePlaceId || branch.originLatitude == null || branch.originLongitude == null) return unavailable("NOT_CONFIGURED")
   try {
-    const payload = await getCachedAmsGooglePlacesReviews()
-    if (process.env.NODE_ENV === "development") {
-      console.info(`[google-reviews] ${JSON.stringify({
-        httpStatus: 200,
-        googleErrorStatus: null,
-        googleErrorMessage: "Google Places reviews loaded.",
-        stage: "place-details",
-        ...payload.diagnostics,
-      })}`)
-    }
-    return NextResponse.json(payload, {
-      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=60" },
+    const payload = await getCachedRestaurantGooglePlacesReviews({
+      businessId: business.id, branchId: branch.id, placeId: branch.googlePlaceId,
+      businessName: business.reviewsBusinessName || business.name,
+      latitude: branch.originLatitude, longitude: branch.originLongitude,
     })
-  } catch (error) {
-    const serviceError = error instanceof GooglePlacesServiceError ? error : null
-    const stage = serviceError?.stage ?? "parsing"
-    const status = serviceError?.httpStatus ?? 500
-    const code = serviceError?.code ?? "INTERNAL_ERROR"
-    const message = serviceError?.message ?? "Google Places reviews could not be loaded."
-    developmentDiagnostic({
-      httpStatus: status,
-      googleErrorStatus: serviceError?.googleStatus ?? code,
-      googleErrorMessage: message,
-      stage,
-    })
-    const payload: GooglePlacesReviewsUnavailablePayload = {
-      ok: false,
-      available: false,
-      source: "google-places-new",
-      businessName: amsGooglePlacesConfig.businessName,
-      stage,
-      status,
-      code,
-      message,
-      rating: null,
-      totalReviewCount: null,
-      reviews: [],
-      googleMapsLinks: emptyLinks,
-    }
-    return NextResponse.json(payload, {
-      status: 200,
-      headers: { "Cache-Control": status === 503 ? "public, s-maxage=300" : "public, s-maxage=60" },
-    })
+    return NextResponse.json(payload, { headers })
+  } catch {
+    // No provider details or another restaurant's cached fallback in public errors.
+    return unavailable("REVIEWS_UNAVAILABLE")
   }
 }

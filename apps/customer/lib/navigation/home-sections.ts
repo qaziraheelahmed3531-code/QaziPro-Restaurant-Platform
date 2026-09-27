@@ -4,6 +4,7 @@ import { useCallback } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
 import { useHydrationSafeReducedMotion } from "@/lib/motion/use-hydration-safe-reduced-motion"
+import { scrollWindowTo } from "@/lib/motion/scroll-runtime"
 
 export type HomeSectionId = string
 
@@ -21,13 +22,13 @@ export function scrollToElement(target: HTMLElement, reduceMotion = false, align
   const targetTop = target.getBoundingClientRect().top + window.scrollY
   const centeredOffset = Math.max(headerHeight + 12, (window.innerHeight - target.offsetHeight) / 2)
   const top = align === "center" ? targetTop - centeredOffset : targetTop - headerHeight - 12
-  window.scrollTo({ top: Math.max(0, top), behavior: reduceMotion ? "auto" : "smooth" })
+  scrollWindowTo(Math.max(0, top), reduceMotion)
 }
 
 export function scrollToHomeSection(id: HomeSectionId, reduceMotion = false) {
   const target = document.getElementById(id)
   if (!target) return false
-  if (id === "home") window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" })
+  if (id === "home") scrollWindowTo(0, reduceMotion)
   else scrollToElement(target, reduceMotion)
   const url = new URL(window.location.href)
   url.hash = id === "home" ? "" : id

@@ -51,7 +51,7 @@ export function CustomerBroadcastManager({ deals, initialCampaigns }: { deals: D
       // Creation succeeded: retries must resume this campaign, not create another.
       draftRequest.current = null
       setSubject(""); setMessage(""); setDealId("")
-      if (!created.recipientCount) { setNotice("No eligible signed-in customers are registered with this restaurant yet."); return }
+      if (!created.recipientCount) { setNotice("No customers have opted into this restaurant's email offers yet. No email was sent."); return }
       await deliver(created.id)
     } catch (error) { setNotice(error instanceof Error ? error.message : "Message could not be sent.") }
     finally { pending.current = false; setBusy(false) }
@@ -66,7 +66,7 @@ export function CustomerBroadcastManager({ deals, initialCampaigns }: { deals: D
   }
 
   return <section className="panel broadcast-manager">
-    <div className="page-heading"><div><p className="eyebrow">CUSTOMER MESSAGING</p><h1>Email signed-in customers</h1><p>Attach an active deal, write one message and send a private branded email to this restaurant&apos;s customers.</p></div><Megaphone aria-hidden="true" /></div>
+    <div className="page-heading"><div><p className="eyebrow">CUSTOMER MESSAGING</p><h1>Email opted-in customers</h1><p>Send a private branded message to customers who chose email offers from this restaurant. Signing in alone never subscribes a customer.</p></div><Megaphone aria-hidden="true" /></div>
     <div className="broadcast-manager__layout">
       <div className="broadcast-composer">
         <label>Feature a deal (optional)<select disabled={busy} value={dealId} onChange={(event) => setDealId(event.target.value)}><option value="">No deal attached</option>{deals.map((deal) => <option value={deal.id} key={deal.id}>{deal.name} — Rs {Number(deal.deal_price).toLocaleString("en-PK")}</option>)}</select></label>

@@ -18,6 +18,7 @@ import { formatRupees } from "@/lib/format"
 import { useAddressAutocomplete } from "@/lib/location/use-address-autocomplete"
 import { createLocalOrder } from "@/lib/orders/local-orders"
 import { createRemoteOrder } from "@/lib/orders/remote-orders"
+import { checkoutAttempt, completeCheckoutAttempt } from "@/lib/orders/checkout-attempt"
 import type { AddressSuggestion } from "@/lib/geoapify/types"
 import type { LoyaltyWalletSnapshot } from "@/lib/loyalty/types"
 import type { SavedAddress, SavedAddressLabel } from "@/types"
@@ -125,6 +126,7 @@ export function CheckoutPage() {
   const app = useApp()
   const router = useRouter()
   const checkoutAttemptId = useRef<string | null>(null)
+  const submissionInFlight = useRef(false)
   const [placing, setPlacing] = useState(false)
   const [address, setAddress] = useState<AddressDraft>(emptyAddress)
   const location = useCheckoutLocation(value => setAddress(current => ({ ...current, addressLine1: value })))
@@ -133,7 +135,7 @@ export function CheckoutPage() {
   const [addressMessage, setAddressMessage] = useState("")
   const [loyalty, setLoyalty] = useState<LoyaltyWalletSnapshot | null>(null)
   const [redeemCoins, setRedeemCoins] = useState(0)
-  const baseCanSubmit = app.storefront.orderPersistence !== "unavailable" && app.storefront.branch.isOpen && (app.orderType === "pickup" || Boolean(addressCoordinates && app.deliveryQuoteStatus === "success"))
+  const baseCanSubmit = app.storefront.orderPersistence !== "unavailable" && app.storefront.branch.isOpen && (app.orderType !== "delivery" || Boolean(addressCoordinates && app.deliveryQuoteStatus === "success"))
   const eligibleForCoins = Math.max(0, app.subtotal - app.discount)
   const maxRedeemValue = loyalty ? Math.floor(eligibleForCoins * loyalty.maxRedeemPercent / 100) : 0
   const maxRedeemCoins = loyalty ? Math.min(loyalty.balanceCoins, Math.floor(maxRedeemValue / loyalty.coinValuePkr)) : 0
@@ -177,12 +179,13 @@ export function CheckoutPage() {
 
   const placeOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (placing || !canSubmit) return
+    if (submissionInFlight.current || placing || !canSubmit) return
     if (app.orderType === "delivery" && !app.selectedArea) {
       setAddressMessage("Select your delivery area before placing the order.")
       app.openLocation()
       return
     }
+    submissionInFlight.current = true
     setPlacing(true)
     try {
       const formData = new FormData(event.currentTarget)
@@ -191,12 +194,13 @@ export function CheckoutPage() {
       const customerPhone = String(formData.get("phone") ?? "").trim()
       let orderId: string
       if (app.storefront.orderPersistence === "database" && app.storefront.branch.id) {
-        checkoutAttemptId.current ??= crypto.randomUUID()
+        try { checkoutAttemptId.current ??= checkoutAttempt(app.storefront.business.id!, app.storefront.branch.id) }
+        catch { throw new Error("Enable browser storage to place your order safely, then try again. No order was sent.") }
         const coordinates = app.orderType === "delivery" ? addressCoordinates : undefined
         orderId = await createRemoteOrder({
           idempotencyKey: checkoutAttemptId.current,
           branchId: app.storefront.branch.id,
-          serviceMode: app.orderType === "pickup" ? "PICKUP" : "DELIVERY",
+          serviceMode: app.orderType === "dine-in" ? "DINE_IN" : app.orderType === "pickup" ? "PICKUP" : "DELIVERY",
           paymentMethod: "CASH_ON_DELIVERY",
           customerName,
           customerPhone,
@@ -218,8 +222,12 @@ export function CheckoutPage() {
         throw new Error("Ordering is temporarily unavailable. Your cart is safe; please retry shortly.")
       }
       app.clearCart()
+      if (app.storefront.business.id && app.storefront.branch.id) {
+        try { completeCheckoutAttempt(app.storefront.business.id, app.storefront.branch.id) } catch { /* Confirmed order remains successful even if browser storage becomes unavailable. */ }
+      }
       router.push(`/orders/${encodeURIComponent(orderId)}`)
     } catch (error) {
+      submissionInFlight.current = false
       setPlacing(false)
       setAddressMessage(error instanceof Error ? error.message : "The order could not be placed. Please retry.")
     }
@@ -236,10 +244,11 @@ export function CheckoutPage() {
       <SiteHeader />
       <main className="commerce-page checkout-page">
         <div className="page-title"><h1>Complete your order</h1><p>Your area and full address stay separate for a faster delivery handoff.</p></div>
-        <form id="checkout-form" className="commerce-grid" onSubmit={placeOrder}>
+        {addressMessage && <p className="checkout-notice" role="alert">{addressMessage}</p>}
+        <form id="checkout-form" className="commerce-grid" onSubmit={placeOrder} aria-busy={placing}>
           <div className="commerce-main">
             <section className="commerce-card checkout-order-type">
-              <div className="card-heading"><div><span>1</span><div><h2>Order type</h2><p>Choose delivery or pickup.</p></div></div></div>
+              <div className="card-heading"><div><span>1</span><div><h2>Order type</h2><p>{app.storefront.tableContext ? `Dining at ${app.storefront.tableContext.name}. Your order goes to this table.` : "Choose delivery or pickup."}</p></div></div></div>
               <OrderTypeToggle value={app.orderType} onChange={app.setOrderType} />
             </section>
 
@@ -253,7 +262,7 @@ export function CheckoutPage() {
             </section>
 
             <section className="commerce-card address-card">
-              <div className="card-heading"><div><span>3</span><div><h2>{app.orderType === "delivery" ? "Delivery address" : "Pickup location"}</h2><p>{app.orderType === "delivery" ? "Choose where we should deliver." : "Collect your order from the restaurant."}</p></div></div></div>
+              <div className="card-heading"><div><span>3</span><div><h2>{app.orderType === "dine-in" ? "Your table" : app.orderType === "delivery" ? "Delivery address" : "Pickup location"}</h2><p>{app.orderType === "dine-in" ? "Your food will be served at this table." : app.orderType === "delivery" ? "Choose where we should deliver." : "Collect your order from the restaurant."}</p></div></div></div>
 
               {app.orderType === "delivery" ? (
                 <>
@@ -295,10 +304,9 @@ export function CheckoutPage() {
                     <Button type="button" variant="outline" disabled={!addressCoordinates} onClick={saveCurrentAddress}><Plus aria-hidden="true" /> Save address</Button>
                     <small>Signed-in addresses are saved to your account.</small>
                   </fieldset>
-                  {addressMessage && <p className="address-message" role="status">{addressMessage}</p>}
                 </>
               ) : (
-                <div className="pickup-checkout"><span><Store aria-hidden="true" /></span><div><small>PICKUP LOCATION</small><h3>{app.storefront.branch.restaurantName??app.storefront.business.name}</h3><p>{app.storefront.branch.formattedAddress??app.storefront.branch.city}</p></div></div>
+                <div className="pickup-checkout"><span><Store aria-hidden="true" /></span><div><small>{app.orderType === "dine-in" ? "DINING AT" : "PICKUP LOCATION"}</small><h3>{app.storefront.tableContext?.name ?? app.storefront.branch.restaurantName ?? app.storefront.business.name}</h3><p>{app.storefront.branch.name}</p></div></div>
               )}
             </section>
 
@@ -307,7 +315,7 @@ export function CheckoutPage() {
               <label className="payment-option payment-option--cod is-selected">
                 <input className="sr-only" type="radio" name="payment" value="cod" defaultChecked />
                 <span className="payment-option__icon"><Banknote aria-hidden="true" /></span>
-                <span className="payment-option__copy"><strong>Cash on Delivery</strong><small>Pay in cash when your order arrives</small></span>
+                <span className="payment-option__copy"><strong>{app.orderType === "dine-in" ? "Pay at the restaurant" : app.orderType === "pickup" ? "Cash at pickup" : "Cash on Delivery"}</strong><small>{app.orderType !== "delivery" ? "Your team will help you settle the bill at the restaurant" : "Pay in cash when your order arrives"}</small></span>
                 <span className="payment-option__check"><Check aria-hidden="true" /></span>
               </label>
             </fieldset>

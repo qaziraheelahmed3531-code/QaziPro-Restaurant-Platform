@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
 import { build } from "esbuild";
 import { chromium, expect } from "playwright/test";
 
-const output = await build({ stdin: { contents: `
+const admin = fileURLToPath(new URL("../", import.meta.url));
+const require = createRequire(new URL("../package.json", import.meta.url));
+const output = await build({ tsconfig: admin + "tsconfig.json", alias: { react: dirname(require.resolve("react")), "react-dom": dirname(require.resolve("react-dom")) }, stdin: { contents: `
   import React from "react"; import { createRoot } from "react-dom/client";
   import { CustomerBroadcastManager } from "./components/customer-broadcast-manager";
   window.calls=[]; window.confirm=()=>true;
@@ -62,7 +66,7 @@ try {
   await send.click();
   assert.notEqual(await page.evaluate(() => window.calls.at(-1).body.requestId), first.body.requestId);
   await page.evaluate(() => window.finish({ id: "campaign-b", recipientCount: 0 }));
-  await expect(page.getByRole("status")).toContainText("No eligible");
+  await expect(page.getByRole("status")).toContainText("No customers have opted");
   assert.equal(await page.evaluate(() => window.calls.length), 6);
   assert.deepEqual(errors, []);
   pass("intentional new campaign gets a new key; empty audience sends no PATCH and produces a clear outcome");

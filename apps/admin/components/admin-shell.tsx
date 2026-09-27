@@ -256,7 +256,7 @@ const groups: Array<{ label: string; items: NavItem[] }> = [
       },
       {
         label: "Reviews",
-        href: "/integrations",
+        href: "/feedback",
         icon: BarChart3,
         permission: "reviews.manage",
       },

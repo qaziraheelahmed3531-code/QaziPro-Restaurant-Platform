@@ -1,28 +1,20 @@
 import "server-only"
 
-import { getAmsGooglePlacesReviews } from "@/lib/google-places/place-details"
+import { getRestaurantGooglePlacesReviews, type RestaurantReviewContext } from "@/lib/google-places/place-details"
 import type { GooglePlacesReviewsPayload } from "@/lib/google-places/types"
 
-const CACHE_MS = 5 * 60 * 1_000
-let cache: { expiresAt: number; value: GooglePlacesReviewsPayload } | null = null
-let pending: Promise<GooglePlacesReviewsPayload> | null = null
-
-export async function getCachedAmsGooglePlacesReviews() {
-  if (cache && cache.expiresAt > Date.now()) return cache.value
-  if (!pending) {
-    pending = getAmsGooglePlacesReviews()
-      .then((value) => {
-        cache = { expiresAt: Date.now() + CACHE_MS, value }
-        return value
-      })
-      .finally(() => { pending = null })
-  }
-  return pending
-}
-
-export function clearGooglePlacesReviewsCacheForDevelopment() {
-  if (process.env.NODE_ENV !== "development") return false
-  cache = null
-  pending = null
-  return true
+// Consult only after hostname/lifecycle resolution. Configuration participates in
+// the key so a branch edit cannot accidentally reuse a previous place's reviews.
+const entries = new Map<string, { expiresAt: number; value: Promise<GooglePlacesReviewsPayload> }>()
+export function getCachedRestaurantGooglePlacesReviews(context: RestaurantReviewContext) {
+  const key = JSON.stringify([context.businessId, context.branchId, context.placeId, context.businessName, context.latitude, context.longitude])
+  const existing = entries.get(key)
+  if (existing && existing.expiresAt > Date.now()) return existing.value
+  if (entries.size >= 200) entries.delete(entries.keys().next().value!)
+  const value = getRestaurantGooglePlacesReviews(context).catch(error => {
+    if (entries.get(key)?.value === value) entries.delete(key)
+    throw error
+  })
+  entries.set(key, { expiresAt: Date.now() + 300_000, value })
+  return value
 }

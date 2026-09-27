@@ -1,6 +1,6 @@
 ﻿import type { CoverageArea, LocationSource } from "@italian-pizza/shared/location"
 
-export type OrderType = "delivery" | "pickup"
+export type OrderType = "delivery" | "pickup" | "dine-in"
 
 export type Coordinates = {
   latitude: number
@@ -172,6 +172,7 @@ export type StorefrontBusiness = {
 
 export type StorefrontBranch = {
   id: string | null
+  googlePlaceId?: string | null
   name: string
   restaurantName?: string | null
   locationRevision?: number
@@ -204,7 +205,8 @@ export type StorefrontSnapshot = {
   deals: Deal[]
   deliveryAreas: LocationArea[]
   availableBranches: Array<{ id: string; slug: string; name: string; city: string; formattedAddress: string | null }>
-  resolutionError?: "TENANT_NOT_FOUND" | "BRANCH_REQUIRED" | "BRANCH_NOT_FOUND" | "CONFIGURATION_MISSING"
+  tableContext?: { token: string; name: string; branchId: string }
+  resolutionError?: "TENANT_NOT_FOUND" | "BRANCH_REQUIRED" | "BRANCH_NOT_FOUND" | "CONFIGURATION_MISSING" | "TABLE_UNAVAILABLE"
 }
 
 export type Branch = {

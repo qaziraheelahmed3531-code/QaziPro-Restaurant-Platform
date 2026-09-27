@@ -16,7 +16,7 @@ type InputItem = { itemKind?: "product" | "deal"; productId: string; variantId?:
 export type OrderInput = {
   idempotencyKey: string
   branchId: string
-  serviceMode: "DELIVERY" | "PICKUP"
+  serviceMode: "DELIVERY" | "PICKUP" | "DINE_IN"
   paymentMethod: "CASH_ON_DELIVERY"
   customerName: string
   customerPhone: string
@@ -75,7 +75,9 @@ export async function createOrder(input: OrderInput, storefront: StorefrontSnaps
   if (storefront.source !== "database" || !storefront.branch.id || input.branchId !== storefront.branch.id) throw new Error("Ordering backend is not ready for this branch.")
   if(!businessId)throw new Error("Restaurant configuration is unavailable.")
   if (!isUuid(input.branchId)) throw new Error("Branch selection is invalid.")
-  await requireRuntimeEntitlements(businessId,input.branchId,[input.serviceMode==="DELIVERY"?"ordering.delivery":"ordering.pickup"])
+  if (!["DELIVERY", "PICKUP", "DINE_IN"].includes(input.serviceMode)) throw new Error("Choose a valid order type.")
+  if (Boolean(storefront.tableContext) !== (input.serviceMode === "DINE_IN")) throw new Error("Scan your table QR for dine-in, or leave dine-in mode before changing order type.")
+  await requireRuntimeEntitlements(businessId,input.branchId,[input.serviceMode==="DINE_IN"?"waiter":input.serviceMode==="DELIVERY"?"ordering.delivery":"ordering.pickup"])
   if (!/^[A-Za-z0-9._:-]{8,128}$/.test(input.idempotencyKey??"")) throw new Error("A valid checkout idempotency key is required.")
   if (!Array.isArray(input.items) || input.items.length < 1 || input.items.length > 50) throw new Error("Your cart is empty or too large.")
   if (!boundedText(input.customerName, 120) || !boundedText(input.customerPhone, 40)) throw new Error("Name and phone are required.")
@@ -111,6 +113,7 @@ export async function createOrder(input: OrderInput, storefront: StorefrontSnaps
     idempotencyKey: boundedText(input.idempotencyKey, 128),
     branchId: input.branchId,
     serviceMode: input.serviceMode,
+    tableToken: storefront.tableContext?.token,
     paymentMethod: "CASH_ON_DELIVERY",
     customerName: boundedText(input.customerName, 120),
     customerPhone: boundedText(input.customerPhone, 40),

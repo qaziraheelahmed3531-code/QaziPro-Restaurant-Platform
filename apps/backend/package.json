@@ -4,15 +4,17 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@italian-pizza/shared": "file:../../packages/shared"
+    "@italian-pizza/shared": "file:../../packages/shared",
+    "web-push": "^3.6.7"
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "vitest run src/push-worker.test.ts",
+    "test": "vitest run src/push-worker.test.ts src/browser-push.test.ts",
     "push:worker": "node --experimental-strip-types src/push-worker.ts"
   },
   "devDependencies": {
     "@types/node": "^24.7.2",
+    "@types/web-push": "^3.6.4",
     "typescript": "^5",
     "vitest": "^4.1.11"
   }

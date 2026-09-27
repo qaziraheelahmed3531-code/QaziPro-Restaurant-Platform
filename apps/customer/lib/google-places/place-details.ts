@@ -1,8 +1,6 @@
 import "server-only"
 
 import { googlePlacesFetch, GooglePlacesServiceError } from "@/lib/google-places/client"
-import { amsGooglePlacesConfig } from "@/lib/google-places/config"
-import { resolveAmsPlaceId } from "@/lib/google-places/search"
 import type {
   GoogleMapsLinks,
   GooglePlaceDetailsResponse,
@@ -12,6 +10,7 @@ import type {
 
 const DETAILS_FIELD_MASK = "id,displayName,formattedAddress,location,rating,userRatingCount,reviews,googleMapsLinks"
 const EARTH_RADIUS_METERS = 6_371_000
+export type RestaurantReviewContext = { businessId: string; branchId: string; placeId: string; businessName: string; latitude: number; longitude: number }
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null
@@ -43,28 +42,28 @@ function normalizedName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
 }
 
-function distanceFromAms(latitude: number, longitude: number) {
-  const lat1 = amsGooglePlacesConfig.latitude * Math.PI / 180
+function distanceFromRestaurant(latitude: number, longitude: number, context: RestaurantReviewContext) {
+  const lat1 = context.latitude * Math.PI / 180
   const lat2 = latitude * Math.PI / 180
-  const deltaLat = (latitude - amsGooglePlacesConfig.latitude) * Math.PI / 180
-  const deltaLon = (longitude - amsGooglePlacesConfig.longitude) * Math.PI / 180
+  const deltaLat = (latitude - context.latitude) * Math.PI / 180
+  const deltaLon = (longitude - context.longitude) * Math.PI / 180
   const a = Math.sin(deltaLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2
   return 2 * EARTH_RADIUS_METERS * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-function verifyAmsPlace(details: GooglePlaceDetailsResponse) {
+function verifyRestaurantPlace(details: GooglePlaceDetailsResponse, context: RestaurantReviewContext) {
   const businessName = stringValue(details.displayName?.text)
   const latitude = numberValue(details.location?.latitude)
   const longitude = numberValue(details.location?.longitude)
-  const expected = normalizedName(amsGooglePlacesConfig.businessName)
+  const expected = normalizedName(context.businessName)
   const actual = businessName ? normalizedName(businessName) : ""
-  const nameMatches = actual === expected || (actual.includes("ams") && actual.includes("islamic") && actual.includes("education"))
+  const nameMatches = Boolean(expected) && actual === expected
   const locationMatches = latitude !== null
     && longitude !== null
-    && distanceFromAms(latitude, longitude) <= amsGooglePlacesConfig.searchRadiusMeters
-  if (!businessName || !nameMatches || !locationMatches) {
+    && distanceFromRestaurant(latitude, longitude, context) <= 1_500
+  if (details.id !== context.placeId || !businessName || !nameMatches || !locationMatches) {
     throw new GooglePlacesServiceError(
-      "The resolved Google Place does not match AMS ISLAMIC EDUCATION SYSTEM near the configured coordinates.",
+      "The configured Google Place does not match this restaurant location.",
       "PLACE_MISMATCH",
       "parsing",
       422,
@@ -107,14 +106,14 @@ function normalizeReviews(details: GooglePlaceDetailsResponse) {
   }).slice(0, 5)
 }
 
-export async function getAmsGooglePlacesReviews(): Promise<GooglePlacesReviewsPayload> {
-  const { placeId, textSearchUsed } = await resolveAmsPlaceId()
+export async function getRestaurantGooglePlacesReviews(context: RestaurantReviewContext): Promise<GooglePlacesReviewsPayload> {
+  const { placeId } = context
   const details = await googlePlacesFetch<GooglePlaceDetailsResponse>(
     `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=en`,
     "place-details",
     { headers: { "X-Goog-FieldMask": DETAILS_FIELD_MASK } },
   )
-  const businessName = verifyAmsPlace(details)
+  const businessName = verifyRestaurantPlace(details, context)
   const rawReviewsFieldPresent = Object.prototype.hasOwnProperty.call(details, "reviews")
   const rawReviewsCount = Array.isArray(details.reviews) ? details.reviews.length : 0
   const newReviews = normalizeReviews(details)
@@ -127,7 +126,7 @@ export async function getAmsGooglePlacesReviews(): Promise<GooglePlacesReviewsPa
     totalReviewCount: numberValue(details.userRatingCount),
     reviews: newReviews,
     googleMapsLinks: normalizeLinks(details),
-    textSearchUsed,
+    textSearchUsed: false,
     ...(process.env.NODE_ENV === "development" ? {
       diagnostics: {
         rawReviewsFieldPresent,

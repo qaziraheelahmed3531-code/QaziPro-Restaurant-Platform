@@ -24,7 +24,7 @@ export function PriceSummary({
   title?: string
 }) {
   const titleId = useId()
-  const deliveryLabel = orderType === "pickup"
+  const deliveryLabel = orderType === "dine-in" ? "At your table" : orderType === "pickup"
     ? "Pickup"
     : deliveryStatus === "loading"
       ? "Calculating…"

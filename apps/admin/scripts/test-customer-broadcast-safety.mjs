@@ -10,7 +10,7 @@ const output = await build({
   stdin: { contents: `export { POST, PATCH } from "./app/api/customer-broadcasts/route";
     export { sendCustomerBroadcast } from "./lib/email/customer-broadcast";
     export { resolveCustomerOrigin } from "./lib/customer-origin";`, resolveDir: admin },
-  bundle: true, write: false, platform: "node", format: "cjs",
+  tsconfig: admin + "tsconfig.json", bundle: true, write: false, platform: "node", format: "cjs",
   plugins: [{ name: "no-external-io", setup(b) {
     b.onResolve({ filter: /^(server-only|nodemailer|next\/server|@\/lib\/auth|@\/lib\/supabase\/server)$/ }, args => ({ path: args.path, namespace: "mock" }));
     b.onLoad({ filter: /.*/, namespace: "mock" }, args => ({ contents: {
@@ -91,6 +91,8 @@ assert.ok(state.mail[0].html.includes('href="https://restaurant-a.staging.qazipr
 assert.ok(state.mail[0].html.includes('src="https://restaurant-a.staging.qazipro.com/logo.png"'));
 assert.ok(!state.mail[0].html.includes("wrong-restaurant")); assert.ok(!state.mail[0].html.includes("<script>"));
 assert.ok(state.mail[0].html.includes("&lt;script&gt;"));
+assert.ok(state.mail[0].html.includes('href="https://restaurant-a.staging.qazipro.com/account#communications"'));
+assert.ok(state.mail[0].text.includes("Manage email preferences or unsubscribe:"));
 pass("mixed batch sends only eligible recipient; HTML is escaped and links/images use the restaurant origin");
 reset();
 await sendCustomerBroadcast({ ...email, customerOrigin: "http://localhost:3000" }, [{ deliveryId: 1, recipient: "manual@inbox.example.net" }]);

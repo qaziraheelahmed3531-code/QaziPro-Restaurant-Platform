@@ -1,6 +1,8 @@
 import { createSign } from "node:crypto";
 import http2 from "node:http2";
 import { pathToFileURL } from "node:url";
+import webpush from "web-push";
+import { parseBrowserSubscription, safeNotificationPath } from "@italian-pizza/shared/web-push";
 
 type Outbox = {
   id: string;
@@ -10,8 +12,11 @@ type Outbox = {
   message: string;
   payload: Record<string, unknown>;
   attempts: number;
+  branch_id: string;
+  broadcast_id?: string | null;
+  delivered_device_ids?: string[];
 };
-type Device = { id: string; platform: "android" | "ios"; push_token: string };
+type Device = { id: string; platform: "android" | "ios" | "web"; push_token: string; web_subscription?: unknown; storefront_origin?: string; branch_id?: string; marketing_opt_in?: boolean };
 type Delivery = { ok: boolean; permanent: boolean; detail: string };
 export const pushRetryDelaySeconds = (attempts: number) =>
   Math.min(3600, 30 * 2 ** Math.max(attempts, 0));
@@ -82,7 +87,7 @@ async function recoverStaleClaims() {
 }
 async function devices(row: Outbox) {
   return rest<Device[]>(
-    `customer_device_tokens?business_id=eq.${row.business_id}&customer_id=eq.${row.customer_id}&is_enabled=eq.true&select=id,platform,push_token`,
+    `customer_device_tokens?business_id=eq.${row.business_id}&customer_id=eq.${row.customer_id}&is_enabled=eq.true&select=id,platform,push_token,web_subscription,storefront_origin,branch_id,marketing_opt_in`,
   );
 }
 async function updateOutbox(
@@ -107,6 +112,13 @@ async function updateOutbox(
       last_error: error?.slice(0, 500) ?? null,
     }),
   });
+  if (row.broadcast_id) {
+    const outcomes=await rest<Array<{status:string}>>(`customer_notification_outbox?broadcast_id=eq.${row.broadcast_id}&business_id=eq.${row.business_id}&select=status`);
+    const sent=outcomes.filter(item=>item.status==="SENT").length;
+    const failed=outcomes.filter(item=>item.status==="FAILED"||item.status==="CANCELLED").length;
+    const pending=outcomes.some(item=>item.status==="PENDING"||item.status==="PROCESSING");
+    await rest(`customer_broadcasts?id=eq.${row.broadcast_id}&business_id=eq.${row.business_id}&channel=eq.WEB_PUSH`,{method:"PATCH",body:JSON.stringify({sent_count:sent,failed_count:failed,status:pending?"SENDING":failed?(sent?"PARTIAL":"FAILED"):"SENT",completed_at:pending?null:new Date().toISOString()})});
+  }
 }
 async function disable(device: Device) {
   await rest(`customer_device_tokens?id=eq.${device.id}`, {
@@ -246,6 +258,7 @@ async function sendApns(row: Outbox, device: Device): Promise<Delivery> {
 }
 async function deliver(row: Outbox, device: Device) {
   try {
+    if(device.platform==="web")return await sendWeb(row,device);
     return device.platform === "android"
       ? await sendFcm(row, device)
       : await sendApns(row, device);
@@ -255,6 +268,30 @@ async function deliver(row: Outbox, device: Device) {
       permanent: false,
       detail: error instanceof Error ? error.message : "Provider error",
     };
+  }
+}
+
+export function browserPushPayload(row: Pick<Outbox,"id"|"title"|"message"|"payload">, origin:string) {
+  const path=safeNotificationPath(row.payload.path ?? (typeof row.payload.orderNumber==="string"?`/orders/${row.payload.orderNumber}`:"/"));
+  if(!path)throw Error("Unsafe notification destination");
+  return {id:row.id,title:row.title,message:row.message,origin,path};
+}
+async function sendWeb(row:Outbox,device:Device):Promise<Delivery>{
+  const subscription=parseBrowserSubscription(device.web_subscription);
+  if(!subscription || !device.storefront_origin)return {ok:false,permanent:true,detail:"Invalid browser subscription"};
+  const origin=new URL(device.storefront_origin);
+  if(origin.protocol!=="https:" || origin.origin!==device.storefront_origin)return {ok:false,permanent:true,detail:"Invalid storefront origin"};
+  const resolved=await rest<Array<{resolved_business_id:string}>>("rpc/resolve_storefront_business",{method:"POST",body:JSON.stringify({p_hostname:origin.hostname})});
+  if(resolved[0]?.resolved_business_id!==row.business_id)return {ok:false,permanent:false,detail:"Storefront unavailable"};
+  try{
+    await webpush.sendNotification(subscription,JSON.stringify(browserPushPayload(row,origin.origin)),{
+      vapidDetails:{subject:required("WEB_PUSH_SUBJECT"),publicKey:required("WEB_PUSH_PUBLIC_KEY"),privateKey:required("WEB_PUSH_PRIVATE_KEY")},
+      TTL:3600,timeout:10000,topic:row.id.replaceAll("-","").slice(0,32),
+    });
+    return {ok:true,permanent:false,detail:"Web push accepted"};
+  }catch(error){
+    const status=Number((error as {statusCode?:number}).statusCode??0);
+    return {ok:false,permanent:status===404||status===410,detail:`Web push ${status||"unavailable"}`};
   }
 }
 
@@ -269,18 +306,24 @@ export async function runPushWorker(limit = 25) {
     const row = await claim();
     if (!row) break;
     processed++;
-    const targets = await devices(row);
+    const registered = await devices(row);
+    const targets = registered.filter(device => (!row.broadcast_id || (device.platform==="web" && device.marketing_opt_in && device.branch_id===row.branch_id)));
     if (!targets.length) {
       await updateOutbox(row, "CANCELLED", "No active devices");
       continue;
     }
-    const results = await Promise.all(
-      targets.map(async (device) => {
+    // Persist successes individually, so a partial failure does not resend to
+    // already-delivered devices. Provider acceptance + DB write is not atomic;
+    // stable notification tag/topic also replaces uncertain duplicate delivery.
+    const delivered=new Set(row.delivered_device_ids??[]);
+    const results:Delivery[]=[];
+    for(const device of targets){
+        if(delivered.has(device.id)){results.push({ok:true,permanent:false,detail:"Already delivered"});continue;}
         const result = await deliver(row, device);
         if (result.permanent) await disable(device);
-        return result;
-      }),
-    );
+        if(result.ok){delivered.add(device.id);await rest(`customer_notification_outbox?id=eq.${row.id}&status=eq.PROCESSING`,{method:"PATCH",body:JSON.stringify({delivered_device_ids:[...delivered]})});}
+        results.push(result);
+    }
     const successes = results.filter((result) => result.ok).length;
     if (successes === targets.length) {
       sent++;

@@ -14,6 +14,9 @@ import { subscribeToLocalOrders, type LocalOrder } from "@/lib/orders/local-orde
 import { fetchRemoteOrders } from "@/lib/orders/remote-orders"
 import { createClient } from "@/lib/supabase/client"
 import type { LoyaltyWalletSnapshot } from "@/lib/loyalty/types"
+import { PushPreferences } from "@/components/notifications/push-preferences"
+import { unsubscribeBrowserPush } from "@/lib/notifications/browser"
+import { EmailPreferences } from "@/components/notifications/email-preferences"
 
 function profileFor(user: User) {
   const metadata = user.user_metadata ?? {}
@@ -87,6 +90,7 @@ export function AuthenticatedAccount({ user, onSignedOut }: { user: User; onSign
     setBusy(true)
     setError("")
     try {
+      await unsubscribeBrowserPush()
       const { error: signOutError } = await createClient().auth.signOut({ scope: "local" })
       if (signOutError) throw signOutError
       onSignedOut()
@@ -100,6 +104,8 @@ export function AuthenticatedAccount({ user, onSignedOut }: { user: User; onSign
 
   return (
     <section className="account-dashboard" aria-labelledby="account-title">
+      <PushPreferences settings />
+      <EmailPreferences />
       <header className="account-profile">
         <div className="account-avatar" aria-hidden="true">
           {profile.avatar ? <Image src={profile.avatar} alt="" width={64} height={64} referrerPolicy="no-referrer" /> : <span>{profile.initials}</span>}

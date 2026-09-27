@@ -2,9 +2,9 @@
 
 import Link from "next/link"
 import { AppLoader } from "@italian-pizza/shared/app-loader"
-import { MOTION_DURATION } from "@italian-pizza/shared/motion"
+import { MOTION_DURATION, MOTION_EASE } from "@italian-pizza/shared/motion"
 import { ShoppingBag, Trash2, X } from "lucide-react"
-import { motion } from "motion/react"
+import { AnimatePresence, motion } from "motion/react"
 import { useEffect, useRef, useState } from "react"
 
 import { CartItem } from "@/components/cart/cart-item"
@@ -12,6 +12,7 @@ import { PriceSummary } from "@/components/cart/price-summary"
 import { useApp } from "@/components/providers/app-provider"
 import { Button } from "@/components/ui/button"
 import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock"
+import { useMobileViewport } from "@/hooks/use-mobile-viewport"
 import { useHydrationSafeReducedMotion } from "@/lib/motion/use-hydration-safe-reduced-motion"
 
 export function CartDrawer() {
@@ -19,6 +20,11 @@ export function CartDrawer() {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const reduceMotion = useHydrationSafeReducedMotion()
+  const mobile = useMobileViewport()
+  const promoInFlight = useRef(false)
+  const cartVersion = JSON.stringify(app.cart)
+  const currentCartVersion = useRef(cartVersion)
+  useEffect(() => { currentCartVersion.current = cartVersion }, [cartVersion])
   const [promo, setPromo] = useState(app.promoCode)
   const [promoMessage, setPromoMessage] = useState("")
   const [applyingPromo, setApplyingPromo] = useState(false)
@@ -46,25 +52,31 @@ export function CartDrawer() {
     return () => { cancelAnimationFrame(frame); cancelAnimationFrame(nextFrame); window.clearTimeout(closeFallback) }
   }, [app.cartDrawerOpen, reduceMotion])
 
-  const drawerTransition = reduceMotion ? { duration: 0 } : { type: "tween" as const, duration: 0.26, ease: [0.22, 1, 0.36, 1] as const }
+  const drawerTransition = reduceMotion ? { duration: 0 } : { type: "tween" as const, duration: MOTION_DURATION.drawer, ease: MOTION_EASE }
 
   const applyPromo = async () => {
+    if (promoInFlight.current || !promo.trim()) return
+    promoInFlight.current = true
+    const requestedCartVersion = cartVersion
+    const code = promo.trim().toUpperCase()
+    setPromoMessage("")
     setApplyingPromo(true)
     try {
-      const response = await fetch("/api/promotions/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promo, subtotal: app.subtotal }) })
+      const response = await fetch("/api/promotions/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, subtotal: app.subtotal }) })
       const result = await response.json() as { valid?: boolean; discount?: number }
+      if (currentCartVersion.current !== requestedCartVersion) { setPromoMessage("Your cart changed. Please apply the code again."); return }
       if (!response.ok || !result.valid) { app.applyPromo("", 0); setPromoMessage("This promo code is not valid for the current order."); return }
-      app.applyPromo(promo.trim().toUpperCase(), Number(result.discount ?? 0))
+      app.applyPromo(code, Number(result.discount ?? 0))
       setPromoMessage(`${Number(result.discount ?? 0).toLocaleString("en-PK")} PKR discount applied.`)
     } catch {
       setPromoMessage("Promo validation is temporarily unavailable.")
-    } finally { setApplyingPromo(false) }
+    } finally { promoInFlight.current = false; setApplyingPromo(false) }
   }
 
   return (
     <dialog ref={dialogRef} className="overlay-dialog cart-drawer-dialog" aria-labelledby="cart-drawer-title" onCancel={(event) => { event.preventDefault(); app.closeCart() }} onClose={app.closeCart}>
       <motion.button className="dialog-backdrop" style={{ backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }} type="button" tabIndex={-1} aria-label="Close cart" onClick={app.closeCart} initial={false} animate={{ opacity: app.cartDrawerOpen ? 1 : 0 }} transition={{ duration: reduceMotion ? 0 : MOTION_DURATION.normal }} />
-      <motion.aside className="cart-drawer" initial={{ x: "100%" }} animate={{ x: entered ? "0%" : "100%" }} transition={drawerTransition} onAnimationComplete={() => { if (!entered && !app.cartDrawerOpen && dialogRef.current?.open) { dialogRef.current.close(); previousFocusRef.current?.focus({ preventScroll: true }) } }}>
+      <motion.aside className="cart-drawer" data-presentation={mobile ? "sheet" : "drawer"} initial={false} animate={{ x: entered || mobile ? "0%" : "100%", y: !entered && mobile ? "100%" : "0%" }} transition={drawerTransition} onAnimationComplete={() => { if (!entered && !app.cartDrawerOpen && dialogRef.current?.open) { dialogRef.current.close(); previousFocusRef.current?.focus({ preventScroll: true }) } }}>
         <header className="cart-drawer__header">
           <div><h2 id="cart-drawer-title">Your Cart</h2></div>
           <div>
@@ -79,13 +91,15 @@ export function CartDrawer() {
           ) : (
             <>
               <div className="drawer-cart-items">
+                <AnimatePresence initial={false}>
                 {app.cart.map((line) => (
                   <CartItem key={line.lineId} line={line} onQuantity={(quantity) => app.updateQuantity(line.lineId, quantity)} onRemove={() => app.removeLine(line.lineId)} />
                 ))}
+                </AnimatePresence>
               </div>
               <section className="drawer-promo" aria-labelledby="drawer-promo-title">
                 <label id="drawer-promo-title" htmlFor="drawer-promo">Promo code</label>
-                <div><input id="drawer-promo" value={promo} onChange={(event) => setPromo(event.target.value)} placeholder="Enter promo code" /><Button variant="outline" disabled={applyingPromo || !promo.trim()} onClick={() => void applyPromo()}><AppLoader active={applyingPromo} label="Checking promo code" />{applyingPromo ? "Checking…" : "Apply"}</Button></div>
+                <div><input id="drawer-promo" value={promo} disabled={applyingPromo} onChange={(event) => setPromo(event.target.value)} placeholder="Enter promo code" /><Button variant="outline" disabled={applyingPromo || !promo.trim()} onClick={() => void applyPromo()}><AppLoader active={applyingPromo} label="Checking promo code" />{applyingPromo ? "Checking…" : "Apply"}</Button></div>
                 {promoMessage && <p role="status">{promoMessage}</p>}
               </section>
             </>

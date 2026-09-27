@@ -6,8 +6,10 @@ import { consumeRateLimit } from "@/lib/api/v1"
 
 export async function GET() {
   try {
+    const storefront = await getStorefrontSnapshot()
+    if (!storefront.business.id || storefront.orderPersistence !== "database") return NextResponse.json({ ok: false, error: "Restaurant unavailable." }, { status: 404, headers: { "Cache-Control": "private, no-store" } })
     const userId = await currentUserId()
-    return NextResponse.json({ ok: true, authenticated: Boolean(userId), orders: userId ? await listCustomerOrders() : [] }, { headers: { "Cache-Control": "private, no-store" } })
+    return NextResponse.json({ ok: true, authenticated: Boolean(userId), orders: userId ? await listCustomerOrders(undefined, storefront.business.id) : [] }, { headers: { "Cache-Control": "private, no-store" } })
   } catch {
     return NextResponse.json({ ok: false, error: "Orders could not be loaded." }, { status: 503 })
   }

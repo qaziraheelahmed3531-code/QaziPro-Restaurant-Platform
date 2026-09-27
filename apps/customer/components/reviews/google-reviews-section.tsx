@@ -15,6 +15,7 @@ export function GoogleReviewsSection() {
   const [widgetStatus, setWidgetStatus] = useState<WidgetStatus>("loading")
 
   useEffect(() => {
+    if (!storefront.business.reviewsEnabled) return
     const controller = new AbortController()
     void fetch("/api/google-reviews", { signal: controller.signal, headers: { Accept: "application/json" } })
       .then(async (response) => {
@@ -39,7 +40,7 @@ export function GoogleReviewsSection() {
         })
       })
     return () => controller.abort()
-  }, [storefront.business.displayName, storefront.business.reviewsBusinessName])
+  }, [storefront.business.displayName, storefront.business.reviewsBusinessName, storefront.business.reviewsEnabled, storefront.branch.id])
 
   if (!storefront.business.reviewsEnabled) return null
 

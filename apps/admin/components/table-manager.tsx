@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState, type FormEvent } from "react"
+import Link from "next/link"
 import { LoaderCircle, Plus, Power, RefreshCw } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { parseTableDraft } from "@/lib/table-draft"
@@ -20,6 +21,7 @@ export function TableManager({ businessId, branchId, initialTables, loadError = 
   const [notice, setNotice] = useState<Notice>(null)
   const [unavailable, setUnavailable] = useState(loadError)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<TableRow | null>(null)
   // State alone cannot stop two events fired before React commits a render.
   const pending = useRef(false)
   const nameInput = useRef<HTMLInputElement>(null)
@@ -59,18 +61,21 @@ export function TableManager({ businessId, branchId, initialTables, loadError = 
     if (!draft.ok) { setNotice({ kind: "error", text: draft.error }); return }
     if (!start("create")) return
     try {
-      const { data, error } = await createClient().from("restaurant_tables")
-        .insert({ business_id: businessId, branch_id: branchId, ...draft.value })
-        .select(columns).single()
+      const query = createClient().from("restaurant_tables")
+      const mutation = editing ? query.update(draft.value).eq("id", editing.id).eq("business_id", businessId).eq("branch_id", branchId)
+        .eq("name", editing.name).eq("code", editing.code).eq("seats", editing.seats)
+        : query.insert({ business_id: businessId, branch_id: branchId, ...draft.value })
+      const { data, error } = await mutation.select(columns).maybeSingle()
       if (error || !data) {
         setNotice({ kind: "error", text: error?.code === "23505"
           ? "That table code already exists in this branch. Refresh the list before trying a different code."
-          : "Table couldn't be created. Your entries are saved here. Refresh the list before retrying if your connection was interrupted." })
+          : "Table couldn't be saved, or another team member changed it. Your entries are kept. Refresh before retrying." })
         return
       }
-      setTables(rows => [...rows, data].sort((a, b) => a.name.localeCompare(b.name)))
+      setTables(rows => [...rows.filter(row => row.id !== data.id), data].sort((a, b) => a.name.localeCompare(b.name)))
       setName(""); setCode(""); setSeats("4")
-      setNotice({ kind: "success", text: `${data.name} created.` })
+      setNotice({ kind: "success", text: `${data.name} ${editing ? "updated" : "created"}.` })
+      setEditing(null)
     } catch {
       setNotice({ kind: "error", text: "Connection interrupted. Your entries are saved here. Refresh the list to check whether the table was created before retrying." })
     } finally { finish() }
@@ -115,15 +120,16 @@ export function TableManager({ businessId, branchId, initialTables, loadError = 
     {unavailable && <div className="state-box" role="alert"><h2>Tables couldn&apos;t be loaded</h2>
       <p>Refresh to try again. Table changes are unavailable until the branch list loads.</p></div>}
     <section className="panel" aria-labelledby="table-create-title">
-      <div className="panel-header"><div><h2 id="table-create-title">Add a table</h2><p>Choose a unique code, such as T07. Keep it consistent with your floor plan.</p></div></div>
+      <div className="panel-header"><div><h2 id="table-create-title">{editing ? `Edit ${editing.name}` : "Add a table"}</h2><p>Choose a unique code, such as T07. Editing a table keeps its printed QR unchanged.</p></div></div>
       <form className="form-grid" onSubmit={create} aria-busy={busy === "create"}>
         <label>Table name<input ref={nameInput} required maxLength={80} value={name} disabled={Boolean(busy) || unavailable} onChange={event => setName(event.target.value)} placeholder="Table 7" /></label>
         <label>Code<input required maxLength={40} value={code} disabled={Boolean(busy) || unavailable} onChange={event => setCode(event.target.value)} placeholder="T07" autoCapitalize="characters" /></label>
         <label>Seats<input required type="number" min="1" max="100" step="1" value={seats} disabled={Boolean(busy) || unavailable} onChange={event => setSeats(event.target.value)} /></label>
         <button type="submit" className="button" disabled={Boolean(busy) || unavailable}>
           {busy === "create" ? <LoaderCircle className="table-action-spinner" aria-hidden="true" /> : <Plus aria-hidden="true" />}
-          {busy === "create" ? "Creating…" : "Create table"}
+          {busy === "create" ? "Saving…" : editing ? "Save table" : "Create table"}
         </button>
+        {editing && <button type="button" className="button button--outline" disabled={Boolean(busy)} onClick={() => { setEditing(null); setName(""); setCode(""); setSeats("4") }}>Cancel edit</button>}
       </form>
     </section>
     {!unavailable && <section className="panel" aria-labelledby="table-floor-title" aria-busy={Boolean(busy) && busy !== "create"}>
@@ -132,7 +138,7 @@ export function TableManager({ businessId, branchId, initialTables, loadError = 
         <tbody>{tables.map(table => <tr key={table.id} aria-busy={busy === table.id}>
           <td data-label="Table"><strong>{table.name}</strong></td><td data-label="Code">{table.code}</td><td data-label="Seats">{table.seats}</td>
           <td data-label="Status"><span className={`status-badge ${table.is_active ? "is-success" : "is-warning"}`}>{table.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
-          <td data-label="Action">{confirmId === table.id ? <div className="table-confirm">
+          <td data-label="Action"><Link className="button button--outline" href={`/tables/${table.id}/qr`}>Table QR</Link><button type="button" className="button button--outline" disabled={Boolean(busy)} onClick={() => { setEditing(table); setName(table.name); setCode(table.code); setSeats(String(table.seats)); nameInput.current?.focus() }}>Edit {table.name}</button>{confirmId === table.id ? <div className="table-confirm">
             <p>Deactivate {table.name}? New waiter bills will be blocked. You can reactivate it later.</p>
             <div className="table-actions"><button type="button" className="button" disabled={Boolean(busy)} onClick={() => void toggle(table)}>{busy === table.id ? "Deactivating…" : "Confirm deactivation"}</button>
               <button type="button" className="button button--outline" disabled={Boolean(busy)} onClick={() => setConfirmId(null)}>Cancel</button></div>

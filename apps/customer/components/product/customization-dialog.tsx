@@ -45,6 +45,7 @@ function CustomizationDialogContent({ product, onClose, onAdd }: { product: Prod
   const [selections, setSelections] = useState(() => initialSelections(product))
   const [variantId, setVariantId] = useState(() => product.variants?.find((variant) => variant.isDefault)?.id ?? product.variants?.[0]?.id ?? null)
   const [quantity, setQuantity] = useState(1)
+  const submitting = useRef(false)
   const groups = useMemo(() => product.modifierGroups ?? [], [product.modifierGroups])
 
   useBodyScrollLock(true)
@@ -82,7 +83,8 @@ function CustomizationDialogContent({ product, onClose, onAdd }: { product: Prod
   }
 
   const add = () => {
-    if (!isValid) return
+    if (!isValid || !product.available || submitting.current) return
+    submitting.current = true
     onAdd({
       itemKind: "product",
       productId: product.id,
@@ -111,7 +113,7 @@ function CustomizationDialogContent({ product, onClose, onAdd }: { product: Prod
           </div>
           <footer className="customization-action">
             <div className="quantity-control" aria-label="Quantity"><button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))} aria-label="Decrease quantity"><Minus aria-hidden="true" /></button><motion.output key={quantity} initial={reduceMotion ? false : { opacity: 0.55, y: 3 }} animate={{ opacity: 1, y: 0 }} aria-live="polite">{quantity}</motion.output><button type="button" onClick={() => setQuantity((value) => Math.min(20, value + 1))} aria-label="Increase quantity"><Plus aria-hidden="true" /></button></div>
-            <Button size="lg" disabled={!isValid} onClick={add}>Add to Cart — {formatRupees(unitPrice * quantity)}</Button>
+            <Button size="lg" disabled={!isValid || !product.available} onClick={add}>{product.available ? `Add to Cart — ${formatRupees(unitPrice * quantity)}` : "Currently unavailable"}</Button>
           </footer>
         </div>
       </motion.div>

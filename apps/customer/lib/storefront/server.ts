@@ -3,6 +3,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { normalizeHostname, requestHostname } from "@italian-pizza/shared/domains"
 import { cookies, headers } from "next/headers"
+import { cache } from "react"
 import { fallbackStorefront } from "@/lib/storefront/fallback"
 import type { AreaGroupId, LocationArea, MenuSection, Product, ProductModifierGroup, StorefrontSnapshot } from "@/types"
 
@@ -84,9 +85,10 @@ function todayHoursLabel(branch: Row, timezone: string) {
   return `Open ${formatClock(row.opens_at)} – ${formatClock(row.closes_at)}`
 }
 
-export type StorefrontRequestContext = { hostname?: string | null; businessSlug?: string | null; branchId?: string | null }
+export type StorefrontRequestContext = { hostname?: string | null; businessSlug?: string | null; branchId?: string | null; tableToken?: string | null }
 
-export async function getStorefrontSnapshot(explicit: StorefrontRequestContext = {}): Promise<StorefrontSnapshot> {
+// React cache is request-scoped: metadata/layout share a read, never tenants.
+export const getStorefrontSnapshot = cache(async function getStorefrontSnapshot(explicit: StorefrontRequestContext = {}): Promise<StorefrontSnapshot> {
   const supabase = databaseClient()
   const demoEnabled = process.env.NODE_ENV === "development" && process.env.ENABLE_DEMO_STOREFRONT === "true"
   if (!supabase) return demoEnabled ? fallbackStorefront : { ...fallbackStorefront, orderPersistence:"unavailable", products:[], deals:[], menuSections:[], heroSlides:[], resolutionError:"CONFIGURATION_MISSING" }
@@ -112,7 +114,9 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
           platformDomain,
         })
     let businessId: string | null = null
-    let businessSlug = text(explicit.businessSlug ?? requestHeaders.get("x-qazipro-business-slug"))
+    // Only internal callers (e.g. the authenticated mobile API) can supply a
+    // public key. An HTTP caller cannot override hostname identity with a header.
+    let businessSlug = text(explicit.businessSlug)
     const localDevelopment = process.env.NODE_ENV === "development" && (
       ["localhost","127.0.0.1"].includes(hostname) ||
       (!hostname && Boolean(explicit.businessSlug))
@@ -134,6 +138,7 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
         businessId=text(resolved.resolved_business_id)
         businessSlug=text(resolved.resolved_business_slug)
       }
+      if (!businessId) return { ...unavailableStorefront, resolutionError:"TENANT_NOT_FOUND" }
     }
     // checkout_idempotency also references businesses + branches, so PostgREST
     // needs the direct business foreign key named explicitly here.
@@ -148,7 +153,17 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
     businessId = text(business.id)
     const activeBranches = asRows(business.branches).filter((row)=>boolean(row.is_active,true)).sort((a,b)=>number(a.sort_order)-number(b.sort_order))
     const availableBranches = activeBranches.map(row=>({id:text(row.id),slug:text(row.slug),name:text(row.restaurant_name,text(row.name)),city:text(row.city),formattedAddress:text(row.formatted_address)||text(row.address)||null}))
-    const requestedBranch = text(explicit.branchId ?? requestHeaders.get("x-qazipro-branch-id") ?? cookieStore.get(`qp-branch-${businessId}`)?.value)
+    const tableToken = explicit.tableToken === null ? "" : text(explicit.tableToken ?? cookieStore.get(`qp-table-${businessId}`)?.value)
+    let tableContext: StorefrontSnapshot["tableContext"]
+    if (tableToken) {
+      const tableResult = /^[a-f0-9]{48}$/.test(tableToken)
+        ? await supabase.rpc("resolve_public_table", { p_business_id: businessId, p_token: tableToken }).maybeSingle()
+        : { data: null, error: true }
+      if (tableResult.error || !tableResult.data) return { ...unavailableStorefront, business: { ...unavailableStorefront.business, id: businessId, name: text(business.name) }, resolutionError: "TABLE_UNAVAILABLE" }
+      const table = tableResult.data as Row
+      tableContext = { token: tableToken, name: text(table.table_name), branchId: text(table.branch_id) }
+    }
+    const requestedBranch = tableContext?.branchId ?? text(explicit.branchId ?? requestHeaders.get("x-qazipro-branch-id") ?? cookieStore.get(`qp-branch-${businessId}`)?.value)
     const branch = activeBranches.length===1 ? activeBranches[0] : activeBranches.find(row=>text(row.id)===requestedBranch||text(row.slug)===requestedBranch)
     if (!branch) return { ...unavailableStorefront, business:{...unavailableStorefront.business,id:businessId,slug:text(business.slug)||null,name:text(business.name),displayName:text(first(business.business_branding)?.display_name,text(business.name)).toUpperCase()}, availableBranches, resolutionError:requestedBranch?"BRANCH_NOT_FOUND":"BRANCH_REQUIRED" }
     const [categoryResult, productResult, overrideResult, dealResult, bannerResult] = await Promise.all([
@@ -230,10 +245,11 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
     const now=Date.now()
     const activeWindow=(row:Row)=>{const starts=text(row.starts_at);const ends=text(row.ends_at);return(!starts||Date.parse(starts)<=now)&&(!ends||Date.parse(ends)>now)}
     return {
+      tableContext,
       source:"database",
       orderPersistence:"database",
       business:{id:businessId,slug:text(business.slug)||null,name:text(branch.restaurant_name,text(business.name,"Restaurant")),displayName:text(branch.restaurant_name,text(branding?.display_name,text(business.name,"RESTAURANT")).toUpperCase()),description:contextualText(business.short_description),footerDescription:contextualText(branding?.footer_description,contextualText(business.short_description)),tagline:contextualText(settings?.tagline,contextualText(branding?.footer_description,contextualText(business.short_description))),contactText:text(settings?.contact_text),phone:text(business.phone)||null,email:text(business.email)||null,address:text(branch.formatted_address)||text(branch.address)||text(business.address)||null,city:branchCity,currency:"PKR",timezone,logoUrl:text(branding?.logo_url)||null,footerLogoUrl:text(branding?.footer_logo_url)||null,appStoreUrl:/^https:\/\/apps\.apple\.com\//i.test(text(settings?.app_store_url))?text(settings?.app_store_url):null,playStoreUrl:/^https:\/\/play\.google\.com\//i.test(text(settings?.play_store_url))?text(settings?.play_store_url):null,faviconUrl:text(branding?.favicon_url)||null,primaryColor:color(branding?.primary_color,"#a92114"),secondaryColor:color(branding?.secondary_color,"#e7a81a"),websiteBackgroundColor:color(branding?.website_background_color,"#fbf7f2"),headerBackgroundColor:color(branding?.header_background_color,"#ffffff"),footerBackgroundColor:color(branding?.footer_background_color,"#211d1b"),productCardBackgroundColor:color(branding?.product_card_background_color,"#ffffff"),textColor:color(branding?.text_color,"#211d1b"),footerTextColor:color(branding?.footer_text_color,"#f7f2ee"),fontFamily:fontFamily(branding?.font_family),fontStylesheetUrl:fontStylesheetUrl(branding?.font_stylesheet_url),headerLogoSizePx:boundedNumber(branding?.header_logo_size_px,56,36,120),footerLogoSizePx:boundedNumber(branding?.footer_logo_size_px,88,40,180),announcementEnabled:boolean(settings?.announcement_enabled,true),announcementText:contextualText(settings?.announcement_text),reviewsEnabled:boolean(settings?.reviews_enabled,true),reviewsTitle:text(settings?.reviews_title,"Google Reviews"),reviewsBusinessName:text(settings?.reviews_business_name)||null,reviewsWidgetId:text(settings?.reviews_widget_id)||null,whatsappFloatingEnabled:boolean(settings?.whatsapp_floating_enabled,false),whatsappNumber:text(settings?.whatsapp_floating_number).replace(/\D/g,""),whatsappLogoUrl:text(settings?.whatsapp_floating_logo_url)||null,whatsappMessage:text(settings?.whatsapp_floating_message,"Hello, I would like to place an order."),whatsappSide:text(settings?.whatsapp_floating_side)==="RIGHT"?"RIGHT":"LEFT",whatsappSizePx:boundedNumber(settings?.whatsapp_floating_size_px,58,44,96),whatsappBottomPx:boundedNumber(settings?.whatsapp_floating_bottom_px,24,8,240),whatsappSideOffsetPx:boundedNumber(settings?.whatsapp_floating_side_offset_px,24,8,160),socialLinks:asRows(business.social_links).filter((row)=>boolean(row.is_active,true)).sort((a,b)=>number(a.sort_order)-number(b.sort_order)).map((row)=>({platform:text(row.platform),url:text(row.url)})),footerLinks:asRows(footerLinksResult.data).filter((row)=>boolean(row.is_active,true)).sort((a,b)=>number(a.sort_order)-number(b.sort_order)).map((row)=>({label:text(row.label),href:safeHref(text(row.href)),group:text(row.group_name,"QUICK_LINKS"),isExternal:boolean(row.is_external)})).filter((row)=>row.label&&row.href),contentPages:asRows(contentPagesResult.data).filter((row)=>boolean(row.is_published,true)).sort((a,b)=>number(a.sort_order)-number(b.sort_order)).map((row)=>({slug:text(row.slug),title:text(row.title),body:text(row.body)})).filter((row)=>row.slug&&row.title)},
-      branch:{id:text(branch.id),name:text(branch.name),restaurantName:text(branch.restaurant_name)||null,locationRevision:number(branch.location_revision,1),city:branchCity,countryCode:text(branch.country_code)||null,region:text(branch.region)||null,formattedAddress:text(branch.formatted_address)||text(branch.address)||null,timezone:text(branch.timezone,timezone),temporarilyClosed:boolean(branch.temporarily_closed),isOpen:acceptingOrders,pickupEnabled:boolean(branch.pickup_enabled,true),deliveryEnabled:boolean(branch.delivery_enabled,true),freeDistanceKm:number(rule?.free_distance_km,5),extraKmRate:number(rule?.extra_km_rate,100),maximumDistanceKm:rule?.maximum_distance_km==null?null:number(rule.maximum_distance_km),originLatitude:origin?.latitude ?? null,originLongitude:origin?.longitude ?? null,todayHoursLabel:branchTodayHours},
+      branch:{id:text(branch.id),googlePlaceId:text(branch.google_place_id)||null,name:text(branch.name),restaurantName:text(branch.restaurant_name)||null,locationRevision:number(branch.location_revision,1),city:branchCity,countryCode:text(branch.country_code)||null,region:text(branch.region)||null,formattedAddress:text(branch.formatted_address)||text(branch.address)||null,timezone:text(branch.timezone,timezone),temporarilyClosed:boolean(branch.temporarily_closed),isOpen:acceptingOrders,pickupEnabled:boolean(branch.pickup_enabled,true),deliveryEnabled:boolean(branch.delivery_enabled,true),freeDistanceKm:number(rule?.free_distance_km,5),extraKmRate:number(rule?.extra_km_rate,100),maximumDistanceKm:rule?.maximum_distance_km==null?null:number(rule.maximum_distance_km),originLatitude:origin?.latitude ?? null,originLongitude:origin?.longitude ?? null,todayHoursLabel:branchTodayHours},
       heroSlides:asRows(bannerResult.data).filter(activeWindow).map(row=>({id:text(row.id),image:text(row.image_url),mobileImage:text(row.mobile_image_url)||undefined,alt:text(row.alt_text,`${text(branch.restaurant_name,text(business.name))} promotion`)})),
       heroSettings:{autoplay:boolean(branding?.hero_autoplay,true),intervalMs:Math.min(15000,Math.max(3000,number(branding?.hero_interval_ms,5500))),transitionMs:([350,500,650].includes(number(branding?.hero_transition_ms,650))?number(branding?.hero_transition_ms,650):650) as 350|500|650},
       menuSections:categories,
@@ -250,5 +266,5 @@ export async function getStorefrontSnapshot(explicit: StorefrontRequestContext =
     console.error(JSON.stringify({level:"error",event:"storefront_unexpected_failure",environment:process.env.APP_ENVIRONMENT??process.env.NODE_ENV,error:{name:known.name??"Error",message:(known.message??"Unexpected storefront failure").slice(0,300)}}))
     return unavailableStorefront
   }
-}
+})
 

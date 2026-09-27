@@ -5,6 +5,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { AppOverlays } from "@/components/providers/app-overlays";
 import { AppProvider } from "@/components/providers/app-provider";
 import { StorefrontRefresh } from "@/components/providers/storefront-refresh";
+import { StorefrontMotion } from "@/components/providers/storefront-motion";
+import { TableContextBanner } from "@/components/tables/table-context-banner";
+import { PushPreferences } from "@/components/notifications/push-preferences";
 import { DesktopPosAuthBridge } from "@/components/providers/desktop-pos-auth-bridge";
 import { GoogleReviewsSection } from "@/components/reviews/google-reviews-section";
 import { SiteFooter } from "@/components/layout/site-footer";
@@ -12,6 +15,7 @@ import { BlockedAccount } from "@/components/account/blocked-account";
 import { getStorefrontSnapshot } from "@/lib/storefront/server";
 import { getCurrentCustomerRestriction } from "@/lib/restrictions/server";
 import { BranchSelector } from "@/components/location/branch-selector";
+import { accessibleText, brandInteractionColor, readableTextOn } from "@/lib/brand-theme";
 import "./globals.css";
 import "./location-v5.css";
 import "./storefront-finish.css";
@@ -29,12 +33,6 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
-
-function readableTextOn(hex: string) {
-  const channels = [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)].map((value) => Number.parseInt(value, 16) / 255)
-  const luminance = channels.map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
-  return 0.2126 * luminance[0] + 0.7152 * luminance[1] + 0.0722 * luminance[2] > 0.43 ? "#15110d" : "#ffffff"
-}
 
 export async function generateMetadata(): Promise<Metadata> {
   const storefront = await getStorefrontSnapshot();
@@ -54,19 +52,20 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const restaurantName=storefront.branch.restaurantName??storefront.business.name;
   const theme = {
     "--ip-brand-primary":storefront.business.primaryColor,
-    "--ip-brand-primary-hover":`color-mix(in srgb, ${storefront.business.primaryColor} 82%, black)`,
-    "--ip-brand-primary-pressed":`color-mix(in srgb, ${storefront.business.primaryColor} 70%, black)`,
+    "--ip-brand-primary-hover":brandInteractionColor(storefront.business.primaryColor, .1),
+    "--ip-brand-primary-pressed":brandInteractionColor(storefront.business.primaryColor, .18),
     "--ip-brand-secondary":storefront.business.secondaryColor,
     "--ip-brand-secondary-subtle":`color-mix(in srgb, ${storefront.business.secondaryColor} 18%, white)`,
-    "--ip-brand-secondary-hover":`color-mix(in srgb, ${storefront.business.secondaryColor} 82%, black)`,
+    "--ip-brand-secondary-hover":brandInteractionColor(storefront.business.secondaryColor, .1),
     "--ip-text-inverse":readableTextOn(storefront.business.primaryColor),
     "--ip-text-on-secondary":readableTextOn(storefront.business.secondaryColor),
     "--ip-background-default":storefront.business.websiteBackgroundColor,
     "--ip-header-background":storefront.business.headerBackgroundColor,
     "--ip-footer-background":storefront.business.footerBackgroundColor,
     "--ip-product-card-background":storefront.business.productCardBackgroundColor,
-    "--ip-text-primary":storefront.business.textColor,
-    "--ip-footer-text":storefront.business.footerTextColor,
+    "--ip-text-primary":accessibleText(storefront.business.textColor, storefront.business.websiteBackgroundColor),
+    "--ip-text-brand":accessibleText(storefront.business.primaryColor, storefront.business.websiteBackgroundColor),
+    "--ip-footer-text":accessibleText(storefront.business.footerTextColor, storefront.business.footerBackgroundColor),
     "--ip-font-family":`"${storefront.business.fontFamily}", var(--font-geist-sans)`,
     "--ip-surface-brand-subtle":`color-mix(in srgb, ${storefront.business.primaryColor} 8%, white)`,
     "--ip-header-logo-size":`${storefront.business.headerLogoSizePx}px`,
@@ -82,6 +81,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <DesktopPosAuthBridge />
         {!storefront.branch.id ? <BranchSelector storefront={storefront}/> : restriction?.prevent_storefront_access ? <BlockedAccount restaurantName={restaurantName} contactHref={contactHref}/> : <AppProvider storefront={storefront}>
           <StorefrontRefresh businessId={storefront.business.id ?? ""} branchId={storefront.branch.id ?? ""}/>
+          <StorefrontMotion />
+          <TableContextBanner />
+          <PushPreferences />
           {children}
           <GoogleReviewsSection />
           <SiteFooter />

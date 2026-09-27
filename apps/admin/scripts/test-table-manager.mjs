@@ -2,6 +2,8 @@
 import assert from "node:assert/strict"
 import { readFile, mkdir } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
+import { createRequire } from "node:module"
+import { dirname } from "node:path"
 import { build } from "esbuild"
 import { chromium, expect } from "playwright/test"
 import { parseTableDraft } from "../lib/table-draft.ts"
@@ -18,6 +20,7 @@ for (const draft of [
 pass("table draft normalization and 11 invalid input cases")
 
 const admin = fileURLToPath(new URL("../", import.meta.url))
+const appRequire = createRequire(new URL("../package.json", import.meta.url))
 const mock = `
   export function createClient() {
     return { from(table) {
@@ -38,6 +41,8 @@ const mock = `
   }
 `
 const output = await build({
+  tsconfig: admin + "tsconfig.json",
+  alias: { react: dirname(appRequire.resolve("react")), "react-dom": dirname(appRequire.resolve("react-dom")) },
   stdin: { contents: `
     import React from "react";
     import { createRoot } from "react-dom/client";
@@ -48,6 +53,8 @@ const output = await build({
   `, resolveDir: admin, loader: "tsx" },
   bundle: true, write: false, format: "iife", platform: "browser", jsx: "automatic",
   plugins: [{ name: "no-external-transport", setup(b) {
+    b.onResolve({ filter: /^next\/link$/ }, () => ({ path: "link", namespace: "link" }))
+    b.onLoad({ filter: /.*/, namespace: "link" }, () => ({ contents: 'import React from "react"; export default props => <a {...props}/>;', loader: "jsx", resolveDir: admin }))
     b.onResolve({ filter: /^@\/lib\/supabase\/client$/ }, () => ({ path: "mock", namespace: "test" }))
     b.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: mock, loader: "js" }))
   } }],
@@ -73,7 +80,7 @@ try {
     form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
     form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
   })
-  await expect(page.getByRole("button", { name: "Creating…" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Saving…" })).toBeDisabled()
   assert.equal(await page.evaluate(() => window.requests.length), 1)
   const request = await page.evaluate(() => window.requests[0])
   assert.deepEqual(request.value, { business_id: "business-a", branch_id: "branch-a", name: "New table", code: "NEW", seats: 4 })
@@ -127,6 +134,17 @@ try {
   await page.getByRole("button", { name: "Create table", exact: true }).hover()
   assert.equal(await page.getByRole("button", { name: "Create table", exact: true }).evaluate(el => getComputedStyle(el).transform), "none")
   pass("reduced motion removes button translation")
+  await expect(row.getByRole("link", { name: "Table QR" })).toHaveAttribute("href", "/tables/table-a/qr")
+  await row.getByRole("button", { name: "Edit Table A", exact: true }).click()
+  await page.getByLabel("Table name").fill("Terrace table")
+  await page.getByRole("button", { name: "Save table", exact: true }).evaluate(button => { button.click(); button.click() })
+  await expect(page.getByRole("button", { name: "Saving…" })).toBeDisabled()
+  assert.deepEqual(await page.evaluate(() => window.requests.at(-1).filters), [["id","table-a"],["business_id","business-a"],["branch_id","branch-a"],["name","Table A"],["code","A1"],["seats",4]])
+  await page.evaluate(() => window.finish({ data: null, error: null }))
+  await expect(page.getByRole("alert")).toContainText("another team member")
+  await expect(page.getByLabel("Table name")).toHaveValue("Terrace table")
+  await page.getByRole("button", { name: "Cancel edit" }).click()
+  pass("QR action plus scoped compare-and-set edits preserve values on conflict")
   await page.evaluate(props => window.renderTables(props), { businessId: "business-b", branchId: "branch-b", initialTables: [], loadError: true })
   await expect(page.getByRole("alert")).toContainText("couldn't be loaded")
   await expect(page.getByText("Table A", { exact: true })).toHaveCount(0)

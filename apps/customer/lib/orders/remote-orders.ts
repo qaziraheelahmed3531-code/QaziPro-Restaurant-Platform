@@ -10,7 +10,7 @@ type ApiOrder = {
   token_number?: number | null
   created_at: string
   status: string
-  service_mode: "DELIVERY" | "PICKUP"
+  service_mode: "DELIVERY" | "PICKUP" | "DINE_IN"
   payment_method: string
   payment_status: string
   rider_name?: string | null
@@ -68,7 +68,7 @@ export function normalizeApiOrder(order: ApiOrder): LocalOrder {
     total: Number(order.total),
     deliveryAddress: order.location_snapshot?.customerAddress??order.delivery_address,
     areaLabel: order.location_snapshot?.deliveryAreaName??order.delivery_area_name,
-    serviceMode: order.service_mode === "PICKUP" ? "pickup" : "delivery",
+    serviceMode: order.service_mode === "DINE_IN" ? "dine-in" : order.service_mode === "PICKUP" ? "pickup" : "delivery",
     paymentMethod: "cod",
     paymentStatus: order.payment_status,
     riderName: order.rider_name??null,

@@ -16,7 +16,8 @@
     "./motion": "./src/motion.ts",
     "./app-loader": "./src/app-loader.tsx",
     "./mobile-api": "./src/mobile-api.ts",
-    "./domains": "./src/domains.ts"
+    "./domains": "./src/domains.ts",
+    "./web-push": "./src/web-push.ts"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

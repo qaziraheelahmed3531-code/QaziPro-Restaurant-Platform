@@ -218,9 +218,9 @@ function sameCoordinates(first: Coordinates | null, second: Coordinates) {
 }
 
 export function AppProvider({ children, storefront }: { children: ReactNode; storefront: StorefrontSnapshot }) {
-  const storageKey = `qazipro-storefront-v3:${storefront.business.id ?? "unresolved"}:${storefront.branch.id ?? "unresolved"}`
+  const storageKey = `qazipro-storefront-v3:${storefront.business.id ?? "unresolved"}:${storefront.branch.id ?? "unresolved"}${storefront.tableContext ? `:table:${storefront.tableContext.token}` : ""}`
   const deliveryPolicyKey=JSON.stringify({branch:storefront.branch.id,origin:[storefront.branch.originLatitude,storefront.branch.originLongitude],free:storefront.branch.freeDistanceKm,rate:storefront.branch.extraKmRate,maximum:storefront.branch.maximumDistanceKm,areas:storefront.deliveryAreas})
-  const [state, dispatch] = useReducer(reducer, initialState)
+  const [state, dispatch] = useReducer(reducer, { ...initialState, ...(storefront.tableContext ? { orderType: "dine-in" as const, locationRequired: false } : {}) })
   const pathname = usePathname()
   const previousPathnameRef = useRef(pathname)
   const hydratedLocationContext = useRef<string | null>(null)
@@ -236,21 +236,25 @@ export function AppProvider({ children, storefront }: { children: ReactNode; sto
 
   useEffect(() => {
     try {
-      const contextKey = JSON.stringify([storefront.branch.id,storefront.branch.city,storefront.branch.locationRevision,storefront.deliveryAreas.map(area=>area.id)])
+      const contextKey = JSON.stringify([storefront.tableContext?.token,storefront.branch.id,storefront.branch.city,storefront.branch.locationRevision,storefront.deliveryAreas.map(area=>area.id)])
       if (hydratedLocationContext.current === contextKey) return
       const firstVisit = hydratedLocationContext.current === null
       hydratedLocationContext.current = contextKey
       const saved = window.localStorage.getItem(storageKey)
       const payload=safePersistedState(saved ? JSON.parse(saved) : null)
+      if (storefront.tableContext) {
+        dispatch({ type: "hydrate", payload: { ...payload, orderType: "dine-in", selectedAreaId: null, coordinates: null, deliveryQuote: null }, locationInvalidated: false })
+        return
+      }
       const selectedActive=Boolean(payload.selectedAreaId&&storefront.deliveryAreas.some(area=>area.id===payload.selectedAreaId))
       const contextMatches=Boolean(payload.branchId===storefront.branch.id&&payload.city?.toLocaleLowerCase()===storefront.branch.city.toLocaleLowerCase()&&payload.locationRevision===(storefront.branch.locationRevision??1))
       const locationInvalidated=!contextMatches||(payload.orderType==="delivery"&&!selectedActive)
       dispatch({ type: "hydrate", payload:locationInvalidated?{...payload,selectedAreaId:null,coordinates:null,deliveryQuote:null,locationSource:"MANUAL_AREA"}:payload,locationInvalidated:locationInvalidated||firstVisit })
     } catch {
       window.localStorage.removeItem(storageKey)
-      dispatch({ type: "hydrate", payload: safePersistedState(null), locationInvalidated:true })
+      dispatch({ type: "hydrate", payload: { ...safePersistedState(null), orderType: storefront.tableContext ? "dine-in" : "delivery" }, locationInvalidated: !storefront.tableContext })
     }
-  }, [storageKey, storefront.branch.id, storefront.branch.city, storefront.branch.locationRevision, storefront.deliveryAreas])
+  }, [storageKey, storefront.branch.id, storefront.branch.city, storefront.branch.locationRevision, storefront.deliveryAreas, storefront.tableContext])
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -349,26 +353,26 @@ export function AppProvider({ children, storefront }: { children: ReactNode; sto
   const selectedArea = storefront.deliveryAreas.find((area) => area.id === state.selectedAreaId)
   const subtotal = state.cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0)
   const discount = Math.min(state.promoDiscount, subtotal)
-  const deliveryFee = state.orderType === "pickup" ? 0 : state.deliveryQuote?.deliveryFee ?? null
+  const deliveryFee = state.orderType !== "delivery" ? 0 : state.deliveryQuote?.deliveryFee ?? null
 
   const value = useMemo<AppContextValue>(() => ({
     ...state,
     storefront,
     selectedArea,
-    locationLabel: !state.hydrated ? "Loading saved location…" : state.orderType === "pickup" ? storefront.branch.name : selectedArea ? `${selectedArea.label}, ${storefront.branch.city}` : `Select your area in ${storefront.branch.city}`,
+    locationLabel: storefront.tableContext ? `${storefront.tableContext.name} · ${storefront.branch.name}` : !state.hydrated ? "Loading saved location…" : state.orderType === "pickup" ? storefront.branch.name : selectedArea ? `${selectedArea.label}, ${storefront.branch.city}` : `Select your area in ${storefront.branch.city}`,
     cartCount: state.cart.reduce((sum, line) => sum + line.quantity, 0),
     subtotal,
     discount,
     deliveryFee,
     total: Math.max(0, subtotal - discount + (deliveryFee ?? 0)),
-    openLocation: () => dispatch({ type: "location", open: true }),
+    openLocation: () => { if (!storefront.tableContext) dispatch({ type: "location", open: true }) },
     closeLocation: () => dispatch({ type: "location", open: false }),
     confirmPickup: () => dispatch({ type: "confirm-pickup" }),
     openCart: () => dispatch({ type: "cart-drawer", open: true }),
     closeCart: () => dispatch({ type: "cart-drawer", open: false }),
     openProduct: (productId) => dispatch({ type: "product", productId }),
     closeProduct: () => dispatch({ type: "product", productId: null }),
-    setOrderType: (orderType) => dispatch({ type: "order-type", orderType }),
+    setOrderType: (orderType) => { if (!storefront.tableContext && orderType !== "dine-in") dispatch({ type: "order-type", orderType }) },
     selectArea: (areaId, coordinates) => { dispatch({ type: "area", areaId }); if (coordinates) setCoordinates(coordinates) },
     selectDetectedArea: (areaId) => dispatch({ type: "detected-area", areaId }),
     setCoordinates,

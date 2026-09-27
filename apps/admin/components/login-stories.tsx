@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useReducedMotionPreference } from "@/lib/use-reduced-motion";
-import { ArrowDown, ArrowUpRight, Check, ChefHat, ChevronLeft, ChevronRight, Globe2, Monitor, Pause, Play, ShoppingBag, Truck, UtensilsCrossed } from "lucide-react";
+import { Check, ChefHat, ChevronLeft, ChevronRight, Globe2, MapPin, Monitor, Pause, Play, QrCode, ShoppingBag, Truck, UtensilsCrossed } from "lucide-react";
 
 const stories = [
   { title: "From menu to moment.", name: "Online ordering", text: "Your menu. Your brand. A direct connection to your customers.", icon: Globe2, steps: ["Browse the menu", "Make it yours", "Order confirmed"], badge: "Your own storefront", detail: "A seamless ordering journey" },
@@ -12,6 +12,15 @@ const stories = [
   { title: "The last mile, in view.", name: "Delivery", text: "Keep dispatch, riders and order progress in sync.", icon: Truck, steps: ["Assign a rider", "Out for delivery", "Delivered"], badge: "Delivery operations", detail: "From your door to theirs" },
   { title: "A kitchen in rhythm.", name: "Kitchen", text: "Give your kitchen a focused view of what needs to happen next.", icon: ChefHat, steps: ["Confirm ticket", "Start preparing", "Mark ready"], badge: "Kitchen display", detail: "Clarity through every service" },
 ] as const;
+
+function OperationScene({ index }: { index: number }) {
+  if (index === 0) return <div className="operation-menu"><div className="operation-menu__feature"><span className="operation-dish"/><div><small>YOUR SIGNATURE MENU</small><strong>Made to order.</strong></div></div><div className="operation-menu__tiles">{["Browse", "Customize", "Add to bag"].map(label => <div key={label}><span className="operation-dish"/><small>{label}</small></div>)}</div></div>;
+  if (index === 1) return <div className="operation-pos"><div className="operation-pos__tiles">{[ShoppingBag, UtensilsCrossed, Truck, ChefHat].map((Icon, i) => <span key={i}><Icon/></span>)}</div><div className="operation-receipt"><small>ORDER SUMMARY</small><i/><i/><i/><strong>Send to kitchen <Check/></strong></div></div>;
+  if (index === 2) return <div className="operation-table"><div className="operation-table__qr"><QrCode/><strong>Scan. Choose. Enjoy.</strong><small>TABLE ORDERING</small></div><div className="operation-table__seats"><span/><span/><span/><span/><UtensilsCrossed/></div></div>;
+  if (index === 3) return <div className="operation-pickup"><ShoppingBag/><div><small>FRESHLY PREPARED</small><strong>Ready for collection</strong><span><Check/> A clear handoff</span></div></div>;
+  if (index === 4) return <div className="operation-delivery"><div className="operation-delivery__route"><MapPin/><span/><Truck/></div><div><small>FROM YOUR DOOR</small><strong>Every step, connected</strong><p>Kitchen → Dispatch → Customer</p></div></div>;
+  return <div className="operation-kitchen">{["Received", "Preparing", "Ready"].map((label, i) => <div key={label}><small>{label}</small><article><ChefHat/><i/><i/>{i === 2 && <Check/>}</article></div>)}</div>;
+}
 
 export function LoginStories() {
   const [active, setActive] = useState(0);
@@ -48,9 +57,9 @@ export function LoginStories() {
         const Icon = item.icon;
         return <div key={item.name} className={`login-showcase__slide ${active === index ? "is-active" : ""}`}>
           <div className="login-showcase__window">
-            <div className="login-showcase__windowbar"><span><i/><i/><i/></span><small>QaziPro / {item.name}</small><ArrowUpRight/></div>
-            <div className="login-showcase__workspace"><span className="login-showcase__module-icon"><Icon/></span><small>CONNECTED OPERATIONS</small><strong>{item.name}</strong><p>{item.detail}</p>
-              <div className="login-showcase__steps">{item.steps.map((step, i) => <div key={step}><span>{i === 2 ? <Check/> : String(i + 1).padStart(2, "0")}</span><b>{step}</b>{i < 2 && <ArrowDown/>}</div>)}</div>
+            <div className="login-showcase__scene-label"><Icon/><small>{item.name}</small><span>QAZIPRO</span></div>
+            <div className="login-showcase__workspace"><small>CONNECTED OPERATIONS</small><strong>{item.name}</strong><p>{item.detail}</p>
+              <OperationScene index={index}/>
             </div>
           </div>
           <div className="login-showcase__floating"><span><Icon/></span><div><small>DESIGNED TO CONNECT</small><strong>{item.badge}</strong></div><Check/></div>

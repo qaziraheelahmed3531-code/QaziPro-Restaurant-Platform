@@ -12,7 +12,7 @@ const buttonVariants = cva(
         outline:
           "border-[var(--ip-border-strong)] bg-[var(--ip-surface-default)] text-[var(--ip-text-primary)] hover:border-[var(--ip-brand-primary)] hover:text-[var(--ip-text-brand)]",
         secondary:
-          "bg-[var(--ip-brand-secondary)] text-[var(--ip-text-primary)] hover:bg-[var(--ip-brand-secondary-hover)]",
+          "bg-[var(--ip-brand-secondary)] text-[var(--ip-text-on-secondary)] hover:bg-[var(--ip-brand-secondary-hover)]",
         ghost:
           "text-[var(--ip-text-primary)] hover:bg-[var(--ip-background-subtle)]",
         destructive:
@@ -46,6 +46,7 @@ function Button({
   return (
     <ButtonPrimitive
       data-slot="button"
+      data-variant={variant}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

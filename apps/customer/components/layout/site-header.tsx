@@ -66,9 +66,9 @@ export function SiteHeader() {
             <BrandLogo logoUrl={storefront.business.logoUrl ?? undefined} brandName={storefront.business.displayName} placement="header" showName={false} />
           </Link>
 
-          <button className="desktop-location" type="button" onClick={openLocation} aria-label={`${orderType === "delivery" ? "Deliver to" : "Pick up from"} ${locationLabel}`}>
+          <button className="desktop-location" type="button" onClick={openLocation} disabled={orderType === "dine-in"} aria-label={`${orderType === "dine-in" ? "Dining at" : orderType === "delivery" ? "Deliver to" : "Pick up from"} ${locationLabel}`}>
             <MapPin aria-hidden="true" />
-            <span><small>{orderType === "delivery" ? "DELIVER TO" : "PICK UP FROM"}</small><strong>{locationLabel}</strong></span>
+            <span><small>{orderType === "dine-in" ? "DINING AT" : orderType === "delivery" ? "DELIVER TO" : "PICK UP FROM"}</small><strong>{locationLabel}</strong></span>
             <ChevronDown aria-hidden="true" />
           </button>
 
@@ -84,9 +84,9 @@ export function SiteHeader() {
         </div>
       </div>
 
-      <button className="mobile-location" type="button" onClick={openLocation}>
+      <button className="mobile-location" type="button" disabled={orderType === "dine-in"} onClick={openLocation}>
         <MapPin aria-hidden="true" />
-        <span><small>{orderType === "delivery" ? "Deliver to" : "Pick up from"}</small><strong>{locationLabel}</strong></span>
+        <span><small>{orderType === "dine-in" ? "Dining at" : orderType === "delivery" ? "Deliver to" : "Pick up from"}</small><strong>{locationLabel}</strong></span>
         <ChevronDown aria-hidden="true" />
       </button>
     </header>

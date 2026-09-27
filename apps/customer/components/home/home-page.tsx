@@ -7,6 +7,8 @@ import { CategoryMenuSection } from "@/components/home/category-menu-section"
 import { CategoryTiles } from "@/components/home/home-controls"
 import { HomeHashScroller } from "@/components/home/home-hash-scroller"
 import { HeroCarousel } from "@/components/home/hero-carousel"
+import { RestaurantIntro } from "@/components/home/restaurant-intro"
+import { MobileCartBar } from "@/components/cart/mobile-cart-bar"
 import { MenuSearch } from "@/components/home/menu-search"
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav"
 import { SiteHeader } from "@/components/layout/site-header"
@@ -26,9 +28,10 @@ export function HomePage() {
       <StickyCategoryNav sections={storefront.menuSections} />
       <main>
         <HeroCarousel slides={storefront.heroSlides} settings={storefront.heroSettings} businessName={storefront.business.name} />
+        <RestaurantIntro />
 
-        <section className="craving-section" id="menu" aria-labelledby="craving-title">
-          <Reveal className="section-heading"><div><h1 id="craving-title">What are you craving?</h1></div></Reveal>
+        <section className="craving-section" id="menu" tabIndex={-1} aria-labelledby="craving-title">
+          <Reveal className="section-heading"><div><h2 id="craving-title">What are you craving?</h2></div></Reveal>
           <CategoryTiles sections={storefront.menuSections} />
           <MenuSearch products={storefront.products} deals={storefront.deals} />
         </section>
@@ -48,6 +51,7 @@ export function HomePage() {
         </section></Reveal>
       </main>
       <MobileBottomNav />
+      <MobileCartBar />
     </div>
   )
 }

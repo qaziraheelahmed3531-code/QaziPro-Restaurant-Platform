@@ -30,7 +30,7 @@ export async function PATCH(request: Request) {
   try { const body = await request.json() as { id?: unknown }; id = typeof body.id === "string" ? body.id : "" } catch { /* handled below */ }
   if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: "Choose a valid message campaign." }, { status: 400 })
   const db = await createClient()
-  const { data: campaign, error: campaignError } = await db.from("customer_broadcasts").select("id,subject,message,deal_id,status").eq("id", id).eq("business_id", context.businessId).maybeSingle()
+  const { data: campaign, error: campaignError } = await db.from("customer_broadcasts").select("id,subject,message,deal_id,status").eq("id", id).eq("business_id", context.businessId).eq("channel","EMAIL").maybeSingle()
   if (campaignError || !campaign) return NextResponse.json({ error: "Message campaign was not found." }, { status: 404 })
   let customerOrigin: string
   try { customerOrigin = await resolveCustomerOrigin(db, context.businessId) }
