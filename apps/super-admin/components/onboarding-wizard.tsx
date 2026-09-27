@@ -1,11 +1,11 @@
 "use client"
 
-import { useActionState, useCallback, useMemo, useRef, useState } from "react"
+import { useActionState, useCallback, useRef, useState, useSyncExternalStore } from "react"
 import type { FormEvent } from "react"
 import Link from "next/link"
 import { provisionRestaurantAction, type ActionState } from "@/app/actions"
 import { BranchLocationFields } from "@/components/branch-location-fields"
-import { randomUUID } from "@/lib/browser-id"
+import { unstable_rethrow } from "next/navigation"
 import { appIdentifierPattern, onboardingFieldMessage, supportedServices } from "@/lib/onboarding"
 import { normalizeRestaurantSlug, stagingHostnameForSlug } from "@italian-pizza/shared/domains"
 import { Check, ChevronLeft, ChevronRight, Plus, Rocket, Trash2 } from "lucide-react"
@@ -24,16 +24,26 @@ export type OnboardingPackage = {
 const initial: ActionState = {}
 const steps = ["Business", "Services", "Commercials", "Brand & domains", "Branches & apps", "Review"]
 const defaultServices = ["admin.restaurant", "pos.web", "pos.desktop", "website.ordering", "ordering.delivery", "ordering.pickup"]
+const subscribeToHydration = () => () => {}
 type WizardControl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
 type ValidationError = { field: string; message: string; step: number }
 type ReviewData = { business: string; owner: string; services: string; package: string; commercials: string; domains: string; branches: string; apps: string }
 
-export function OnboardingWizard({ packages, packageError, platformDomain }: { packages: OnboardingPackage[]; packageError?: string | null; platformDomain: string }) {
+export function OnboardingWizard({ packages, packageError, platformDomain, initialRequestKey }: { packages: OnboardingPackage[]; packageError?: string | null; platformDomain: string; initialRequestKey: string }) {
+  const interactive = useSyncExternalStore(subscribeToHydration, () => true, () => false)
   const submissionLock = useRef(false)
+  const submissionFailed = useRef(false)
   const [submissionStarted, setSubmissionStarted] = useState(false)
   const guardedAction = useCallback(async (previous: ActionState, form: FormData) => {
     try {
-      return await provisionRestaurantAction(previous, form)
+      submissionFailed.current = false
+      const result = await provisionRestaurantAction(previous, form)
+      submissionFailed.current = Boolean(result.error)
+      return result
+    } catch (error) {
+      unstable_rethrow(error)
+      submissionFailed.current = true
+      return { error: "Provisioning could not be confirmed. Your entries and retry key are preserved. Check the restaurant directory before retrying." }
     } finally {
       submissionLock.current = false
       setSubmissionStarted(false)
@@ -55,7 +65,8 @@ export function OnboardingWizard({ packages, packageError, platformDomain }: { p
   const slugManuallyEdited = useRef(false)
   const domainManuallyEdited = useRef(false)
   const formRef = useRef<HTMLFormElement>(null)
-  const requestKey = useMemo(() => randomUUID(), [])
+  // One server-generated value is serialized into both SSR and client render.
+  const [requestKey] = useState(initialRequestKey)
   const submitting = pending || submissionStarted
 
   function controlsForStep(stepIndex: number) {
@@ -176,7 +187,8 @@ export function OnboardingWizard({ packages, packageError, platformDomain }: { p
     if (validationError?.field === control.name && control.checkValidity()) setValidationError(null)
   }
 
-  return <form ref={formRef} action={action} className="wizard" noValidate aria-busy={submitting} onSubmit={handleSubmit} onInput={clearResolvedValidation}>
+  return <form ref={formRef} action={action} className="wizard" noValidate aria-busy={submitting} onSubmit={handleSubmit} onInput={clearResolvedValidation} onReset={event => { if (submissionFailed.current) event.preventDefault() }}>
+    <fieldset className="wizard-ready" disabled={!interactive} aria-label="Restaurant onboarding">
     <input type="hidden" name="requestKey" value={requestKey}/>
     <ol className="wizard-steps">{steps.map((label,index) => <li key={label} className={index===step?"active":index<step?"done":""}><span>{index<step?<Check/>:index+1}</span><small>{label}</small></li>)}</ol>
     <div className="wizard-card">
@@ -210,7 +222,14 @@ export function OnboardingWizard({ packages, packageError, platformDomain }: { p
       <section data-wizard-step="5" hidden={step!==5} className="form-section review-section"><div className="review-icon"><Rocket/></div><div className="section-heading"><p className="eyebrow">FINAL REVIEW</p><h2>Provision safely</h2><p>This creates one canonical restaurant and all supported linked records in one retry-safe audited transaction.</p></div>{review?<dl className="review-summary"><dt>Business</dt><dd>{review.business}</dd><dt>Owner</dt><dd>{review.owner}</dd><dt>Services</dt><dd>{review.services}</dd><dt>Package</dt><dd>{review.package}</dd><dt>Commercials</dt><dd>{review.commercials}</dd><dt>Domains</dt><dd>{review.domains}</dd><dt>Branches</dt><dd>{review.branches}</dd><dt>Apps</dt><dd>{review.apps}</dd></dl>:null}<div className="review-edit-links">{steps.slice(0,5).map((label,index)=><button type="button" key={label} onClick={()=>setStep(index)}>Edit {label}</button>)}</div><ul><li><Check/>Retry-safe request key</li><li><Check/>Restaurant inactive until lifecycle activation</li><li><Check/>Delivery disabled until rules are verified</li><li><Check/>Domains and apps start pending</li></ul></section>
       {validationError&&validationError.field!=="packageId"?<div className="form-error wizard-validation-error" role="alert"><strong>Complete this step before continuing.</strong><span>{validationError.message}</span></div>:null}
       {state.error?<div className="form-error" role="alert"><strong>Provisioning stopped safely.</strong><span>{state.error}</span><small>Request ID: {state.requestId}</small></div>:null}
-      <footer className="wizard-actions"><button className="button button-secondary" type="button" disabled={step===0||submitting} onClick={()=>{setValidationError(null);setStep((value)=>Math.max(0,value-1))}}><ChevronLeft/>Back</button>{step<steps.length-1?<button className="button" type="button" disabled={submitting} onClick={continueToNextStep}>Continue<ChevronRight/></button>:<button className="button" type="submit" disabled={submitting}>{submitting?"Provisioning…":"Provision restaurant"}<Rocket/></button>}</footer>
+      <footer className="wizard-actions">
+        <button className="button button-secondary" type="button" disabled={step===0||submitting} onClick={()=>{setValidationError(null);setStep((value)=>Math.max(0,value-1))}}><ChevronLeft/>Back</button>
+        {/* Separate DOM identities prevent the last Continue click becoming a submit. */}
+        {step<steps.length-1
+          ? <button key="continue" className="button" type="button" disabled={submitting} onClick={event=>{event.preventDefault();continueToNextStep()}}>Continue<ChevronRight/></button>
+          : <button key="provision" className="button" type="submit" disabled={submitting}>{submitting?"Provisioning…":"Provision restaurant"}<Rocket/></button>}
+      </footer>
     </div>
+    </fieldset>
   </form>
 }

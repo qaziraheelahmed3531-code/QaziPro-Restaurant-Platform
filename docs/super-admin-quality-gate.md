@@ -95,4 +95,25 @@ real Google login, external provider delivery and the full 58-item matrix must n
   The audited RPC requires version matching; stale updates return HTTP 409.
 - Current unit gate: 82 tests / 10 files PASS. Typecheck, lint, optimized build and staging
   database lint PASS. Notification and package-edit migrations applied only to verified staging.
-- New continuation changes still require deployment and public acceptance before being marked PASS.
+- Commit `c841289dbae26c56a1e353753071ea499f0000e6` deployed READY in the existing staging
+  project (`dpl_7EgBXsywvzVNZqnqHirEVWbCp56U`).
+- Public HTTPS: 50 quality assertions PASS; notification RLS/browser suite PASS;
+  commercial package edit/audit/stale-version rejection and form-error retention suite PASS.
+- Additional real public browser mutations PASS: task create/status, support ticket creation,
+  mobile app identity with honest configuration status, pending hostname edit, domain deactivation,
+  incident evidence, deployment evidence, audit persistence. Fixtures removed; no external email.
+- Public onboarding rerun exposed a pre-hydration interaction race. Form controls now wait for
+  hydration, and a server-generated retry key replaces separate server/client random generation.
+  Expected provisioning errors now preserve uncontrolled field values and the same idempotency key.
+  The updated regression tests server-rendered disabled state, package withdrawal/retry and values.
+- A subsequent test setup hit a transient staging PostgREST gateway error before application checks.
+  Auth health and database read checks recovered to HTTP 200; that failed run is not counted as PASS.
+- Retry instrumentation found another concrete issue: React reused the last Continue button as a
+  submit button during the same click. It could provision before explicit review confirmation.
+  Distinct keys and default-action cancellation now prevent that unintended submission.
+- Updated local production-build onboarding acceptance: **104 assertions / 16 routes PASS**.
+  Includes zero provisioning requests on review entry, preserved rejected-input values/retry key,
+  exactly one retry request on double submit, canonical persistence, suppressed QA invitations,
+  invitation concurrency guard, branch changes and lifecycle/archive transitions.
+- Final continuation unit tests: 82 PASS; typecheck, lint and optimized build PASS. Public HTTPS
+  rerun of this final hydration/review/retry patch remains pending its Git-integrated deployment.

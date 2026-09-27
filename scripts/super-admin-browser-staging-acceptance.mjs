@@ -107,6 +107,15 @@ try {
   browser = await chromium.launch({ headless: true, ...(chrome ? { executablePath: chrome } : {}) });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.addCookies(sessionCookies(signed.session));
+  const noScriptContext=await browser.newContext({javaScriptEnabled:false});
+  await noScriptContext.addCookies(sessionCookies(signed.session));
+  const noScriptPage=await noScriptContext.newPage();
+  await noScriptPage.goto(`${appUrl}/onboarding/new`);
+  // Streamed SSR panels are hidden until Next's reveal script executes. Inspect
+  // the semantic disabled fieldset in HTML, not a visual no-JavaScript route.
+  await expect(noScriptPage.locator("form.wizard fieldset.wizard-ready")).toHaveAttribute("disabled","",{timeout:30000});
+  check(await noScriptPage.locator('[name="requestKey"]').inputValue()!=="","SSR retry key missing");
+  await noScriptContext.close();
   const page = await context.newPage();
   page.setDefaultNavigationTimeout(90000);
   const liveLocationResponse = await context.request.get(`${appUrl}/api/location?mode=autocomplete&q=Islamabad&countryCode=pk`);
@@ -160,6 +169,7 @@ try {
     if (request.method() === "POST" && new URL(request.url()).pathname === "/onboarding/new") provisioningRequests += 1;
   });
   await page.goto(`${appUrl}/onboarding/new`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("button", { name:"Continue", exact:true })).toBeEnabled();
   await page.locator('[name="name"]').fill(`QA Browser Restaurant ${onboardingSuffix}`);
   await page.locator('[name="slug"]').fill(`qa-browser-${onboardingSuffix}`);
   await page.locator('[name="ownerName"]').fill("QA Browser Owner");
@@ -171,7 +181,7 @@ try {
   await page.getByRole("button", { name: "Continue" }).click();
   check(await page.getByText("Select an active service package before continuing.").isVisible(), "Missing package did not show an inline error");
   check(await page.locator('[name="packageId"]').isVisible(), "Missing package advanced away from the commercials step");
-  await page.locator('[name="packageId"]').selectOption({ index: 1 });
+  await page.locator('[name="packageId"]').selectOption(onboardingPackageId);
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.locator('[name="branchName"]').fill("QA Main Branch");
@@ -187,6 +197,15 @@ try {
   await page.locator('[name="iosName"]').fill("QA iOS App");
   await page.locator('[name="iosId"]').fill(`com.qazipro.iosqa${Date.now()}`);
   await page.getByRole("button", { name: "Continue" }).click();
+  const requestKeyBefore=await page.locator('[name="requestKey"]').inputValue();
+  check(provisioningRequests===0,"Continue must only open review, never start provisioning");
+  checked(await service.from("service_packages").update({is_active:false}).eq("id",onboardingPackageId),"Temporarily withdraw own QA package");
+  await page.getByRole("button",{name:"Provision restaurant",exact:true}).click();
+  await expect(page.getByRole("alert").filter({hasText:"Select an active service package before provisioning."})).toBeVisible({timeout:30000});
+  check(await page.locator('[name="ownerName"]').inputValue()==="QA Browser Owner","Rejected provisioning lost owner values");
+  check(await page.locator('[name="requestKey"]').inputValue()===requestKeyBefore,"Rejected provisioning changed retry key");
+  checked(await service.from("service_packages").update({is_active:true}).eq("id",onboardingPackageId),"Restore own QA package");
+  const priorProvisioningRequests=provisioningRequests;
   await page.locator("form.wizard").evaluate((form) => {
     const wizard = form;
     wizard.requestSubmit();
@@ -194,7 +213,7 @@ try {
   });
   await page.waitForURL(value => /^\/restaurants\/[0-9a-f-]+$/.test(value.pathname), { timeout: 30000 });
   provisionedBusinessId = new URL(page.url()).pathname.split("/").at(-1);
-  check(provisioningRequests === 1, `Provisioning submitted ${provisioningRequests} requests instead of one`);
+  check(provisioningRequests-priorProvisioningRequests === 1, `Provisioning double submit expected one retry request; observed ${provisioningRequests-priorProvisioningRequests} (${priorProvisioningRequests} before, ${provisioningRequests} total)`);
   check(Boolean(provisionedBusinessId), "Provisioning success did not navigate to the created restaurant");
   const persistedBranches = checked(await service.from("branches").select("id,name,address,city,country_code,latitude,longitude,location_provider,provider_place_id,delivery_enabled").eq("business_id", provisionedBusinessId), "Provisioned branch location");
   check(persistedBranches.length === 1, "Provisioning did not create exactly one initial branch");
