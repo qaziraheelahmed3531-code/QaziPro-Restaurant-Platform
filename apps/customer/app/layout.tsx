@@ -36,6 +36,11 @@ const geistMono = Geist_Mono({
 
 export async function generateMetadata(): Promise<Metadata> {
   const storefront = await getStorefrontSnapshot();
+  if (!storefront.business.id && storefront.orderPersistence === "unavailable") return {
+    title: "Restaurant unavailable",
+    description: "This restaurant website is currently unavailable.",
+    robots: { index: false, follow: false },
+  };
   const restaurantName=storefront.branch.restaurantName??storefront.business.name;
   return {
     title: `${restaurantName} | Order Online`,

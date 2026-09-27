@@ -3,6 +3,8 @@ import { requirePermission } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { resolveCustomerOrigin } from "@/lib/customer-origin"
 
+export class TableQrConfigurationError extends Error {}
+
 export async function getTableQr(tableId: string) {
   const context = await requirePermission("settings.manage")
   if (!/^[a-f0-9-]{36}$/i.test(tableId)) return null
@@ -12,6 +14,8 @@ export async function getTableQr(tableId: string) {
     .select("id,name,code,is_active,public_token,branch_id")
     .eq("business_id", context.businessId).eq("id", tableId).maybeSingle()
   if (error || !table) return null
-  const origin = await resolveCustomerOrigin(db, context.businessId)
+  let origin: string
+  try { origin = await resolveCustomerOrigin(db, context.businessId) }
+  catch { throw new TableQrConfigurationError("The restaurant website is not ready for QR ordering. Ask your platform administrator to check its domain and website access.") }
   return { table, restaurantName: context.businessName, url: `${origin}/t/${table.public_token}` }
 }

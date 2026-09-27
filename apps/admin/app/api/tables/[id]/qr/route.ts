@@ -1,9 +1,14 @@
 import { NextRequest } from "next/server"
 import QRCode from "qrcode"
-import { getTableQr } from "@/lib/table-qr"
+import { getTableQr, TableQrConfigurationError } from "@/lib/table-qr"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const qr = await getTableQr((await params).id)
+  let qr
+  try { qr = await getTableQr((await params).id) }
+  catch (error) {
+    if (!(error instanceof TableQrConfigurationError)) throw error
+    return new Response(error.message, { status: 503, headers: { "Cache-Control": "private, no-store" } })
+  }
   if (!qr) return new Response("Table unavailable", { status: 404 })
   const svg = await QRCode.toString(qr.url, { type: "svg", errorCorrectionLevel: "M", margin: 4, width: 512 })
   return new Response(svg, { headers: {

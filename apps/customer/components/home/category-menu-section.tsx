@@ -30,7 +30,7 @@ export function CategoryMenuSection({ section, products, deals }: { section: Men
           <div className="compact-product-list">{sectionProducts.map((product) => <ProductCard key={product.id} product={product} compact />)}</div>
         </>
       ) : (
-        <div className="menu-slot-empty"><span>Photography and menu items can be added here without changing this section layout.</span></div>
+        <div className="menu-slot-empty"><span>No items are available in this category right now. Explore another category.</span></div>
       )}
     </section>
   )

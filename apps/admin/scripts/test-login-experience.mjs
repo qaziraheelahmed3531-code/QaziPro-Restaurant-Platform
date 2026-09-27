@@ -84,6 +84,8 @@ try {
   pass("requires eight digits, prevents duplicate verification and recovers from expired/invalid codes");
   await expect(page.getByRole("button", { name: /Resend in/ })).toBeDisabled();
   await page.clock.fastForward(61000);
+  // Flush a tick scheduled by React after the wall-clock jump, without sleeping.
+  await page.clock.runFor(1100);
   await page.getByRole("button", { name: "Resend code", exact: true }).click();
   await page.evaluate(() => window.finishAuth({ error: null }));
   await expect(page.getByRole("status")).toContainText("new code");
@@ -94,6 +96,7 @@ try {
   await expect(page.getByRole("button", { name: /Try again in/ })).toBeDisabled();
   pass("changing email preserves cooldown and cannot immediately send another message");
   await page.clock.fastForward(61000);
+  await page.clock.runFor(1100);
   await page.getByRole("button", { name: "Send sign-in code", exact: true }).click();
   await page.evaluate(() => window.finishAuth({ error: null }));
   await page.locator(".otp-inputs input").first().fill("12345678");

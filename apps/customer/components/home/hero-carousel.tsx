@@ -79,7 +79,7 @@ export function HeroCarousel({ slides, settings, businessName }: { slides: HeroS
               if (swipe) advance(swipe < 0 ? 1 : -1)
             }}
           >
-            <picture>{slide.mobileImage && <source media="(max-width: 767px)" srcSet={slide.mobileImage} />}<Image src={slide.image} alt={slide.alt} fill unoptimized draggable={false} priority={index === 0} loading="eager" sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1360px) calc(100vw - 48px), 1312px" onError={() => { transitioning.current = false; setFailed(current => new Set(current).add(slide.id)) }} /></picture>
+            <picture>{slide.mobileImage && <source media="(max-width: 767px)" srcSet={slide.mobileImage} />}<Image src={slide.image} alt={slide.alt} fill unoptimized draggable={false} priority={index === 0} fetchPriority={index === 0 ? "high" : "auto"} loading="eager" sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1360px) calc(100vw - 48px), 1312px" onError={() => { transitioning.current = false; setFailed(current => new Set(current).add(slide.id)) }} /></picture>
           </motion.div>
         </AnimatePresence>
         {slideCount > 1 && settings.autoplay && !reduceMotion && <button className="hero-playback" type="button" aria-label={paused ? "Play promotions" : "Pause promotions"} onClick={() => setPaused(value => !value)}>{paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}</button>}

@@ -55,7 +55,7 @@ export function CategoryTiles({ sections }: { sections: MenuSection[] }) {
           animate={active === section.id ? { y: -3 } : { y: 0 }}
           transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 360, damping: 28 }}
         >
-          <span className="category-tile__image"><Image src={section.categoryImage} fill unoptimized priority sizes="(max-width: 767px) 132px, 160px" alt="" /></span>
+          <span className="category-tile__image"><Image src={section.categoryImage} fill unoptimized loading="lazy" sizes="(max-width: 767px) 132px, 160px" alt="" /></span>
           <strong>{section.title}</strong>
           {active === section.id && <motion.span className="category-tile__indicator" layoutId="active-image-category" aria-hidden="true" />}
         </motion.button>
