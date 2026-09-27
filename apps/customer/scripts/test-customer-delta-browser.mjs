@@ -32,6 +32,20 @@ try {
     await location.getByRole("button", { name: "Start ordering", exact: true }).click()
     await location.waitFor({ state: "hidden" })
     await page.getByRole("heading", { level: 1 }).waitFor()
+    assert.equal(await page.locator(".restaurant-intro").count(), 0, "Removed intro must not return")
+    assert.equal(await page.getByRole("link", { name: "Explore the menu" }).count(), 0)
+    const spacing = await page.evaluate(() => {
+      const hero = document.querySelector(".hero-carousel")
+      const menu = document.querySelector("#menu")
+      return hero && menu ? {
+        topMargin: getComputedStyle(hero).marginTop,
+        menuGap: menu.getBoundingClientRect().top - hero.getBoundingClientRect().bottom,
+        imageFit: getComputedStyle(hero.querySelector("img")).objectFit,
+      } : null
+    })
+    assert.deepEqual(spacing, { topMargin: "0px", menuGap: 0, imageFit: "cover" })
+    const productIds = await page.locator(".product-card[data-product-id]").evaluateAll(nodes => nodes.map(node => node.getAttribute("data-product-id")))
+    assert.equal(productIds.length, new Set(productIds).size, "One responsive product tree, not duplicated desktop/mobile cards")
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `No horizontal overflow at ${width}`)
     pass(`${width}px menu and restaurant identity, no overflow`)
     await page.screenshot({ path: new URL(`menu-${width}.png`, output).pathname.replace(/^\/(\w:)/, "$1") })
@@ -66,13 +80,12 @@ try {
       pass(`${width}px mobile cart bar reopens saved cart`)
     }
     await page.emulateMedia({ reducedMotion: "reduce" })
-    assert.equal(await page.locator(".restaurant-intro h1 span").first().evaluate(node => getComputedStyle(node).animationName), "none")
     const hero = page.locator(".hero-carousel")
     if (await hero.count()) {
       await page.waitForFunction(() => document.querySelector(".hero-carousel")?.getAttribute("data-autoplay") === "false")
       assert.equal(await hero.getAttribute("data-transition-ms"), "0")
     }
-    pass(`${width}px reduced-motion typography and carousel`)
+    pass(`${width}px reduced-motion carousel`)
     assert.deepEqual(errors, [], "No browser runtime exceptions")
     await context.close()
   }

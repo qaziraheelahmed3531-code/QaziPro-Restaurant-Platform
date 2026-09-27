@@ -7,10 +7,8 @@ export function StorefrontSkeleton({ overlay = false }: { overlay?: boolean }) {
       <div className="storefront-skeleton__location skeleton-shimmer"><i/><span/></div>
       <div className="storefront-skeleton__actions"><i className="skeleton-shimmer"/><i className="skeleton-shimmer"/><i className="skeleton-shimmer"/></div>
     </header>
-    <nav className="storefront-skeleton__tabs" aria-hidden="true">{Array.from({ length: 7 }, (_, index) => <i className="skeleton-shimmer" key={index}/>)}</nav>
     <main className="storefront-skeleton__main">
       <div className="storefront-skeleton__hero skeleton-shimmer" />
-      <div className="storefront-skeleton__intro" aria-hidden="true"><i className="skeleton-shimmer"/><span className="skeleton-shimmer"/></div>
       <section className="storefront-skeleton__section">
         <div className="storefront-skeleton__heading"><i className="skeleton-shimmer"/><span className="skeleton-shimmer"/></div>
         <div className="storefront-skeleton__categories">{Array.from({ length: 5 }, (_, index) => <i className="skeleton-shimmer" key={index}/>)}</div>

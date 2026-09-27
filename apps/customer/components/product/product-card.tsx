@@ -11,7 +11,7 @@ import { formatRupees } from "@/lib/format"
 import type { Product } from "@/types"
 import { createClient } from "@/lib/supabase/client"
 
-export function ProductCard({ product, compact = false }: { product: Product; compact?: boolean }) {
+export function ProductCard({ product }: { product: Product }) {
   const { addCartLine, openProduct, authUserId } = useApp()
   const router = useRouter()
   const [favouriteState, setFavouriteState] = useState<{ scope: string | null; saved: boolean }>({ scope: null, saved: false })
@@ -58,9 +58,9 @@ export function ProductCard({ product, compact = false }: { product: Product; co
   }
 
   return (
-    <article id={`product-${product.id}${compact ? "-mobile" : ""}`} data-product-id={product.id} className={`product-card${compact ? " product-card--compact" : ""}${!product.available ? " is-unavailable" : ""}`}>
+    <article id={`product-${product.id}`} data-product-id={product.id} className={`product-card product-card--compact${!product.available ? " is-unavailable" : ""}`}>
       <div className="product-card__image">
-        <button className="product-card__detail-trigger" type="button" onClick={() => openProduct(product.id)} aria-label={`View ${product.name} details`}><Image src={product.image} fill unoptimized sizes={compact ? "108px" : "(max-width: 1199px) 30vw, 310px"} alt="" /></button>
+        <button className="product-card__detail-trigger" type="button" onClick={() => openProduct(product.id)} aria-label={`View ${product.name} details`}><Image src={product.image} fill unoptimized sizes="(max-width: 767px) 108px, (max-width: 1199px) 30vw, 310px" alt="" /></button>
         <button type="button" className={`product-card__favourite${favourite ? " is-active" : ""}`} aria-label={favourite ? `Remove ${product.name} from favourites` : `Save ${product.name} to favourites`} aria-pressed={favourite} onClick={(event) => { event.stopPropagation(); void toggleFavourite() }} disabled={favouriteBusy}><Heart fill={favourite ? "currentColor" : "none"} aria-hidden="true" /></button>
       </div>
       <div className="product-card__content">
@@ -68,7 +68,7 @@ export function ProductCard({ product, compact = false }: { product: Product; co
         {!product.available && <span className="product-badge badge-unavailable">Unavailable</span>}
         <h3><button type="button" onClick={() => openProduct(product.id)}>{product.name}</button></h3>
         {favouriteError && <p role="alert" className="product-card__error">{favouriteError}</p>}
-        {!compact && <p>{product.description}</p>}
+        <p>{product.description}</p>
         <div className="product-card__purchase">
           <div className="product-price">
             <strong>{formatRupees(product.price)}</strong>

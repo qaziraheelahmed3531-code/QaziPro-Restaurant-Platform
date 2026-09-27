@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { useApp } from "./app-provider"
 import { registerScrollDriver } from "@/lib/motion/scroll-runtime"
 
-/** Motion owns components; GSAP owns only this scroll layer and copy wrapper. */
+/** Motion owns components; GSAP coordinates this single scroll layer. */
 export function StorefrontMotion() {
   const pathname = usePathname()
   const { cartDrawerOpen, locationOpen, productId } = useApp()
@@ -28,16 +28,12 @@ export function StorefrontMotion() {
       lenis.on("scroll", ScrollTrigger.update)
       gsap.ticker.add(update)
       const unregister = registerScrollDriver(top => lenis.scrollTo(top, { duration: .38 }))
-      const context = gsap.context(() => {
-        const copy = document.querySelector(".restaurant-intro__copy")
-        if (copy) gsap.fromTo(copy, { y: 10, opacity: .94 }, { y: 0, opacity: 1, duration: .32, ease: "power2.out", scrollTrigger: { trigger: copy, start: "top 95%", once: true } })
-      })
       // ResizeObserver includes async catalog/image changes, not a per-frame
       // layout read. GSAP coalesces the safe refresh until scrolling settles.
       const resize = new ResizeObserver(() => ScrollTrigger.refresh(true))
       const main = document.querySelector("main")
       if (main) resize.observe(main)
-      dispose = () => { resize.disconnect(); unregister(); context.revert(); gsap.ticker.remove(update); lenis.off("scroll", ScrollTrigger.update); lenis.destroy() }
+      dispose = () => { resize.disconnect(); unregister(); gsap.ticker.remove(update); lenis.off("scroll", ScrollTrigger.update); lenis.destroy() }
     }
     const change = () => { void configure().catch(() => { dispose?.(); dispose = undefined }) }
     change(); media.addEventListener("change", change)

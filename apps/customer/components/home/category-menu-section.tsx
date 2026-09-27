@@ -25,10 +25,7 @@ export function CategoryMenuSection({ section, products, deals }: { section: Men
       {section.kind === "deals" ? (
         <div className="deal-rail">{deals.map((deal) => <DealCard key={deal.id} deal={deal} />)}</div>
       ) : sectionProducts.length > 0 ? (
-        <>
-          <div className="product-grid desktop-product-grid">{sectionProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>
-          <div className="compact-product-list">{sectionProducts.map((product) => <ProductCard key={product.id} product={product} compact />)}</div>
-        </>
+        <div className="product-grid responsive-product-grid">{sectionProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>
       ) : (
         <div className="menu-slot-empty"><span>No items are available in this category right now. Explore another category.</span></div>
       )}

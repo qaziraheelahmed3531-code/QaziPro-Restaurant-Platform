@@ -24,6 +24,29 @@ try {
       await location.getByRole("button", { name: "Start ordering", exact: true }).click()
       await expect(location).not.toBeVisible()
     }
+    assert.equal(await page.locator(".restaurant-intro").count(), 0)
+    assert.equal(await page.getByRole("link", { name: "Explore the menu" }).count(), 0)
+    const layout = await page.evaluate(() => {
+      const hero = document.querySelector(".hero-carousel")
+      const header = document.querySelector(".site-header")
+      const menu = document.querySelector("#menu")
+      const ids = [...document.querySelectorAll(".product-card[data-product-id]")].map(node => node.dataset.productId)
+      return {
+        duplicateProducts: ids.length !== new Set(ids).size,
+        hero: hero && header && menu ? {
+          headerGap: hero.getBoundingClientRect().top - header.getBoundingClientRect().bottom,
+          menuGap: menu.getBoundingClientRect().top - hero.getBoundingClientRect().bottom,
+          imageFit: getComputedStyle(hero.querySelector("img")).objectFit,
+        } : null,
+      }
+    })
+    assert.equal(layout.duplicateProducts, false)
+    if (layout.hero) {
+      assert.ok(Math.abs(layout.hero.headerGap) <= 1, "Header and hero meet without a gap")
+      assert.equal(layout.hero.menuGap, 0)
+      assert.equal(layout.hero.imageFit, "cover")
+      pass(`${host}: removed intro, gap-free hero, single responsive product tree`)
+    }
     const product = page.getByRole("button", { name: /^View .+ details$/ }).first()
     if (await product.count()) {
       await product.click()

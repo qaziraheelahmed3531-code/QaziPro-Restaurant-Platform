@@ -7,7 +7,6 @@ import { CategoryMenuSection } from "@/components/home/category-menu-section"
 import { CategoryTiles } from "@/components/home/home-controls"
 import { HomeHashScroller } from "@/components/home/home-hash-scroller"
 import { HeroCarousel } from "@/components/home/hero-carousel"
-import { RestaurantIntro } from "@/components/home/restaurant-intro"
 import { MobileCartBar } from "@/components/cart/mobile-cart-bar"
 import { MenuSearch } from "@/components/home/menu-search"
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav"
@@ -27,8 +26,8 @@ export function HomePage() {
       <SiteHeader />
       <StickyCategoryNav sections={storefront.menuSections} />
       <main>
+        <h1 className="sr-only">{storefront.business.name}</h1>
         <HeroCarousel slides={storefront.heroSlides} settings={storefront.heroSettings} businessName={storefront.business.name} />
-        <RestaurantIntro />
 
         <section className="craving-section" id="menu" tabIndex={-1} aria-labelledby="craving-title">
           <div className="section-heading"><div><h2 id="craving-title">What are you craving?</h2></div></div>
