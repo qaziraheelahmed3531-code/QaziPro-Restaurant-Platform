@@ -10,6 +10,7 @@ import { addBranchAction, resendRestaurantOwnerInvitationAction, setBranchStatus
 import { BranchLocationFields } from "@/components/branch-location-fields"
 import { EntitlementToggle } from "@/components/entitlement-toggle"
 import { PlatformShell } from "@/components/platform-shell"
+import { NavigationHint } from "@/components/navigation-hint"
 import { DataNotice, EmptyState, PageHeader, StatusBadge } from "@/components/ui"
 import { requirePlatformStaff, type PlatformContext } from "@/lib/auth"
 import { getRestaurant } from "@/lib/data"
@@ -26,8 +27,8 @@ export default async function RestaurantWorkspace({ params, searchParams }: { pa
   const notice = await searchParams
   const tab = resolveWorkspaceTab(notice)
   return <PlatformShell context={context}>
-    <nav className="workspace-tabs" aria-label="Restaurant sections">{workspaceTabs.map(([key,label]) => <Link key={key} prefetch={false} scroll={false} href={`/restaurants/${id}?tab=${key}`} aria-current={tab===key?"page":undefined}>{label}</Link>)}</nav>
-    <Suspense key={`${id}:${tab}`} fallback={<div className="panel" aria-busy="true" aria-label="Loading restaurant section"><p role="status">Loading {workspaceTabs.find(([key])=>key===tab)?.[1]}…</p><div className="skeleton skeleton-title"/><div className="skeleton skeleton-card"/><div className="skeleton skeleton-row"/></div>}>
+    <nav className="workspace-tabs" aria-label="Restaurant sections">{workspaceTabs.map(([key,label]) => <Link key={key} prefetch={false} scroll={false} href={`/restaurants/${id}?tab=${key}`} aria-current={tab===key?"page":undefined}>{label}<NavigationHint/></Link>)}</nav>
+    <Suspense key={id} fallback={<div className="panel" aria-busy="true" aria-label="Loading restaurant section"><p role="status">Loading restaurant…</p><div className="skeleton skeleton-title"/><div className="skeleton skeleton-card"/><div className="skeleton skeleton-row"/></div>}>
       <RestaurantPanel context={context} id={id} tab={tab} notice={notice}/>
     </Suspense>
   </PlatformShell>

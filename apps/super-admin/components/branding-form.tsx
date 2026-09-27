@@ -1,7 +1,7 @@
 "use client"
 import { useActionState, useEffect, useRef, useState } from "react"
 import Image from "next/image"
-import { saveBrandingAction, type BrandingState } from "@/app/settings/actions"
+import { saveBrandingAction, type BrandingState } from "@/app/(platform)/settings/actions"
 import type { PlatformBranding } from "@/lib/branding-contract"
 import { SubmitButton } from "./submit-button"
 

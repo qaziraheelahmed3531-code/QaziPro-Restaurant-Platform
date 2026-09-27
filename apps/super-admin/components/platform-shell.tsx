@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
+import { NavigationHint } from "./navigation-hint"
 import { PlatformLogo } from "./platform-branding"
 import { CommandPalette } from "./command-palette"
 import { SubmitButton } from "./submit-button"
@@ -29,8 +30,17 @@ const icons: Record<PlatformModule, typeof Store> = {
 
 const hrefFor = (key: PlatformModule) => key === "overview" ? "/" : `/${key}`
 const subscribe = () => () => {}
+const ShellMounted = createContext(false)
 
 export function PlatformShell({ context, children }: { context: PlatformContext; children: ReactNode }) {
+  const mounted = useContext(ShellMounted)
+  // Existing page guards keep passing their freshly authorized context. The
+  // shared layout owns the single shell, so navigation cannot remount it.
+  if (mounted) return children
+  return <ShellMounted.Provider value={true}><PersistentShell context={context}>{children}</PersistentShell></ShellMounted.Provider>
+}
+
+function PersistentShell({ context, children }: { context: PlatformContext; children: ReactNode }) {
   const pathname = usePathname()
   const interactive = useSyncExternalStore(subscribe, () => true, () => false)
   const sidebar = useRef<HTMLElement>(null)
@@ -79,7 +89,7 @@ export function PlatformShell({ context, children }: { context: PlatformContext;
     <aside ref={sidebar} role={mobileOpen ? "dialog" : undefined} aria-modal={mobileOpen || undefined} aria-label="Navigation" className={`platform-sidebar ${mobileOpen ? "is-open" : ""}`}>
       <div className="platform-brand"><PlatformLogo compact={collapsed}/><span><strong>QaziPro</strong><small>CONTROL CENTER</small></span><button className="icon-button mobile-only" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X/></button></div>
       <nav className="platform-nav" aria-label="Platform navigation">
-        {allowed.map(([key, item]) => { const Icon=icons[key], href=hrefFor(key), active=href === "/" ? pathname === "/" : pathname.startsWith(href); return <Link key={key} href={href} prefetch={false} aria-current={active ? "page" : undefined} title={collapsed ? item.title : undefined} onClick={() => setMobileOpen(false)}><Icon/><span>{item.title}</span></Link> })}
+        {allowed.map(([key, item]) => { const Icon=icons[key], href=hrefFor(key), active=href === "/" ? pathname === "/" : pathname.startsWith(href); return <Link key={key} href={href} prefetch={false} aria-current={active ? "page" : undefined} title={collapsed ? item.title : undefined} onClick={() => setMobileOpen(false)}><Icon/><span>{item.title}</span><NavigationHint/></Link> })}
       </nav>
       <div className="sidebar-foot"><ShieldCheck/><span><strong>Internal only</strong><small>Actions are audited</small></span></div>
       <button className="collapse-button desktop-only" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}>{collapsed ? <ChevronRight/> : <ChevronLeft/>}</button>

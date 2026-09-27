@@ -457,3 +457,8 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
   .entity-actions { align-items:stretch; flex-direction:column; }
   .entity-actions form,.entity-actions form .button { width:100%; }
 }
+/* Navigation feedback occupies fixed space; current content stays readable. */
+.navigation-hint { display:inline-block; flex:none; width:.45rem; height:.45rem; margin-inline-start:.4rem; border-radius:50%; background:currentColor; opacity:0; }
+.navigation-hint[data-pending="true"] { animation:navigation-pending 1s ease-in-out .12s infinite; }
+@keyframes navigation-pending { 0%,100% {opacity:.25} 50% {opacity:.75} }
+@media(prefers-reduced-motion:reduce) { .navigation-hint[data-pending="true"] { animation:none; opacity:.65; } }

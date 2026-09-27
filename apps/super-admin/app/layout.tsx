@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
-import type { ReactNode } from "react"
+import { Suspense, type ReactNode } from "react"
+import { PageSkeleton } from "@/components/page-skeleton"
 import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { getPlatformBranding } from "@/lib/branding"
@@ -26,5 +27,5 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const branding = await getPlatformBranding()
-  return <html lang="en" className={`${sans.variable} ${mono.variable}`}><body suppressHydrationWarning><PlatformBrandingProvider value={branding}>{children}</PlatformBrandingProvider></body></html>
+  return <html lang="en" className={`${sans.variable} ${mono.variable}`}><body suppressHydrationWarning><PlatformBrandingProvider value={branding}><Suspense fallback={<PageSkeleton/>}>{children}</Suspense></PlatformBrandingProvider></body></html>
 }
