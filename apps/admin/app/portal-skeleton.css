@@ -1,0 +1,68 @@
+/* Layout geometry is shared with the loaded screens. One compositor sweep per
+   surface, not a timer/background-position animation for every individual line. */
+.portal-skeleton { width: 100%; min-width: 0; --skeleton-base: color-mix(in srgb, var(--line, #e8e1dc) 64%, var(--paper, #fff)); }
+.portal-skeleton__shape { display: block; height: 13px; width: 100%; max-width: 100%; flex-shrink: 0; border-radius: 5px; background: var(--skeleton-base); }
+.portal-skeleton__shape--caption { height: 10px; }
+.portal-skeleton__shape--title { width: min(380px, 90%); height: 34px; border-radius: 7px; }
+.portal-skeleton__shape--description { width: min(460px, 100%); height: 14px; }
+.portal-skeleton__shape--subtitle { height: 18px; }
+.portal-skeleton__shape--value { height: 30px; margin-block: 15px 12px; }
+.portal-skeleton__shape--control, .portal-skeleton__shape--field, .portal-skeleton__shape--search { height: 44px; border-radius: 10px; }
+.portal-skeleton__shape--control { width: 126px; }
+.portal-skeleton__shape--search { width: min(350px, 100%); }
+.portal-skeleton__shape--badge { width: 68px; height: 23px; border-radius: 999px; }
+.portal-skeleton__shape--tab { width: 88px; height: 38px; border-radius: 8px; }
+.portal-skeleton__shape--image { width: 74px; height: 64px; border-radius: 12px; }
+.portal-skeleton__heading > div { display: grid; gap: 12px; flex: 1; min-width: 0; width: 100%; }
+.portal-skeleton__heading > .portal-skeleton__shape { align-self: center; }
+.portal-skeleton__tabs { display: flex; gap: 8px; overflow: hidden; margin-bottom: 18px; }
+.portal-skeleton__toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.portal-skeleton__surface { position: relative; overflow: hidden; isolation: isolate; }
+.portal-skeleton__surface::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 25%, rgb(255 255 255 / 62%) 49%, transparent 73%);
+  transform: translate3d(-100%, 0, 0);
+  animation: portal-skeleton-sweep 2.4s cubic-bezier(.4, 0, .2, 1) infinite;
+}
+.portal-skeleton .metric-card > .portal-skeleton__shape { background: var(--skeleton-base); }
+.portal-skeleton__chart { padding: 22px; min-height: 340px; }
+.portal-skeleton__chart > .portal-skeleton__shape--caption { margin-top: 10px; }
+.portal-skeleton__plot { display: grid; gap: 46px; margin-top: 42px; }
+.portal-skeleton__plot > div { display: flex; align-items: center; gap: 12px; }
+.portal-skeleton__plot i { height: 1px; flex: 1; background: var(--line); }
+.portal-skeleton__axis { display: flex; justify-content: space-between; margin: 22px 0 0 40px; }
+.portal-skeleton__breakdown { display: grid; gap: 32px; margin-top: 42px; }
+.portal-skeleton__breakdown > div { display: flex; justify-content: space-between; align-items: center; }
+.portal-skeleton__table { width: 100%; }
+.portal-skeleton__table td { height: 76px; }
+.portal-skeleton__table td .portal-skeleton__shape--caption { margin-top: 10px; }
+.portal-skeleton__table th .portal-skeleton__shape { min-width: 42px; height: 10px; }
+.portal-skeleton__table td > .portal-skeleton__shape--line { min-width: 44px; }
+.portal-skeleton__product-copy { min-width: 0; display: grid; gap: 9px; max-width: 420px; }
+.portal-skeleton__table-create, .portal-skeleton__availability { margin-bottom: 20px; }
+.portal-skeleton__panel-heading { display: grid; gap: 10px; }
+.portal-skeleton__table-form { align-items: end; padding: 20px; }
+.portal-skeleton__table-form > .portal-skeleton__shape--control { width: 100%; }
+.portal-skeleton__table-form > div { min-width: 0; display: grid; gap: 9px; }
+.portal-skeleton__availability-item { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.portal-skeleton__kitchen-column { display: grid; gap: 18px; min-width: 0; align-content: start; }
+.portal-skeleton__ticket { padding: 20px; }
+.portal-skeleton__ticket-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.portal-skeleton__ticket-items { display: grid; gap: 20px; padding-block: 28px; margin-block: 20px; border-block: 1px solid var(--line); }
+.portal-skeleton__generic { display: grid; gap: 20px; padding: 24px; }
+@keyframes portal-skeleton-sweep { 0%, 12% { transform: translate3d(-100%, 0, 0); } 88%, 100% { transform: translate3d(100%, 0, 0); } }
+@media (max-width: 720px) {
+  .portal-skeleton__heading > .portal-skeleton__shape { align-self: flex-start; }
+  .portal-skeleton__toolbar > .portal-skeleton__shape--search { width: 100%; }
+  .portal-skeleton__ticket-heading > .portal-skeleton__shape--control { width: 45%; }
+}
+@media (max-width: 767px) { .portal-skeleton__table td { height: auto; min-height: 44px; } }
+@media (max-width: 760px) {
+  .portal-skeleton .product-admin-card > .portal-skeleton__shape--image { width: 58px; height: 58px; }
+  .portal-skeleton .product-admin-card > .portal-skeleton__shape--control { grid-column: 1 / -1; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .portal-skeleton__surface::after { animation: none; display: none; } }
+@media (forced-colors: active) {
+  .portal-skeleton__shape { background: Canvas; border: 1px solid GrayText; }
+  .portal-skeleton__surface::after { display: none; }
+}

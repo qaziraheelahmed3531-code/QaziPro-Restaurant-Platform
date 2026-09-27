@@ -53,7 +53,16 @@ button, a { touch-action: manipulation; }
   transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 180ms ease;
 }
 .button:not(:disabled):active, .icon-action:not(:disabled):active { scale: .98; }
-.button { transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, scale 120ms var(--ease-out); }
+.button { transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 180ms ease, transform 220ms var(--ease-out), scale 120ms var(--ease-out); }
+.button:disabled:hover { transform: none; box-shadow: none; }
+.table-manager .form-grid { padding: 20px; align-items: end; }
+.table-manager .button { min-height: 44px; }
+.table-manager .data-table td { overflow-wrap: anywhere; }
+.table-confirm { max-width: 340px; }
+.table-confirm p { margin: 0 0 10px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.table-confirm .table-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.table-action-spinner { animation: table-action-spin 800ms linear infinite; }
+@keyframes table-action-spin { to { rotate: 360deg; } }
 .admin-sidebar, .editor, .drawer, .notification-popover__list { overscroll-behavior-y: contain; }
 .editor, .drawer { max-width: 100vw; max-height: 100dvh; }
 .page-heading h1 { text-wrap: balance; }
@@ -93,6 +102,8 @@ button, a { touch-action: manipulation; }
   .icon-action, .waiter-quantity button, .pos-quantity button { min-width: 44px; min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .table-action-spinner, .portal-skeleton span { animation: none; }
+  .button:hover { transform: none; }
   .admin-content, .notification-popover { animation: none; }
   .button:not(:disabled):active, .icon-action:not(:disabled):active { scale: 1; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }

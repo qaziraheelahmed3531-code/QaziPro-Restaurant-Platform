@@ -121,7 +121,11 @@ export function ProductsManager({
   initialOpen?: boolean;
   assetOrigin?: string;
 }) {
-  const products = initialProducts;
+  // Confirmed mutation feedback is shared by tiles and cards. A new server snapshot
+  // supersedes these temporary UI patches, so refreshes never keep stale overrides.
+  const [availability, setAvailability] = useState<{ source: Product[]; values: Record<string, boolean> }>({ source: initialProducts, values: {} });
+  const products = useMemo(() => initialProducts.map(product => availability.source === initialProducts && product.id in availability.values
+    ? { ...product, is_available: availability.values[product.id] } : product), [initialProducts, availability]);
   const router = useRouter();
   const [removing, setRemoving] = useState<Product | null>(null);
   const [draft, setDraft] = useState<Draft | null>(() => initialOpen ? empty(categories[0]?.id) : null);
@@ -309,7 +313,8 @@ export function ProductsManager({
           Add product
         </button>
       </div>
-      <ProductAvailability businessId={businessId} />
+      <ProductAvailability key={businessId} businessId={businessId} products={products} onUpdated={(id, available) =>
+        setAvailability(current => ({ source: initialProducts, values: { ...(current.source === initialProducts ? current.values : {}), [id]: available } }))} />
       {message && !draft && !removing && (
         <p className="inline-notice" role="status">
           {message}

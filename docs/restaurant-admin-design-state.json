@@ -1,0 +1,29 @@
+{
+  "runId": "restaurant-admin-foundations-20260927",
+  "scope": "tokens-and-foundations",
+  "fileKey": "x7gcypEuQkCrHt8FlR4kaq",
+  "url": "https://www.figma.com/design/x7gcypEuQkCrHt8FlR4kaq",
+  "pageId": "0:1",
+  "rootNodeId": "3:2",
+  "collections": {
+    "primitives": "VariableCollectionId:2:2",
+    "admin": "VariableCollectionId:2:3",
+    "layout": "VariableCollectionId:2:4"
+  },
+  "validation": {
+    "variableCount": 33,
+    "textStyleCount": 3,
+    "effectStyleCount": 1,
+    "brokenAliases": 0,
+    "missingWebSyntax": 0,
+    "visualReview": "PASS after correcting text heights",
+    "screenDesigns": "NOT IMPLEMENTED",
+    "applicationAcceptance": "NOT RUN"
+  },
+  "sources": [
+    "apps/admin/app/globals.css",
+    "apps/admin/app/client-portal.css",
+    "apps/admin/app/interaction-polish.css"
+  ],
+  "notes": "Default theme only. Runtime restaurant branding remains authoritative. Read canvas IDs before extending; never recreate this file."
+}

@@ -33,6 +33,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ n
       .eq("is_active", true)
       .order("sort_order"),
   ]);
+  if ([categories, posSections, products, groups].some(result => result.error)) {
+    // Do not turn a failed tenant-scoped read into a misleading empty menu.
+    throw new Error("Restaurant menu could not be loaded.");
+  }
   return (
     <ProductsManager
       businessId={context.businessId}

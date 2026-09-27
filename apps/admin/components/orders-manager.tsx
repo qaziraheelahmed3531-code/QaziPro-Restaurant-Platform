@@ -12,6 +12,7 @@ import {
   type OrderStatus,
 } from "@italian-pizza/shared";
 import { AppLoader } from "@italian-pizza/shared/app-loader";
+import { PortalSkeleton } from "@/components/portal-skeleton";
 import { ReceiptBatch } from "@/components/receipt-batch";
 import { type ReceiptData } from "@/components/receipt-document";
 import { createBrowserPrintAdapter } from "@/lib/printing";
@@ -640,7 +641,7 @@ export function OrdersManager({
         </select>
       </div>
       {loading ? (
-        <div className="state-box state-box--loading" role="status"><AppLoader active delay={0} label="Loading orders"/><span>Loading orders…</span></div>
+        <PortalSkeleton variant="orders" contentOnly />
       ) : error ? (
         <div className="inline-notice is-error">{error}</div>
       ) : filtered.length ? (

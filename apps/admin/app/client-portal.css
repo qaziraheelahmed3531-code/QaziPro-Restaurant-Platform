@@ -58,18 +58,6 @@
 .admin-command-dialog__results small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; font-weight: 500; }
 .admin-command-dialog__results p { padding: 14px; color: var(--muted); font-size: 12px; }
 .admin-command-dialog footer { display: flex; gap: 16px; padding: 9px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
-.portal-skeleton { width: min(1200px, 100%); padding: 4px; }
-.portal-skeleton span { display: block; border-radius: 10px; background: linear-gradient(90deg, #f1eee9 20%, #faf8f5 48%, #f1eee9 80%); background-size: 220% 100%; animation: portal-skeleton-wave 1.4s ease-in-out infinite; }
-.portal-skeleton__heading { display: grid; gap: 10px; margin: 12px 0 24px; }
-.portal-skeleton__heading span:first-child { width: min(240px, 60%); height: 32px; }
-.portal-skeleton__heading span:last-child { width: min(430px, 80%); height: 16px; }
-.portal-skeleton__metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
-.portal-skeleton__metrics span { height: 105px; }
-.portal-skeleton__content { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; margin-bottom: 20px; }
-.portal-skeleton__content span { height: 160px; }
-.portal-skeleton__rows { display: grid; gap: 8px; }
-.portal-skeleton__rows span { height: 44px; }
-@keyframes portal-skeleton-wave { to { background-position-x: -220%; } }
 .help-center { display: grid; gap: 28px; }
 .help-center__hero { padding: clamp(24px, 4vw, 42px); border-radius: 20px; background: var(--brand); color: var(--brand-contrast); }
 .help-center__hero .eyebrow { font-size: 10px; font-weight: 800; letter-spacing: .1em; opacity: .8; }
