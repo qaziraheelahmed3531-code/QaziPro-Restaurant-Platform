@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAdminContext } from "@/lib/auth"
 import { normalizeGeoapifyPlace } from "@italian-pizza/shared/geoapify"
 import { normalizeLocality, validPoint } from "@italian-pizza/shared/location"
+import { discoverNearbyDeliveryAreas } from "@italian-pizza/shared/nearby-delivery-areas"
 
 type ProviderRow = Record<string, unknown>
-const AREA_CATEGORIES = "populated_place.district,populated_place.neighbourhood,populated_place.suburb,populated_place.quarter,populated_place.borough,populated_place.city_block"
 
 async function providerJson(url: URL, signal: AbortSignal) {
   const response = await fetch(url, { cache: "no-store", signal })
@@ -27,25 +27,8 @@ export async function GET(request: NextRequest) {
   try {
     let rows: ProviderRow[] = []
     if (mode === "areas") {
-      const cityUrl = new URL("https://api.geoapify.com/v1/geocode/search")
-      new URLSearchParams({ text: city, type: "city", filter: `countrycode:${countryCode}`, bias: `proximity:${longitude},${latitude}`, format: "json", lang: "en", limit: "5", apiKey: key }).forEach((value, name) => cityUrl.searchParams.set(name, value))
-      const cityResults = (await providerJson(cityUrl, timeout)).results ?? []
-      const normalizedCity = normalizeLocality(city)
-      const cityResult = cityResults.find(item => normalizeLocality(String(item.city ?? item.name ?? "")) === normalizedCity) ?? cityResults[0]
-      const requests: URL[] = []
-      if (typeof cityResult?.place_id === "string") {
-        const url = new URL("https://api.geoapify.com/v2/places")
-        new URLSearchParams({ categories: AREA_CATEGORIES, filter: `place:${cityResult.place_id}`, bias: `proximity:${longitude},${latitude}`, limit: "250", lang: "en", apiKey: key }).forEach((value, name) => url.searchParams.set(name, value))
-        requests.push(url)
-      }
-      const nearbyUrl = new URL("https://api.geoapify.com/v2/places")
-      new URLSearchParams({ categories: AREA_CATEGORIES, filter: `circle:${longitude},${latitude},30000`, bias: `proximity:${longitude},${latitude}`, limit: "250", lang: "en", apiKey: key }).forEach((value, name) => nearbyUrl.searchParams.set(name, value))
-      requests.push(nearbyUrl)
-      const payloads = await Promise.all(requests.map(url => providerJson(url, timeout)))
-      rows = payloads.flatMap(payload => (payload.features ?? []).map(feature => feature.properties ?? {})).filter(item => {
-        const candidateCity = normalizeLocality(String(item.city ?? item.municipality ?? item.district ?? ""))
-        return candidateCity === normalizedCity || normalizeLocality(String(item.formatted ?? "")).includes(normalizedCity)
-      })
+      const candidates = await discoverNearbyDeliveryAreas({ latitude, longitude }, key)
+      return NextResponse.json({ mode, city, candidates, count: candidates.length, radiusMeters: 8000 }, { headers: { "Cache-Control": "private, no-store" } })
     } else {
       const endpoint = mode === "reverse" ? "reverse" : mode === "address" ? "autocomplete" : "search"
       const url = new URL(`https://api.geoapify.com/v1/geocode/${endpoint}`)

@@ -19,6 +19,7 @@ export default async function BranchesPage({ searchParams }: { searchParams: Pro
     <PageHeader eyebrow="MULTI-BRANCH CONTROL" title="Branches" description="Create branches, verify their real location and control availability safely."/>
     {result.error || options.error ? <DataNotice message={result.error ?? options.error ?? "Data unavailable"}/> : null}
     {notice.branch || notice.branchStatus ? <div className="success-banner">Branch change saved and audited.</div> : null}
+    {notice.areas ? <div className={notice.areas === "ready" ? "success-banner" : "attention-banner"} role="status">{notice.areas === "ready" ? "8 km nearby area discovery completed. Existing areas and fees were preserved." : "Branch saved; nearby areas need a retry. Choose a map pin and save again. Check location provider configuration if needed."}</div> : null}
     {notice.error ? <div className="form-error">Branch action rejected safely ({notice.error}).</div> : null}
     <div className="workspace-grid">
       <section className="panel">
