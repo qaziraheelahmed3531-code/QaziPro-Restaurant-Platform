@@ -6,6 +6,8 @@ describe("synthetic invitation delivery safety", () => {
     "qa-onboarding-123@staging.qazipro.invalid",
     "browser-owner@qa.example",
     "staff@example.test",
+    "customer@arbitrary.invalid",
+    " OWNER@nested.staging.invalid ",
   ])("suppresses %s without calling an external provider", async (recipient) => {
     const send = vi.fn(async () => ({}))
     const claim = vi.fn(async () => true)

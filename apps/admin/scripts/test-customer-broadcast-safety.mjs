@@ -35,7 +35,7 @@ function reset() {
     context: { role: "OWNER", permissions: [], businessId: "business-a", businessName: "Restaurant A" },
     domain: { hostname: "RESTAURANT-A.Staging.QaziPro.com." }, resolvedBusiness: "business-a",
     domainError: false, brandingError: false, savedError: false, zeroSaved: false, totalsError: false, campaignSaveError: false,
-    claimed: [{ delivery_id: 7, recipient: "real@inbox.invalid" }], deliveries: [{ status: "SENT", attempts: 1 }],
+    claimed: [{ delivery_id: 7, recipient: "manual@inbox.example.net" }], deliveries: [{ status: "SENT", attempts: 1 }],
   });
   state.db = {
     from(table) {
@@ -81,11 +81,11 @@ for (const mode of ["missing", "query-error", "wrong-business", "inactive-or-dis
 }
 pass("missing domain, query failure, cross-tenant resolution and unavailable storefront all fail closed");
 reset();
-const suppressed = await sendCustomerBroadcast(email, [{ deliveryId: 1, recipient: "qa-onboarding-1@staging.qazipro.invalid" }, { deliveryId: 2, recipient: "test@example.test" }]);
+const suppressed = await sendCustomerBroadcast(email, [{ deliveryId: 1, recipient: "qa-onboarding-1@staging.qazipro.invalid" }, { deliveryId: 2, recipient: "test@example.test" }, { deliveryId: 3, recipient: "person@arbitrary.invalid" }]);
 assert.ok(suppressed.every(row => row.status === "SKIPPED")); assert.equal(state.transports, 0);
 pass("all-synthetic batch creates no SMTP transport and sends no messages");
 reset();
-const mixed = await sendCustomerBroadcast(email, [{ deliveryId: 1, recipient: "qa-onboarding-1@staging.qazipro.invalid" }, { deliveryId: 2, recipient: "real@inbox.invalid" }]);
+const mixed = await sendCustomerBroadcast(email, [{ deliveryId: 1, recipient: "qa-onboarding-1@staging.qazipro.invalid" }, { deliveryId: 2, recipient: "manual@inbox.example.net" }]);
 assert.equal(mixed[1].status, "SENT"); assert.equal(state.mail.length, 1); assert.equal(state.closed, 1);
 assert.ok(state.mail[0].html.includes('href="https://restaurant-a.staging.qazipro.com/"'));
 assert.ok(state.mail[0].html.includes('src="https://restaurant-a.staging.qazipro.com/logo.png"'));
@@ -93,11 +93,11 @@ assert.ok(!state.mail[0].html.includes("wrong-restaurant")); assert.ok(!state.ma
 assert.ok(state.mail[0].html.includes("&lt;script&gt;"));
 pass("mixed batch sends only eligible recipient; HTML is escaped and links/images use the restaurant origin");
 reset();
-await sendCustomerBroadcast({ ...email, customerOrigin: "http://localhost:3000" }, [{ deliveryId: 1, recipient: "real@inbox.invalid" }]);
+await sendCustomerBroadcast({ ...email, customerOrigin: "http://localhost:3000" }, [{ deliveryId: 1, recipient: "manual@inbox.example.net" }]);
 assert.equal(state.transports, 0);
 pass("invalid customer origin fails without opening SMTP");
 reset(); state.smtpFails = true;
-const failed = await sendCustomerBroadcast(email, [{ deliveryId: 1, recipient: "real@inbox.invalid" }]);
+const failed = await sendCustomerBroadcast(email, [{ deliveryId: 1, recipient: "manual@inbox.example.net" }]);
 assert.equal(failed[0].status, "FAILED"); assert.ok(!failed[0].error.includes("DO NOT LEAK")); assert.equal(state.closed, 1);
 pass("provider errors become actionable sanitized failure and transport is closed");
 reset(); state.context = null;

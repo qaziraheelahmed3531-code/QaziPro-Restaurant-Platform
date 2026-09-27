@@ -17,7 +17,10 @@ export function isSyntheticQaEmail(value: string) {
   const email = value.trim().toLowerCase()
   const separator = email.lastIndexOf("@")
   if (separator <= 0 || separator === email.length - 1) return false
-  return configuredSyntheticDomains().has(email.slice(separator + 1))
+  const domain = email.slice(separator + 1)
+  // .invalid is deliberately non-deliverable, including arbitrary subdomains.
+  // Keep this guard independent of optional staging configuration.
+  return domain === "invalid" || domain.endsWith(".invalid") || configuredSyntheticDomains().has(domain)
 }
 
 export type InvitationDeliveryStatus = "NOT_SENT" | "SENDING" | "SENT" | "FAILED" | "SUPPRESSED"
