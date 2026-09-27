@@ -8,6 +8,7 @@ import { LocateFixed, Search, X } from "lucide-react"
 import Image from "next/image"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { autoPopulateBranchAreas } from "@/app/actions/delivery-areas"
 import type { ResourceConfig } from "@/lib/resources"
 
 import { CollectionOrder, sortableCollections } from "@/components/collection-order"
@@ -229,16 +230,25 @@ export function ResourceManager({ config, businessId, role, selectedBranchId, as
       }
       const supabase = createClient()
       let mutationError
+      let savedBranchId = editing?.id ? String(editing.id) : ""
       if (editing) {
         const identity = editing.id ? ["id", editing.id] : editing.business_id ? ["business_id", editing.business_id] : ["branch_id", editing.branch_id]
         const result = await supabase.from(config.table).update(payload).eq(String(identity[0]), identity[1])
         mutationError = result.error
       } else {
-        const result = await supabase.from(config.table).insert(payload)
+        const result = config.key === "branches"
+          ? await supabase.from(config.table).insert(payload).select("id").single()
+          : await supabase.from(config.table).insert(payload)
         mutationError = result.error
+        if (config.key === "branches" && result.data) savedBranchId = String((result.data as { id: string }).id)
       }
       if (mutationError) throw new Error(adminError(mutationError))
-      setEditing(undefined); setDirty(false); setToast({ message: "Saved successfully." })
+      let successMessage = "Saved successfully."
+      if (config.key === "branches" && savedBranchId) {
+        const discovery = await autoPopulateBranchAreas(savedBranchId)
+        successMessage = discovery.message
+      }
+      setEditing(undefined); setDirty(false); setToast({ message: successMessage })
       await load(); void fetch("/api/revalidate-customer", { method: "POST" })
     } catch (saveError) {
       setToast({ message: saveError instanceof Error ? saveError.message : "Save failed.", error: true })

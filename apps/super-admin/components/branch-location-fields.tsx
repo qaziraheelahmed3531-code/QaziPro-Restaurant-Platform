@@ -144,6 +144,7 @@ export function BranchLocationFields({ prefix = "", index, initial, required = t
   }
 
   return <div className="branch-location-fields">
+    <p className="form-help span-2">Saving this branch with a map pin automatically adds provider-mapped subareas within 8 km. Existing areas and delivery charges are preserved.</p>
     <label className="span-2">Find the branch address<div className="location-search-row"><input value={query} onChange={(event) => { setQuery(event.target.value); setSuggestions([]) }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (query.trim().length >= 2) void lookup("autocomplete") } }} placeholder="Search a business, street or address" aria-controls={`${id}-suggestions`} aria-expanded={suggestions.length > 0} role="combobox"/><button type="button" className="button button-secondary" disabled={busy || query.trim().length < 2} onClick={() => void lookup("autocomplete")}><Search/>Search</button></div></label>
     {suggestions.length ? <div className="location-suggestions span-2" id={`${id}-suggestions`} role="listbox">{suggestions.map((candidate) => <button type="button" role="option" aria-selected="false" key={candidate.id} onClick={() => choose(candidate)}><MapPin/><span><strong>{candidate.name}</strong><small>{candidate.formattedAddress}</small></span></button>)}</div> : null}
     {error ? <p className="inline-field-error span-2" role="alert">{error}</p> : null}

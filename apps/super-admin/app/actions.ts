@@ -12,6 +12,7 @@ import { slugifyRestaurant, type RestaurantLifecycle } from "@/lib/platform"
 import { appIdentifierPattern, supportedServiceKeys, validateProvisioningRequiredFields } from "@/lib/onboarding"
 import { getPlatformAuthCallbackUrl } from "@/lib/public-origin"
 import { mutationErrorMessage } from "@/lib/mutation-result"
+import { populatePlatformBranchAreas } from "@/lib/branch-delivery-areas"
 
 export type ActionState = { error?: string; requestId?: string; success?: boolean; enabled?: boolean; updatedAt?: string }
 
@@ -196,7 +197,8 @@ export async function provisionRestaurantAction(_: ActionState, form: FormData):
   }
   revalidatePath("/")
   revalidatePath("/restaurants")
-  redirect(`/restaurants/${data}?created=1`)
+  const areasReady = await populatePlatformBranchAreas(String(data))
+  redirect(`/restaurants/${data}?created=1&areas=${areasReady ? "ready" : "pending"}`)
 }
 
 export async function createServicePackageAction(form: FormData) {
@@ -259,7 +261,7 @@ export async function addBranchAction(form: FormData) {
   const businessId = text(form, "businessId")
   const returnTo = safeReturnPath(form, `/restaurants/${businessId}`)
   const supabase = await createClient()
-  const { error } = await supabase.rpc("platform_add_branch", {
+  const { data: branchId, error } = await supabase.rpc("platform_add_branch", {
     p_business_id: businessId,
     p_payload: {
       name: text(form, "name"), code: text(form, "code"), phone: text(form, "phone"), address: text(form, "address"), city: text(form, "city"), region: text(form, "region"),
@@ -271,7 +273,8 @@ export async function addBranchAction(form: FormData) {
   revalidatePath(`/restaurants/${businessId}`)
   revalidatePath("/branches")
   if (error) return mutationFailure(form, `${returnTo}?error=branch`)
-  redirect(`${returnTo}?branch=created`)
+  const areasReady = await populatePlatformBranchAreas(businessId, String(branchId))
+  redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}branch=created&areas=${areasReady ? "ready" : "pending"}`)
 }
 
 export async function updateRestaurantAction(form: FormData) {
@@ -416,7 +419,8 @@ export async function updateBranchAction(form: FormData) {
   await admin.from("platform_audit_logs").insert({ actor_user_id: context.userId, action: "BRANCH_UPDATED", target_type: "branches", target_id: branchId, business_id: businessId, reason: text(form, "reason") || "Branch configuration update", before_data: before.data, after_data: { ...values, deliveryRequested: form.get("deliveryEnabled") === "on", deliveryEnabled } })
   revalidatePath(`/restaurants/${businessId}`)
   revalidatePath("/branches")
-  redirect(`/restaurants/${businessId}?branch=updated${form.get("deliveryEnabled") === "on" && !deliveryEnabled ? "&delivery=pending" : ""}`)
+  const areasReady = await populatePlatformBranchAreas(businessId, branchId)
+  redirect(`/restaurants/${businessId}?branch=updated&areas=${areasReady ? "ready" : "pending"}${form.get("deliveryEnabled") === "on" && !deliveryEnabled ? "&delivery=pending" : ""}`)
 }
 
 export async function transitionRestaurantAction(form: FormData) {

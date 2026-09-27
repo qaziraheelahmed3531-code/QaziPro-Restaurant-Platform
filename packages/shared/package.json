@@ -11,6 +11,7 @@
     "./google-maps": "./src/google-maps.ts",
     "./location-picker-map": "./src/location-picker-map.tsx",
     "./geoapify": "./src/geoapify.ts",
+    "./nearby-delivery-areas": "./src/nearby-delivery-areas.ts",
     "./social": "./src/social.ts",
     "./social-icons": "./src/social-icons.ts",
     "./motion": "./src/motion.ts",

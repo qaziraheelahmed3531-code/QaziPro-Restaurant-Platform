@@ -62,6 +62,7 @@ async function RestaurantPanel({context,id,tab,notice}:{context:PlatformContext;
     {notice.branch ? <div className="success-banner">Branch saved. Delivery remains disabled until location and delivery rules are verified.</div> : null}
     {notice.invite ? <div className="success-banner">{notice.invite === "suppressed" ? "Synthetic QA invitation safely recorded without external email delivery." : "Owner invitation state updated and audited."}</div> : null}
     {notice.delivery === "pending" ? <div className="attention-banner">Delivery was requested but remains pending because the branch has no verified delivery rule or complete coordinates.</div> : null}
+    {notice.areas ? <div className="attention-banner" role="status">{notice.areas === "ready" ? "Nearby area discovery completed within 8 km for the saved branch locations. Provider-mapped areas were added; existing areas and fees were preserved." : "Branch saved. Nearby area setup needs attention: choose a map pin and save again to retry. Check Geoapify configuration if the issue persists."}</div> : null}
     {notice.error ? <div className="form-error">The operation was rejected safely ({notice.error}).</div> : null}
 
 

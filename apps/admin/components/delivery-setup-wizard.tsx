@@ -7,6 +7,7 @@ import { LocationMap } from "@/components/location-map"
 import { validPoint } from "@italian-pizza/shared/location"
 import { AppLoader } from "@italian-pizza/shared/app-loader"
 import { createClient } from "@/lib/supabase/client"
+import { autoPopulateBranchAreas } from "@/app/actions/delivery-areas"
 
 type Point = { latitude: number; longitude: number }
 type Candidate = { provider?: "google" | "geoapify"; name: string; slug: string; providerPlaceId: string | null; formattedAddress: string; city: string; countryCode: string; countryName?: string; postalCode?: string; region: string | null; latitude?: number | null; longitude?: number | null; placeType?: string; type?: string; aliases?: string[]; isBusiness?: boolean }
@@ -140,7 +141,10 @@ export function DeliverySetupWizard({ businessId, branchId, locationOnly=false }
       const branchUpdate = await supabase.rpc("save_restaurant_origin", { p_branch_id:branchId,p_location:{ restaurant_name:restaurantName.trim(), city: city.trim(), country_code: countryCode.trim().toLowerCase(), country_name: countryName.trim() || null, region: region.trim() || null, postal_code: postalCode.trim() || null, provider: "geoapify", provider_place_id: placeId.trim() || null, location_name: selectedPlaceName, address: address.trim(), formatted_address: address.trim(), latitude: point.latitude, longitude: point.longitude }})
       if (branchUpdate.error) throw branchUpdate.error
       if(branchUpdate.data?.id!==branchId)throw new Error("The restaurant location was not saved. Please retry.")
-      setSavedCity(city.trim()); setMessage("Restaurant location saved. Checking provider-backed areas for this city…"); await load(); window.dispatchEvent(new CustomEvent("restaurant-location-updated",{detail:{branchId}})); void fetch("/api/revalidate-customer", { method: "POST" }); await lookup("areas")
+      setSavedCity(city.trim()); setMessage("Restaurant location saved. Adding nearby areas within 8 km…")
+      const discovery = await autoPopulateBranchAreas(branchId)
+      await load(); setMessage(discovery.message); setCandidates([]); setSelected([])
+      window.dispatchEvent(new CustomEvent("restaurant-location-updated",{detail:{branchId}})); void fetch("/api/revalidate-customer", { method: "POST" })
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Restaurant location could not be saved.") }
     finally { setBusy(false) }
   }
@@ -158,10 +162,20 @@ export function DeliverySetupWizard({ businessId, branchId, locationOnly=false }
   }
 
   const existingNames = useMemo(() => new Set(areas.map(area => area.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,""))), [areas])
+  const refreshNearby = async () => {
+    if (!branchId || busy) return
+    setBusy(true); setError("")
+    try {
+      const result = await autoPopulateBranchAreas(branchId)
+      await load(); setMessage(result.message)
+      void fetch("/api/revalidate-customer", { method: "POST" })
+    } catch { setError("Nearby areas could not be refreshed. Please retry.") }
+    finally { setBusy(false) }
+  }
   if (!branchId) return <section className="panel delivery-setup-wizard"><h2>Restaurant location</h2><p>Create an active branch before configuring delivery.</p></section>
   if (loading) return <section className="panel delivery-setup-wizard"><p className="state-box--loading" role="status"><AppLoader active delay={0} label="Loading delivery setup" /><span>Loading delivery setup…</span></p></section>
   return <section className="panel delivery-setup-wizard" aria-labelledby="delivery-setup-title">
-    <div className="panel-header"><div><h2 id="delivery-setup-title">Restaurant Location</h2><p>Search or choose the restaurant pin.</p></div></div>
+    <div className="panel-header"><div><h2 id="delivery-setup-title">Restaurant Location</h2><p>Save a restaurant pin to automatically add mapped subareas within 8 km. Existing areas and delivery charges stay unchanged.</p></div></div>
     {error && <p className="inline-notice is-error" role="alert">{error}</p>}{message && <p className="inline-notice" role="status">{message}</p>}
     {!point && <p className="inline-notice is-warning" role="status">Restaurant coordinates are not saved yet. Customer delivery checkout will remain unavailable until you choose and save an origin.</p>}
     <div className="delivery-setup-grid">
@@ -178,7 +192,7 @@ export function DeliverySetupWizard({ businessId, branchId, locationOnly=false }
       </div>
       <LocationMap label="Restaurant location" point={point} center={point} markerImageUrl={restaurantLogo} onChange={value => void reversePoint(value)} />
     </div>
-    {!locationOnly&&<div className="delivery-discovery"><div><span className="eyebrow">CURRENT SERVICE AREA</span><h3>{city || "Choose a city"}</h3><p>{areas.length} active area{areas.length===1?"":"s"}. Provider suggestions are reviewed before import; manual Add Area remains available.</p></div><div className="setup-discovery-actions"><button type="button" className="button button--outline" onClick={() => void lookup("areas")} disabled={busy || !city.trim() || !point}><Sparkles size={16} /> Discover / refresh areas</button></div></div>}
+    <div className="delivery-discovery"><div><span className="eyebrow">NEARBY DELIVERY AREAS · 8 KM</span><h3>{city || "Choose a city"}</h3><p>{areas.length} active area{areas.length===1?"":"s"}. Mapped nearby areas are added automatically; manual Add Area remains available.</p></div><div className="setup-discovery-actions"><button type="button" className="button button--outline" onClick={() => void refreshNearby()} disabled={busy || !point}><Sparkles size={16} />{busy ? "Updating nearby areas…" : "Refresh nearby areas (8 km)"}</button>{!locationOnly && <button type="button" className="button button--outline" onClick={() => void lookup("areas")} disabled={busy || !point}>Preview nearby areas</button>}</div></div>
     {candidates.length > 0 && <div className="candidate-list"><div className="candidate-list__header"><strong>{candidates.length} areas found for {city}</strong><div><button type="button" onClick={() => setSelected(candidates.filter(item=>!existingNames.has(item.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,""))).map(item => item.providerPlaceId || `${item.slug}:${item.latitude}`))}>Select all new</button><button type="button" onClick={() => setSelected([])}>Clear</button></div></div>{candidates.map(item => { const id = item.providerPlaceId || `${item.slug}:${item.latitude}`; const duplicate = existingNames.has(item.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,"")); return <label key={id} className={duplicate ? "is-duplicate" : undefined}><input type="checkbox" disabled={duplicate} checked={selected.includes(id)} onChange={event => setSelected(current => event.target.checked ? [...current, id] : current.filter(value => value !== id))} /><span><strong>{item.name}</strong><small>{item.formattedAddress}{duplicate ? " · already configured" : ""}</small></span></label> })}<div className="setup-actions"><button type="button" className="button button--outline" onClick={()=>void importAreas(candidates.filter(item=>!existingNames.has(item.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,""))).map(item=>item.providerPlaceId||`${item.slug}:${item.latitude}`))}>Import all</button><button data-import-areas type="button" className="button" onClick={() => void importAreas()} disabled={busy || selected.length === 0}>Import selected</button></div></div>}
   </section>
 }
