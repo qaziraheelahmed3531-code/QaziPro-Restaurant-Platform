@@ -10,8 +10,8 @@ type TableRow = { id: string; code: string; name: string; seats: number; is_acti
 type Notice = { kind: "success" | "error"; text: string } | null
 const columns = "id,code,name,seats,is_active"
 
-export function TableManager({ businessId, branchId, initialTables, loadError = false }: {
-  businessId: string; branchId: string; initialTables: TableRow[]; loadError?: boolean
+export function TableManager({ businessId, branchId, initialTables, loadError = false, initialWaiterCallEnabled, waiterSettingAvailable }: {
+  businessId: string; branchId: string; initialTables: TableRow[]; loadError?: boolean; initialWaiterCallEnabled: boolean; waiterSettingAvailable: boolean
 }) {
   const [tables, setTables] = useState(initialTables)
   const [name, setName] = useState("")
@@ -22,6 +22,7 @@ export function TableManager({ businessId, branchId, initialTables, loadError = 
   const [unavailable, setUnavailable] = useState(loadError)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [editing, setEditing] = useState<TableRow | null>(null)
+  const [waiterCallEnabled, setWaiterCallEnabled] = useState(initialWaiterCallEnabled)
   // State alone cannot stop two events fired before React commits a render.
   const pending = useRef(false)
   const nameInput = useRef<HTMLInputElement>(null)
@@ -107,6 +108,18 @@ export function TableManager({ businessId, branchId, initialTables, loadError = 
     } finally { finish() }
   }
 
+  async function toggleWaiterCalls() {
+    if (!waiterSettingAvailable || !start("waiter-calls")) return
+    try {
+      const { data, error } = await createClient().rpc("set_branch_waiter_call_enabled", { p_branch_id: branchId, p_enabled: !waiterCallEnabled })
+      if (error || typeof data !== "boolean") throw error ?? new Error("Setting unavailable")
+      setWaiterCallEnabled(data)
+      setNotice({ kind: "success", text: data ? "Guests can now call a waiter from this branch's table QR menu." : "Call a waiter is now hidden from table QR menus." })
+    } catch {
+      setNotice({ kind: "error", text: "Waiter-call setting couldn't be changed. Please check your connection and try again." })
+    } finally { finish() }
+  }
+
   return <div className="page-stack table-manager">
     <div className="page-heading">
       <div><span className="eyebrow">DINE-IN CONTROL</span><h1>Restaurant tables</h1>
@@ -119,6 +132,9 @@ export function TableManager({ businessId, branchId, initialTables, loadError = 
       role={notice.kind === "error" ? "alert" : "status"}>{notice.text}</p>}
     {unavailable && <div className="state-box" role="alert"><h2>Tables couldn&apos;t be loaded</h2>
       <p>Refresh to try again. Table changes are unavailable until the branch list loads.</p></div>}
+    <section className="panel" aria-labelledby="waiter-call-title"><div className="panel-header"><div><h2 id="waiter-call-title">Call a waiter from table QR</h2><p>When enabled, guests at this branch can send a request to the Waiter portal. Requests are scoped to their table and branch.</p></div>
+      <button type="button" className={`button ${waiterCallEnabled ? "button--outline" : ""}`} disabled={Boolean(busy) || !waiterSettingAvailable} aria-pressed={waiterCallEnabled} onClick={() => void toggleWaiterCalls()}>{busy === "waiter-calls" ? "Saving…" : waiterCallEnabled ? "Turn off" : "Turn on"}</button></div>
+      {!waiterSettingAvailable && <p className="inline-notice is-error" role="alert">This setting is unavailable until the staging database update is applied.</p>}</section>
     <section className="panel" aria-labelledby="table-create-title">
       <div className="panel-header"><div><h2 id="table-create-title">{editing ? `Edit ${editing.name}` : "Add a table"}</h2><p>Choose a unique code, such as T07. Editing a table keeps its printed QR unchanged.</p></div></div>
       <form className="form-grid" onSubmit={create} aria-busy={busy === "create"}>

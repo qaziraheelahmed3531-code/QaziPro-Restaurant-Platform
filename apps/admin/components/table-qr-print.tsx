@@ -1,14 +1,14 @@
 "use client"
 import { useState } from "react"
 
-export function TableQrPrint({ id, name, restaurantName, url, active }: { id: string; name: string; restaurantName: string; url: string; active: boolean }) {
+export function TableQrPrint({ id, name, restaurantName, url, imageSrc, active }: { id: string; name: string; restaurantName: string; url: string; imageSrc: string; active: boolean }) {
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
   return <section className="panel table-qr-print">
     <div className="table-qr-card"><small>{restaurantName}</small><h1>{name}</h1><p>Scan to browse the full menu and order at your table.</p>
       {/* A same-origin authenticated generated SVG, not an external tracking image. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`/api/tables/${id}/qr`} alt={`Menu QR for ${name}`} width={320} height={320} onLoad={() => setLoaded(true)} onError={() => setError(true)} />
+      <img src={imageSrc} alt={`Menu QR for ${name}`} width={320} height={320} onLoad={() => setLoaded(true)} onError={() => setError(true)} />
       <p className="table-qr-url">{url}</p>
       {!active && <p role="status">Inactive table — this QR will not accept orders until reactivated.</p>}
     </div>

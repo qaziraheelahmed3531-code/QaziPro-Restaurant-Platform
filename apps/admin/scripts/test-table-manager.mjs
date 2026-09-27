@@ -23,7 +23,7 @@ const admin = fileURLToPath(new URL("../", import.meta.url))
 const appRequire = createRequire(new URL("../package.json", import.meta.url))
 const mock = `
   export function createClient() {
-    return { from(table) {
+    return { rpc(name, args) { (window.rpcRequests ??= []).push({ name, args }); return Promise.resolve({ data: args.p_enabled, error: null }) }, from(table) {
       const request = { table, operation: "read", filters: [] };
       const run = () => new Promise((resolve, reject) => {
         window.requests.push(request);
@@ -72,7 +72,7 @@ try {
   await page.addStyleTag({ content: css })
   await page.addScriptTag({ content: output.outputFiles[0].text })
   const first = { id: "table-a", name: "Table A", code: "A1", seats: 4, is_active: true }
-  await page.evaluate(props => window.renderTables(props), { businessId: "business-a", branchId: "branch-a", initialTables: [first] })
+  await page.evaluate(props => window.renderTables(props), { businessId: "business-a", branchId: "branch-a", initialTables: [first], initialWaiterCallEnabled: false, waiterSettingAvailable: true })
   await expect(page.getByRole("heading", { name: "Restaurant tables" })).toBeVisible()
   await page.getByLabel("Table name").fill("New table")
   await page.getByLabel("Code", { exact: true }).fill("new")
@@ -102,6 +102,11 @@ try {
   const row = page.getByRole("row").filter({ has: page.getByText("Table A", { exact: true }) })
   await row.getByRole("button", { name: "Deactivate", exact: true }).click()
   await expect(row.getByText("New waiter bills", { exact: false })).toBeVisible()
+  const confirmColors = await row.getByRole("button", { name: "Confirm deactivation" }).evaluate(button => {
+    const style = getComputedStyle(button)
+    return { background: style.backgroundColor, text: style.color }
+  })
+  assert.notEqual(confirmColors.background, confirmColors.text, "primary table action text must contrast with its background")
   await row.getByRole("button", { name: "Cancel", exact: true }).click()
   assert.equal(await page.evaluate(() => window.requests.length), 3)
   pass("deactivation requires confirmation; cancellation makes no request")
@@ -145,7 +150,7 @@ try {
   await expect(page.getByLabel("Table name")).toHaveValue("Terrace table")
   await page.getByRole("button", { name: "Cancel edit" }).click()
   pass("QR action plus scoped compare-and-set edits preserve values on conflict")
-  await page.evaluate(props => window.renderTables(props), { businessId: "business-b", branchId: "branch-b", initialTables: [], loadError: true })
+  await page.evaluate(props => window.renderTables(props), { businessId: "business-b", branchId: "branch-b", initialTables: [], loadError: true, initialWaiterCallEnabled: false, waiterSettingAvailable: true })
   await expect(page.getByRole("alert")).toContainText("couldn't be loaded")
   await expect(page.getByText("Table A", { exact: true })).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Create table", exact: true })).toBeDisabled()
@@ -153,6 +158,13 @@ try {
   await page.getByRole("button", { name: "Refresh tables", exact: true }).click()
   await page.evaluate(() => window.finish({ data: [], error: null }))
   await expect(page.getByRole("heading", { name: "Your floor plan starts here" })).toBeVisible()
+  await page.evaluate(props => window.renderTables(props), { businessId: "business-c", branchId: "branch-c", initialTables: [], initialWaiterCallEnabled: false, waiterSettingAvailable: true })
+  await page.getByRole("button", { name: "Turn on" }).click()
+  await expect(page.getByRole("button", { name: "Turn off" })).toHaveAttribute("aria-pressed", "true")
+  assert.deepEqual(await page.evaluate(() => window.rpcRequests.at(-1)), { name: "set_branch_waiter_call_enabled", args: { p_branch_id: "branch-c", p_enabled: true } })
+  await page.getByRole("button", { name: "Turn off" }).click()
+  await expect(page.getByRole("button", { name: "Turn on" })).toHaveAttribute("aria-pressed", "false")
+  pass("waiter-call control uses the scoped branch RPC and reflects enabled/disabled state")
   await expect(page.getByRole("button", { name: "Create table", exact: true })).toBeEnabled()
   pass("refresh recovers unavailable state")
   assert.deepEqual(errors, []); assert.deepEqual(external, [])

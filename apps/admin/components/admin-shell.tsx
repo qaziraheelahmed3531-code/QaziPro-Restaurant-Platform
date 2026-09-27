@@ -602,9 +602,11 @@ export function AdminShell({
                         "/kitchen",
                         "/menu",
                         "/customers",
+                        "/tables",
+                        "/waiter",
                       ].includes(item.href);
                       const pending =
-                        pendingPath === item.href && pathname !== item.href;
+                        pendingPath === item.href && !active;
                       return (
                         <Link
                           key={item.href}

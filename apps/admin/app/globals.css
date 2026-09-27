@@ -694,7 +694,7 @@ a {
   justify-content: flex-end;
   gap: 5px;
 }
-.table-actions button {
+.table-actions button:not(.button) {
   min-height: 34px;
   padding: 0 8px;
   display: inline-flex;
@@ -5652,3 +5652,10 @@ textarea:focus-visible {
   .rider-hero aside > div { padding: 8px; }
   .whatsapp-preview { min-height: 280px; }
 }
+.waiter-service-requests { margin-bottom: 20px; }
+.waiter-call-list { list-style: none; margin: 0; padding: 0 20px 20px; display: grid; gap: 10px; }
+.waiter-call-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--border, #e4e6e8); border-radius: 12px; }
+.waiter-call-list li > div:first-child { display: grid; gap: 3px; }
+.waiter-call-list li span { font-size: 13px; opacity: .75; }
+.waiter-call-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 600px) { .waiter-call-list li { align-items: stretch; flex-direction: column; } }

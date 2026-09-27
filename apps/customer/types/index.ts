@@ -205,7 +205,7 @@ export type StorefrontSnapshot = {
   deals: Deal[]
   deliveryAreas: LocationArea[]
   availableBranches: Array<{ id: string; slug: string; name: string; city: string; formattedAddress: string | null }>
-  tableContext?: { token: string; name: string; branchId: string }
+  tableContext?: { token: string; name: string; branchId: string; waiterCallEnabled: boolean }
   resolutionError?: "TENANT_NOT_FOUND" | "BRANCH_REQUIRED" | "BRANCH_NOT_FOUND" | "CONFIGURATION_MISSING" | "TABLE_UNAVAILABLE"
 }
 

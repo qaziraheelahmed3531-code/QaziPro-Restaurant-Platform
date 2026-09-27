@@ -37,6 +37,65 @@ function mutationFailure(form: FormData, destination: string): ActionState {
 
 type PlatformAdminClient = NonNullable<ReturnType<typeof createPlatformAdminClient>>
 
+// Storage paths owned by a tenant are grouped beneath its immutable UUID.
+// Discover before deleting the database row so an unavailable storage API
+// aborts safely; remove files only after the atomic DB deletion succeeds.
+async function tenantStorageObjects(admin: PlatformAdminClient, businessId: string) {
+  const { data: buckets, error: bucketError } = await admin.storage.listBuckets()
+  if (bucketError) throw bucketError
+  const owned: Array<{ bucket: string; paths: string[] }> = []
+  for (const bucket of buckets ?? []) {
+    const paths: string[] = []
+    const folders = [businessId]
+    while (folders.length) {
+      const folder = folders.pop()!
+      for (let offset = 0; ; offset += 100) {
+        const { data, error } = await admin.storage.from(bucket.id).list(folder, { limit: 100, offset })
+        if (error) throw error
+        for (const item of data ?? []) {
+          const path = `${folder}/${item.name}`
+          if (item.id) paths.push(path)
+          else folders.push(path)
+        }
+        if ((data ?? []).length < 100) break
+      }
+    }
+    if (paths.length) owned.push({ bucket: bucket.id, paths })
+  }
+  return owned
+}
+
+export async function permanentlyDeleteRestaurantAction(form: FormData): Promise<void | { error: string }> {
+  const context = await requirePlatformPermission("restaurants.edit")
+  if (process.env.APP_ENVIRONMENT !== "staging") return { error: "Permanent deletion is available only in staging." }
+  if (!context.roleNames.includes("Platform Owner")) return { error: "Only a Platform Owner can permanently delete a restaurant." }
+  const businessId = text(form, "businessId")
+  const slug = text(form, "confirmSlug")
+  const reason = text(form, "reason")
+  if (!/^[0-9a-f-]{36}$/i.test(businessId) || text(form, "confirmDelete") !== "DELETE" || reason.length < 10) {
+    return { error: "Enter the restaurant key, DELETE, and an audit reason of at least 10 characters." }
+  }
+  const supabase = await createClient()
+  const current = await supabase.from("businesses").select("id,slug").eq("id", businessId).maybeSingle()
+  if (current.error || !current.data || current.data.slug !== slug) return { error: "Restaurant key does not match. Nothing was deleted." }
+  const admin = createPlatformAdminClient()
+  if (!admin) return { error: "Storage safety check is unavailable. Nothing was deleted." }
+  let media: Awaited<ReturnType<typeof tenantStorageObjects>>
+  try { media = await tenantStorageObjects(admin, businessId) }
+  catch { return { error: "Storage safety check failed. Nothing was deleted." } }
+  const result = await supabase.rpc("platform_delete_restaurant", { p_business_id: businessId, p_confirm_slug: slug, p_reason: reason })
+  if (result.error || result.data !== true) return { error: "Permanent deletion failed safely. No partial database deletion was committed. Check dependencies and try again." }
+  let mediaFailed = false
+  for (const { bucket, paths } of media) {
+    for (let index = 0; index < paths.length; index += 100) {
+      const { error } = await admin.storage.from(bucket).remove(paths.slice(index, index + 100))
+      if (error) mediaFailed = true
+    }
+  }
+  revalidatePath("/restaurants")
+  redirect(mediaFailed ? "/restaurants?deleted=media-pending" : "/restaurants?deleted=1")
+}
+
 async function deliverRestaurantOwnerInvitation(input: {
   admin: PlatformAdminClient
   businessId: string

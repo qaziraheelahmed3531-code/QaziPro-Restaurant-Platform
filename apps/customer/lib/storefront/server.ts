@@ -161,11 +161,12 @@ export const getStorefrontSnapshot = cache(async function getStorefrontSnapshot(
         : { data: null, error: true }
       if (tableResult.error || !tableResult.data) return { ...unavailableStorefront, business: { ...unavailableStorefront.business, id: businessId, name: text(business.name) }, resolutionError: "TABLE_UNAVAILABLE" }
       const table = tableResult.data as Row
-      tableContext = { token: tableToken, name: text(table.table_name), branchId: text(table.branch_id) }
+      tableContext = { token: tableToken, name: text(table.table_name), branchId: text(table.branch_id), waiterCallEnabled: false }
     }
     const requestedBranch = tableContext?.branchId ?? text(explicit.branchId ?? requestHeaders.get("x-qazipro-branch-id") ?? cookieStore.get(`qp-branch-${businessId}`)?.value)
     const branch = activeBranches.length===1 ? activeBranches[0] : activeBranches.find(row=>text(row.id)===requestedBranch||text(row.slug)===requestedBranch)
     if (!branch) return { ...unavailableStorefront, business:{...unavailableStorefront.business,id:businessId,slug:text(business.slug)||null,name:text(business.name),displayName:text(first(business.business_branding)?.display_name,text(business.name)).toUpperCase()}, availableBranches, resolutionError:requestedBranch?"BRANCH_NOT_FOUND":"BRANCH_REQUIRED" }
+    if (tableContext) tableContext.waiterCallEnabled = boolean(branch.waiter_call_enabled)
     const [categoryResult, productResult, overrideResult, dealResult, bannerResult, footerLinksResult, contentPagesResult] = await Promise.all([
       supabase.from("categories").select("*").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
       supabase.from("products").select("*,categories(name,slug),product_images(*),product_variants(*),product_modifier_groups(sort_order,modifier_groups(*,modifier_options(*)))").eq("business_id",businessId).eq("is_active",true).order("sort_order"),

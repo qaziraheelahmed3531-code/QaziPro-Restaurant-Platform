@@ -213,4 +213,8 @@ html.lenis, html.lenis body { height:auto; }
 .table-context-banner small { font-size:10px; letter-spacing:.12em; }
 .table-context-banner span, .table-context-banner p { font-size:12px; }
 .table-context-banner button { font:inherit; font-size:12px; padding:10px; min-height:44px; text-decoration:underline; text-underline-offset:4px; }
+.table-context-call { display:flex; align-items:center; gap:8px; }
+.table-context-call button { padding:10px 16px; border-radius:12px; background:var(--ip-color-primary, #a92114); color:#fff; text-decoration:none; font-weight:700; }
+.table-context-call button:disabled { opacity:.7; cursor:default; }
+.table-context-call span[role="alert"] { max-width:18rem; color:var(--ip-color-danger, #a92114); }
 @media (max-width:600px) { .table-context-banner { align-items:flex-start; } .table-context-banner > div { flex-direction:column; gap:3px; } }

@@ -2,11 +2,15 @@
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
 import { build } from "esbuild";
 import { chromium, expect } from "playwright/test";
 
 const admin = fileURLToPath(new URL("../", import.meta.url));
+const appRequire = createRequire(new URL("../package.json", import.meta.url));
 const output = await build({
+  alias: { react: dirname(appRequire.resolve("react")), "react-dom": dirname(appRequire.resolve("react-dom")) },
   stdin: { contents: `
     import React from "react";
     import { createRoot } from "react-dom/client";
