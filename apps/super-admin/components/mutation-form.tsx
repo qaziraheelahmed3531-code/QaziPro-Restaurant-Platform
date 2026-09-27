@@ -3,10 +3,10 @@
 import { useId, useRef, useState, type ReactNode } from "react"
 import { unstable_rethrow } from "next/navigation"
 
-// Existing server actions keep their authorization, audit and redirect contracts.
-// Network failures preserve the DOM and entered values instead of losing the form.
+// Authorization and success redirects stay server-owned. Expected business and
+// network failures preserve the DOM, confirmation dialog and entered values.
 export function MutationForm({ action, children, className, confirmation }: {
-  action: (form: FormData) => Promise<void>; children: ReactNode; className?: string;
+  action: (form: FormData) => Promise<void | { error?: string }>; children: ReactNode; className?: string;
   confirmation?: string;
 }) {
   const locked = useRef(false)
@@ -22,7 +22,12 @@ export function MutationForm({ action, children, className, confirmation }: {
 
   async function submit(data: FormData) {
     setBusy(true); setError(""); failed.current = false
-    try { await action(data); close() }
+    try {
+      data.set("_inlineErrors", "1")
+      const result = await action(data)
+      if (result?.error) { failed.current = true; setError(result.error); return }
+      close()
+    }
     catch (cause) {
       unstable_rethrow(cause)
       failed.current = true

@@ -204,19 +204,36 @@ try {
   check(appRecords.length === 2 && appRecords.every(record => record.enabled && record.release_status === "CONFIGURATION"), "Mobile app registry did not start in configuration state");
   const provisionAudit = checked(await service.from("platform_audit_logs").select("action").eq("business_id", provisionedBusinessId).eq("action", "RESTAURANT_PROVISIONED"), "Provision audit");
   check(provisionAudit.length === 1, "Provisioning did not create exactly one audit event");
+  for (const [label, heading] of [['Domains','Domains'],['Apps & devices','Android and iOS apps'],['Health & support','Known operational evidence'],['Audit','Activity and audit']]) {
+    await page.getByRole('navigation', { name:'Restaurant sections' }).getByRole('link', { name:label, exact:true }).click();
+    await expect(page.getByRole('heading', {name:heading,exact:true})).toBeVisible({timeout:30000});
+    await expect(page.getByRole('navigation', {name:'Restaurant sections'}).getByRole('link', {name:label,exact:true})).toHaveAttribute('aria-current','page');
+    check(await page.locator('.transition-form').count()===0, 'Inactive overview controls rendered in another section');
+  }
+  await page.getByRole('navigation', { name:'Restaurant sections' }).getByRole('link', { name:'Owner & access', exact:true }).click();
   await expect(page.getByRole('heading', { name:'Invitation and membership state' })).toBeVisible({ timeout:30000 });
   const invitation = checked(await service.from("staff_invitations").select("id,is_active,status,delivery_status").eq("business_id", provisionedBusinessId).eq("role", "OWNER").single(), "Owner invitation fixture");
   check(invitation.status === "PENDING" && invitation.delivery_status === "SUPPRESSED", "Synthetic owner invitation was not safely suppressed");
   await confirmChange(page, page.getByRole("button", { name: "Revoke invitation" }));
   await waitForData(async () => checked(await service.from("staff_invitations").select("is_active").eq("id", invitation.id).single(), "Disabled owner invitation"), value => value.is_active === false, "Owner invitation deactivation did not complete");
   await page.getByText("Owner invitation state updated and audited.").waitFor({ state: "visible", timeout: 30000 });
+  checked(await service.from("staff_invitations").update({delivery_status:"SENDING"}).eq("id",invitation.id), "Simulate in-flight invitation claim");
   await page.getByRole("button", { name: "Issue new invitation" }).click();
+  await expect(page.getByRole("alert").filter({hasText:"already being processed"})).toBeVisible({timeout:30000});
+  check(checked(await service.from("staff_invitations").select("delivery_status").eq("id",invitation.id).single(), "In-flight claim").delivery_status==="SENDING", "Resend overwrote an in-flight delivery claim");
+  checked(await service.from("staff_invitations").update({delivery_status:"SUPPRESSED"}).eq("id",invitation.id), "Restore synthetic fixture");
+  let resendRequests=0;
+  const countResend=request=>{if(request.method()==="POST" && new URL(request.url()).pathname===`/restaurants/${provisionedBusinessId}`)resendRequests++;};
+  page.on("request",countResend);
+  await page.getByRole("button", { name: "Issue new invitation" }).evaluate(button=>{button.form.requestSubmit(button);button.form.requestSubmit(button);});
   await page.waitForURL(value => value.pathname === `/restaurants/${provisionedBusinessId}` && value.searchParams.get("invite") === "suppressed", { timeout: 30000 });
+  page.off("request",countResend);check(resendRequests===1,"Double submit sent more than one invitation request");
   const suppressedInvite = checked(await service.from("staff_invitations").select("delivery_status").eq("id", invitation.id).single(), "Suppressed owner invitation resend");
   check(suppressedInvite.delivery_status === "SUPPRESSED", "Synthetic owner invitation resend reached an external transport");
   const suppressionAudit = checked(await service.from("platform_audit_logs").select("id").eq("business_id", provisionedBusinessId).eq("action", "RESTAURANT_OWNER_INVITATION_SUPPRESSED"), "Invitation suppression audit");
   check(suppressionAudit.length === 1, "Synthetic invitation suppression was not audited once");
 
+  await page.getByRole('navigation', { name:'Restaurant sections' }).getByRole('link', { name:'Branches', exact:true }).click();
   const addBranchDetails = page.locator("#branches details.inline-create");
   await addBranchDetails.locator("summary").click();
   await addBranchDetails.locator('[name="name"]').fill("QA Second Branch");
@@ -252,18 +269,20 @@ try {
   check(await page.getByText("Change saved and audited.").isVisible(), "Branch reactivation did not show success feedback");
   check(secondBranchState.is_active === true, "Branch reactivation was not persisted");
 
+  await page.getByRole('navigation', { name:'Restaurant sections' }).getByRole('link', { name:'Services & billing', exact:true }).click();
   let websiteEntitlement = page.locator("#services .entitlement-list > div").filter({ hasText: "Customer Website" });
   await websiteEntitlement.getByRole("button", { name: "Disable Customer Website", exact: true }).click();
   let entitlementOverride = await waitForData(async () => checked(await service.from("service_entitlements").select("enabled").eq("business_id", provisionedBusinessId).eq("capability_key", "website.ordering").eq("source", "OVERRIDE").single(), "Disabled entitlement override"), value => value.enabled === false, "Entitlement disable did not complete");
   await websiteEntitlement.getByRole("button", { name: "Enable Customer Website", exact: true }).waitFor({ state: "visible", timeout: 30000 });
-  await page.getByText("Change saved and audited.").waitFor({ state: "visible", timeout: 30000 });
-  check(await page.getByText("Change saved and audited.").isVisible(), "Entitlement disable did not show success feedback");
+  await expect(websiteEntitlement.getByRole("status")).toContainText("Customer Website disabled. Change saved and audited.");
+  check(await websiteEntitlement.getByRole("status").isVisible(), "Entitlement disable did not show success feedback");
   check(entitlementOverride.enabled === false, "Entitlement disable did not persist canonically");
   websiteEntitlement = page.locator("#services .entitlement-list > div").filter({ hasText: "Customer Website" });
   await websiteEntitlement.getByRole("button", { name: "Enable Customer Website", exact: true }).click();
   entitlementOverride = await waitForData(async () => checked(await service.from("service_entitlements").select("enabled").eq("business_id", provisionedBusinessId).eq("capability_key", "website.ordering").eq("source", "OVERRIDE").single(), "Enabled entitlement override"), value => value.enabled === true, "Entitlement enable did not complete");
   await websiteEntitlement.getByRole("button", { name: "Disable Customer Website", exact: true }).waitFor({ state: "visible", timeout: 30000 });
-  check(await page.getByText("Change saved and audited.").isVisible(), "Entitlement enable did not show success feedback");
+  await expect(websiteEntitlement.getByRole("status")).toContainText("Customer Website enabled. Change saved and audited.");
+  check(await websiteEntitlement.getByRole("status").isVisible(), "Entitlement enable did not show success feedback");
   check(entitlementOverride.enabled === true, "Entitlement enable did not persist canonically");
 
   for (const nextLifecycle of ["STAGING", "CLIENT_REVIEW", "READY", "ACTIVE", "SUSPENDED", "ACTIVE"]) {

@@ -64,13 +64,35 @@ real Google login, external provider delivery and the full 58-item matrix must n
 
 ### Remaining acceptance / product work
 
-- New commit deployment and public HTTPS acceptance not yet run at this checkpoint.
+- Commit `1c7f3c8` deployed READY; public HTTPS quality acceptance passed 50 assertions.
 - Real owner Google interaction not exercised by password-based fixture sessions.
 - Figma design file/node link not supplied; no design parity claim.
-- Bell is an honest attention-center link, not a read/unread notification inbox.
-- Independent Restaurant 360 tab streaming, package editing, full module action coverage,
-  and retention of form/dialog values on existing redirect-based backend errors remain incomplete.
+- Full module mutation coverage, including all domain/app/support/leads actions, is not yet established.
 - Platform branding currently verified in Super Admin shell/login/metadata only, not Restaurant
   Admin/POS/desktop/public marketing site. Restaurant logos remain untouched.
 - Server logs include aborted response-stream warnings during rapid navigation. Browser regression
   had no console/page errors; public runtime logs still require review before a final PASS.
+
+### Continuation — notification, form and workspace closure
+
+- Real incidents/failed deployments now feed a permission-scoped notification dialog, with
+  per-staff RLS read receipts. Canonical event sources are not duplicated. Local authenticated
+  browser verifies rendering, persistence, two-staff isolation, nonstaff denial and resolved removal.
+- Expected server-action errors return safe curated inline messages to enhanced forms.
+  Values and confirmation dialogs survive business/network failures; double submit is locked.
+  Local browser verifies duplicate package rejection, preserved values, missing-record confirmation,
+  cancel focus restoration and network-failure recovery.
+- Restaurant 360 has eight independently selected server-rendered sections with localized streaming
+  fallback, current-section navigation and canonical scoped queries. Overview now runs three data
+  queries instead of fourteen (auth queries excluded); irrelevant panels are not loaded.
+  Search destinations use the corresponding section query rather than obsolete fragment links.
+- Service changes have visible, human-readable success feedback. Invitation resend refuses an
+  in-flight claim and uses compare-and-swap before resetting a delivery state.
+- Local onboarding regression: 100 assertions / 16 routes PASS, including section navigation,
+  invitation in-flight protection, one-request double submit, branches and lifecycle transitions.
+  All synthetic invitation deliveries remain suppressed.
+- Commercial package editing preserves current subscription prices and capability defaults.
+  The audited RPC requires version matching; stale updates return HTTP 409.
+- Current unit gate: 82 tests / 10 files PASS. Typecheck, lint, optimized build and staging
+  database lint PASS. Notification and package-edit migrations applied only to verified staging.
+- New continuation changes still require deployment and public acceptance before being marked PASS.

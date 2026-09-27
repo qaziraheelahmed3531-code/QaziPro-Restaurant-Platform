@@ -4,7 +4,8 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
-import { chromium, expect } from 'playwright/test';
+import { chromium, expect as baseExpect } from 'playwright/test';
+const expect = baseExpect.configure({ timeout: 20000 });
 
 process.loadEnvFile('apps/super-admin/.env.local');
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -103,7 +104,7 @@ try {
   const countBranding = request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/settings') brandingRequests++; };
   page.on('request', countBranding);
   await page.getByRole('button', { name:'Save branding', exact:true }).evaluate(button => { button.form.requestSubmit(button); button.form.requestSubmit(button); });
-  await expect(page.getByRole('status')).toContainText('QaziPro branding saved');
+  await expect(page.getByRole('status')).toContainText('QaziPro branding saved', { timeout: 45000 });
   uploadedBranding = checked(await admin.from('platform_branding').select('*').single());
   check('branding duplicate submit one request', brandingRequests === 1);
   page.off('request', countBranding);

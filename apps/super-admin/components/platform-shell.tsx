@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import { PlatformLogo } from "./platform-branding"
 import { CommandPalette } from "./command-palette"
 import { SubmitButton } from "./submit-button"
+import { AttentionMenu } from "./attention-menu"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  Activity, AppWindow, Bell, Blocks, Building2, ChevronLeft, ChevronRight,
+  Activity, AppWindow, Blocks, Building2, ChevronLeft, ChevronRight,
   CircleDollarSign, ClipboardCheck, CloudCog, FileClock, Inbox,
   Globe2, Headphones, LayoutDashboard, Menu, Network, PackageCheck, Plus,
   Search, Settings, ShieldCheck, Store, Users, X, ListTodo,
@@ -89,7 +90,7 @@ export function PlatformShell({ context, children }: { context: PlatformContext;
         <button className="command-trigger" disabled={!interactive} onClick={() => setPaletteOpen(true)}><Search/><span>Search restaurants, branches, domains…</span><kbd>Ctrl K</kbd></button>
         <span className={`environment-badge environment-${(process.env.NEXT_PUBLIC_APP_ENVIRONMENT ?? "local").toLowerCase()}`}>{process.env.NEXT_PUBLIC_APP_ENVIRONMENT ?? "LOCAL"}</span>
         {context.permissions.includes("restaurants.create") && context.permissions.includes("onboarding.manage") ? <Link className="quick-create" href="/onboarding/new"><Plus/> <span>New restaurant</span></Link> : null}
-        {context.permissions.includes("incidents.manage") ? <Link className="icon-button" href="/health" prefetch={false} aria-label="Attention center"><Bell/></Link> : null}
+        {context.permissions.includes("incidents.manage") || context.permissions.includes("deployments.manage") ? <AttentionMenu/> : null}
         <details className="account-menu"><summary><span>{context.displayName.slice(0,1).toUpperCase()}</span><div><strong>{context.displayName}</strong><small>{context.roleNames[0] ?? "Platform staff"}</small></div></summary><div><p>{context.email}</p><form action={signOutAction}><SubmitButton pendingLabel="Signing out…">Sign out</SubmitButton></form></div></details>
       </header>
       <main id="main-content" tabIndex={-1} className="platform-main">{children}</main>

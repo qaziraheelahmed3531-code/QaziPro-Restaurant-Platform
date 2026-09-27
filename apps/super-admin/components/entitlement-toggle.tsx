@@ -23,6 +23,6 @@ export function EntitlementToggle({ businessId, capability, label, initialEnable
       {pending ? target ? "Enabling..." : "Disabling..." : enabled ? "Disable" : "Enable"}
     </button>
     {state.error ? <small className="inline-action-error" role="alert">{state.error}</small> : null}
-    {state.success ? <span className="sr-only" role="status">{capability} {state.enabled ? "enabled" : "disabled"}.</span> : null}
+    {state.success ? <small role="status">{label} {state.enabled ? "enabled" : "disabled"}. Change saved and audited.</small> : null}
   </form>
 }

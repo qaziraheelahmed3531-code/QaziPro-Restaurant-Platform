@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       const records = (data ?? []) as unknown as Record<string, unknown>[]
       return { hasMore: records.length > 5, results: records.slice(0, 5).map(row => ({
         id: `${source.table}:${row.id}`, group: source.group, label: String(row[source.label] ?? "Unnamed record"), detail: String(row[source.detail] ?? ""),
-        href: source.group === "Tasks" ? "/tasks" : source.group === "Support" ? "/support" : !context.permissions.includes("restaurants.view") ? `/${source.group.toLowerCase()}` : `/restaurants/${source.table === "businesses" ? row.id : row.business_id}${source.section ? `#${source.section}` : ""}`,
+        href: source.group === "Tasks" ? "/tasks" : source.group === "Support" ? "/support" : !context.permissions.includes("restaurants.view") ? `/${source.group.toLowerCase()}` : `/restaurants/${source.table === "businesses" ? row.id : row.business_id}${source.section ? `?tab=${source.section}` : ""}`,
       } satisfies SearchResult)) }
     }))
     return NextResponse.json({ results: groups.flatMap(group => group.results), hasMore: groups.some(group => group.hasMore) }, { headers })

@@ -88,24 +88,24 @@ export async function getRestaurants(query = "", page = 1, status = "all") {
   return { data: (result.data ?? []) as Row[], count: result.count ?? 0, page: safePage, pageSize, error: result.error ? safeMessage(result.error.code) : null }
 }
 
-export async function getRestaurant(id: string) {
+export async function getRestaurant(id: string, tab: import("./workspace-tabs").WorkspaceTab = "overview") {
   await requirePlatformPermission("restaurants.view")
   const supabase = await createClient()
   const [business, onboarding, subscription, entitlements, apps, domains, deployments, incidents, tickets, devices, audit, invitations, memberships, accessSummary] = await Promise.all([
     supabase.from("businesses").select("id,slug,name,short_description,phone,email,address,city,currency,timezone,is_active,created_at,business_branding(*),branches:branches!branches_business_id_fkey(*)").eq("id", id).maybeSingle(),
     supabase.from("restaurant_onboarding").select("*").eq("business_id", id).maybeSingle(),
     supabase.from("restaurant_subscriptions").select("*,service_packages(name,code)").eq("business_id", id).maybeSingle(),
-    supabase.from("service_entitlements").select("capability_key,enabled,source,effective_from,effective_until,limit_value,updated_at").eq("business_id", id).order("capability_key"),
-    supabase.from("mobile_app_records").select("*").eq("business_id", id).order("platform"),
-    supabase.from("platform_domain_records").select("*").eq("business_id", id).order("purpose"),
-    supabase.from("deployment_records").select("*").eq("business_id", id).order("created_at", { ascending: false }).limit(10),
-    supabase.from("platform_incidents").select("*").eq("business_id", id).order("last_seen_at", { ascending: false }).limit(10),
-    supabase.from("support_tickets").select("*").eq("business_id", id).order("created_at", { ascending: false }).limit(10),
-    supabase.from("pos_offline_devices").select("id,branch_id,name:device_name,app_version,is_active,last_sync_at,updated_at").eq("business_id", id).order("updated_at", { ascending: false }),
-    supabase.from("platform_audit_logs").select("id,actor_user_id,action,target_type,reason,created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20),
-    supabase.from("staff_invitations").select("id,email,role,is_active,status,delivery_status,branch_id,branch_ids,expires_at,accepted_at,revoked_at,created_at,updated_at").eq("business_id", id).order("created_at", { ascending: false }),
-    supabase.from("staff_memberships").select("id,user_id,role,is_active,branch_id,created_at,updated_at").eq("business_id", id).order("created_at", { ascending: false }),
-    supabase.rpc("platform_restaurant_access_summary", { p_business_id: id }),
+    tab === "services" ? supabase.from("service_entitlements").select("capability_key,enabled,source,effective_from,effective_until,limit_value,updated_at").eq("business_id", id).order("capability_key") : { data: null, error: null },
+    tab === "apps" ? supabase.from("mobile_app_records").select("*").eq("business_id", id).order("platform") : { data: null, error: null },
+    tab === "website" ? supabase.from("platform_domain_records").select("*").eq("business_id", id).order("purpose") : { data: null, error: null },
+    tab === "health" ? supabase.from("deployment_records").select("*").eq("business_id", id).order("created_at", { ascending: false }).limit(10) : { data: null, error: null },
+    tab === "health" ? supabase.from("platform_incidents").select("*").eq("business_id", id).order("last_seen_at", { ascending: false }).limit(10) : { data: null, error: null },
+    tab === "health" ? supabase.from("support_tickets").select("*").eq("business_id", id).order("created_at", { ascending: false }).limit(10) : { data: null, error: null },
+    tab === "apps" ? supabase.from("pos_offline_devices").select("id,branch_id,name:device_name,app_version,is_active,last_sync_at,updated_at").eq("business_id", id).order("updated_at", { ascending: false }) : { data: null, error: null },
+    tab === "audit" ? supabase.from("platform_audit_logs").select("id,actor_user_id,action,target_type,reason,created_at").eq("business_id", id).order("created_at", { ascending: false }).limit(20) : { data: null, error: null },
+    tab === "access" ? supabase.from("staff_invitations").select("id,email,role,is_active,status,delivery_status,branch_id,branch_ids,expires_at,accepted_at,revoked_at,created_at,updated_at").eq("business_id", id).order("created_at", { ascending: false }) : { data: null, error: null },
+    tab === "access" ? supabase.from("staff_memberships").select("id,user_id,role,is_active,branch_id,created_at,updated_at").eq("business_id", id).order("created_at", { ascending: false }) : { data: null, error: null },
+    tab === "access" ? supabase.rpc("platform_restaurant_access_summary", { p_business_id: id }) : { data: null, error: null },
   ])
   const firstError = [business.error,onboarding.error,subscription.error,entitlements.error,apps.error,domains.error,deployments.error,incidents.error,tickets.error,devices.error,audit.error,invitations.error,memberships.error,accessSummary.error].find(Boolean)
   return {
@@ -133,7 +133,7 @@ const moduleTables: Partial<Record<PlatformModule, { table: string; select: stri
   support: { table: "support_tickets", select: "id,ticket_number,business_id,branch_id,category,severity,subject,status,assigned_staff_user_id,due_at,created_at,businesses(name)", order: "created_at" },
   tasks: { table: "platform_tasks", select: "id,business_id,title,team,status,priority,assigned_staff_user_id,due_at,completed_at,created_at,businesses(name)", order: "created_at" },
   billing: { table: "restaurant_subscriptions", select: "id,business_id,status,currency,base_fee,setup_fee,branch_fee,terminal_fee,android_fee,ios_fee,discount,tax,billing_frequency,next_invoice_date,service_packages(name),businesses(name)", order: "updated_at" },
-  packages: { table: "service_packages", select: "id,code,name,currency,base_fee,setup_fee,included_branches,additional_branch_fee,terminal_fee,billing_frequency,is_active,updated_at", order: "updated_at" },
+  packages: { table: "service_packages", select: "id,code,name,description,currency,base_fee,setup_fee,included_branches,additional_branch_fee,terminal_fee,billing_frequency,is_active,updated_at,restaurant_subscriptions(count)", order: "updated_at" },
   team: { table: "platform_staff", select: "user_id,display_name,email,status,mfa_required,last_login_at,access_revoked_at,created_at", order: "created_at" },
   integrations: { table: "platform_integration_status", select: "id,business_id,provider,status,last_checked_at,expires_at,message,businesses(name)", order: "updated_at" },
   audit: { table: "platform_audit_logs", select: "id,actor_user_id,action,target_type,target_id,business_id,reason,request_id,created_at", order: "created_at" },
