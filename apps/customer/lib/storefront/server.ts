@@ -166,12 +166,14 @@ export const getStorefrontSnapshot = cache(async function getStorefrontSnapshot(
     const requestedBranch = tableContext?.branchId ?? text(explicit.branchId ?? requestHeaders.get("x-qazipro-branch-id") ?? cookieStore.get(`qp-branch-${businessId}`)?.value)
     const branch = activeBranches.length===1 ? activeBranches[0] : activeBranches.find(row=>text(row.id)===requestedBranch||text(row.slug)===requestedBranch)
     if (!branch) return { ...unavailableStorefront, business:{...unavailableStorefront.business,id:businessId,slug:text(business.slug)||null,name:text(business.name),displayName:text(first(business.business_branding)?.display_name,text(business.name)).toUpperCase()}, availableBranches, resolutionError:requestedBranch?"BRANCH_NOT_FOUND":"BRANCH_REQUIRED" }
-    const [categoryResult, productResult, overrideResult, dealResult, bannerResult] = await Promise.all([
+    const [categoryResult, productResult, overrideResult, dealResult, bannerResult, footerLinksResult, contentPagesResult] = await Promise.all([
       supabase.from("categories").select("*").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
       supabase.from("products").select("*,categories(name,slug),product_images(*),product_variants(*),product_modifier_groups(sort_order,modifier_groups(*,modifier_options(*)))").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
       supabase.from("branch_product_overrides").select("*").eq("business_id",businessId).eq("branch_id",text(branch.id)),
       supabase.from("deals").select("*").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
       supabase.from("hero_banners").select("*").eq("business_id",businessId).eq("is_active",true).order("sort_order"),
+      supabase.from("footer_links").select("label,href,group_name,is_external,is_active,sort_order").eq("business_id", businessId).eq("is_active", true).order("sort_order"),
+      supabase.from("content_pages").select("slug,title,body,is_published,sort_order").eq("business_id", businessId).eq("is_published", true).order("sort_order"),
     ])
     if (categoryResult.error || productResult.error || overrideResult.error || dealResult.error || bannerResult.error) {
       const catalogErrors = [categoryResult.error, productResult.error, overrideResult.error, dealResult.error, bannerResult.error]
@@ -208,10 +210,6 @@ export const getStorefrontSnapshot = cache(async function getStorefrontSnapshot(
     // CMS tables are introduced by a versioned migration. Keep the storefront
     // available during a rolling deploy if that migration has not reached the
     // read replica yet; the admin editor will populate them once available.
-    const [footerLinksResult, contentPagesResult] = await Promise.all([
-      supabase.from("footer_links").select("label,href,group_name,is_external,is_active,sort_order").eq("business_id", businessId).eq("is_active", true).order("sort_order"),
-      supabase.from("content_pages").select("slug,title,body,is_published,sort_order").eq("business_id", businessId).eq("is_published", true).order("sort_order"),
-    ])
     const rule = first(branch.delivery_rules)
     const timezone = safeTimezone(text(branch.timezone,text(business.timezone,"Asia/Karachi")), safeTimezone(text(business.timezone,"Asia/Karachi")))
     const branchCity = text(branch.city, text(business.city))

@@ -31,7 +31,7 @@ export function HomePage() {
         <RestaurantIntro />
 
         <section className="craving-section" id="menu" tabIndex={-1} aria-labelledby="craving-title">
-          <Reveal className="section-heading"><div><h2 id="craving-title">What are you craving?</h2></div></Reveal>
+          <div className="section-heading"><div><h2 id="craving-title">What are you craving?</h2></div></div>
           <CategoryTiles sections={storefront.menuSections} />
           <MenuSearch products={storefront.products} deals={storefront.deals} />
         </section>

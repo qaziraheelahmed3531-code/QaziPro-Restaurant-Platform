@@ -8,7 +8,7 @@ import { chromium, expect } from "playwright/test";
 const env = parseEnv(await readFile(new URL("../apps/customer/.env.local", import.meta.url), "utf8"));
 const expected = "https://jzisqjvroxodvmqxzsob.supabase.co";
 const base = process.env.CUSTOMER_TEST_URL || "http://localhost:3105";
-if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(base)) throw Error("Local-only QR browser harness");
+if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(base) && base !== "https://italian-pizza.staging.qazipro.com") throw Error("Only local or approved Italian Pizza staging is allowed");
 if (env.NEXT_PUBLIC_SUPABASE_URL !== expected) throw Error("Staging project safety guard failed");
 const db = createClient(expected, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession:false,autoRefreshToken:false } });
 const { data: business, error: businessError } = await db.from("businesses").select("id").eq("slug","italian-pizza").single();
@@ -28,7 +28,7 @@ try {
     if(route.request().method()==="POST") { writes.push(route.request().postDataJSON()); return route.fulfill({status:503,json:{ok:false,error:"Temporary test failure; your cart is saved."}}); }
     return route.continue();
   });
-  await page.goto(`${base}/t/${table.public_token}`);
+  await page.goto(`${base}/t/${table.public_token}`, { waitUntil: "domcontentloaded", timeout: 60000 });
   await expect(page.getByRole("region",{name:"Your dining table"})).toContainText("QR acceptance table");
   await expect(page.getByRole("dialog",{name:"Where would you like to order?"})).not.toBeVisible();
   const product=page.getByRole("button",{name:/^View .+ details$/}).first();
@@ -48,7 +48,9 @@ try {
   pass("table context/cart survive navigation and reload; checkout uses dine-in not pickup/delivery");
   const invalid=await context.request.get(`${base}/t/`+"0".repeat(48));
   assert.equal(invalid.status(),404);
-  const wrongHost=await context.request.get(`${base}/t/${table.public_token}`,{headers:{Host:"kings-cafe.staging.qazipro.com"},maxRedirects:0});
+  const wrongHost=base.startsWith("https:")
+    ? await context.request.get(`https://kings-cafe.staging.qazipro.com/t/${table.public_token}`,{maxRedirects:0})
+    : await context.request.get(`${base}/t/${table.public_token}`,{headers:{Host:"kings-cafe.staging.qazipro.com"},maxRedirects:0});
   assert.equal(wrongHost.status(),404);
   pass("invalid token and another restaurant hostname fail closed");
   const {error:inactiveError}=await db.from("restaurant_tables").update({is_active:false}).eq("id",table.id).eq("business_id",business.id);
