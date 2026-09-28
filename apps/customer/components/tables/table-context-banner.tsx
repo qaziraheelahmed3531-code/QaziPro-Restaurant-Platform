@@ -1,10 +1,15 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { useApp } from "@/components/providers/app-provider"
+
+const subscribeToHydration = () => () => {}
+const clientReady = () => true
+const serverReady = () => false
 
 export function TableContextBanner() {
   const { storefront } = useApp()
+  const ready = useSyncExternalStore(subscribeToHydration, clientReady, serverReady)
   const [confirm, setConfirm] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [calling, setCalling] = useState(false)
@@ -38,7 +43,7 @@ export function TableContextBanner() {
   }
   return <section className="table-context-banner" aria-label="Your dining table">
     <div><small>DINING AT</small><strong>{storefront.tableContext.name}</strong><span>{storefront.branch.name}</span></div>
-    {storefront.tableContext.waiterCallEnabled && <div className="table-context-call"><button type="button" disabled={calling || callState === "sent"} onClick={() => void callWaiter()}>{calling ? "Calling…" : callState === "sent" ? "Request sent" : "Call a waiter"}</button>{callState === "error" && <span role="alert">{callError}</span>}<span role="status" className="sr-only">{callState === "sent" ? "Your table request has been sent to the waiter portal." : ""}</span></div>}
+    {storefront.tableContext.waiterCallEnabled && <div className="table-context-call"><button type="button" disabled={!ready || calling || callState === "sent"} onClick={() => void callWaiter()}>{calling ? "Calling…" : callState === "sent" ? "Request sent" : "Call a waiter"}</button>{callState === "error" && <span role="alert">{callError}</span>}<span role="status" className="sr-only">{callState === "sent" ? "Your table request has been sent to the waiter portal." : ""}</span></div>}
     {confirm ? <form action="/api/table-context" method="post" onSubmit={() => setLeaving(true)}><p>Your table cart stays saved separately.</p><button type="submit" disabled={leaving}>{leaving ? "Leaving…" : "Leave dine-in"}</button><button type="button" disabled={leaving} onClick={() => setConfirm(false)}>Keep table</button></form> : <button type="button" onClick={() => setConfirm(true)}>Change order mode</button>}
   </section>
 }

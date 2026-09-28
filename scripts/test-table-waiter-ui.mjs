@@ -119,6 +119,7 @@ try {
   await customer.addScriptTag({ content: customerScript })
   const table = { name: "Table 12", token: "table-a", waiterCallEnabled: true }
   await customer.evaluate(table => window.showBanner(table), table)
+  await expect(customer.getByRole("button", { name: "Call a waiter" })).toBeEnabled()
   await customer.getByRole("button", { name: "Call a waiter" }).evaluate(button => { button.click(); button.click() })
   await expect(customer.getByRole("button", { name: "Calling…" })).toBeDisabled()
   assert.deepEqual(await customer.evaluate(() => window.calls), [{ url: "/api/table-call-waiter", method: "POST" }])
