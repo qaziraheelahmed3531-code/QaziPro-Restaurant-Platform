@@ -3057,7 +3057,13 @@ textarea:focus-visible {
 .admin-nav a .app-loader {
   margin-left: auto;
 }
-.admin-nav a > [data-navigation-pending] { margin-left: auto; display: inline-flex; }
+.admin-nav a > [data-navigation-pending] {
+  margin-left: auto;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
 .button:active,
 .icon-action:active,
 .table-actions button:active {

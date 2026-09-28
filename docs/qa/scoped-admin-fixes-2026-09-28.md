@@ -49,3 +49,11 @@ Public authenticated portal acceptance still needs the user's own session: check
 No connected signed-in browser surfaces were available; the browser inventory was empty. This does not block implementation, builds, public QR acceptance or database authorization tests, but it prevents claiming a logged-in visual walkthrough.
 
 Live provider-failure cleanup and full destructive browser acceptance are not claimed. Shared platform auth accounts and detached audit history are intentionally retained. DNS/Vercel project deletion is outside this operation.
+
+## Loading retained — follow-up correction
+
+Loading UX is preserved, not removed. Sidebar navigation now shows the existing loader without its initial 150 ms delay when Next reports a genuine pending navigation; its 20 px slot stays stable. Completion/cancellation and resolved QR descendants remove only the pending indicator. Existing route skeletons and mutation loaders are unchanged.
+
+QR preview now has explicit local “Preparing QR…” feedback and a disabled “Loading QR…” print button until the image is ready. Load errors stop the spinner and show a useful error. A cached inline image that completes before hydration is detected through its actual image readiness, preventing a disabled Print button or indefinite loader. Changed image sources cannot inherit another preview's loaded state.
+
+Follow-up verification: 7 focused loading browser checks, 10 existing skeleton checks and 13 waiter/navigation regression checks passed. Admin lint, typecheck and optimized build passed. These are isolated real-browser tests, not an authenticated public portal walkthrough. No database, auth, email or waiter behavior changed in this correction.

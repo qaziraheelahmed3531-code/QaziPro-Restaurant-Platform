@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "eslint",
-    "test:loading": "node scripts/test-portal-skeleton.mjs",
+    "test:loading": "node scripts/test-portal-skeleton.mjs && node scripts/test-navigation-loading.mjs",
     "test:tables": "node scripts/test-table-manager.mjs",
     "test:availability": "node scripts/test-product-availability.mjs",
     "test:login": "node scripts/test-login-experience.mjs",
