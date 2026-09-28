@@ -82,7 +82,9 @@ export function WaiterPosQueue({
       timer = setTimeout(() => void refresh().catch(() => undefined), 150);
     };
     const channel = client
-      .channel(`waiter-pos-queue-${branchId}`)
+      // Unsubscribe is asynchronous. A refresh/Suspense reattachment must not
+      // reuse the still-leaving channel and add callbacks after subscribe().
+      .channel(`waiter-pos-queue-${branchId}-${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
         {

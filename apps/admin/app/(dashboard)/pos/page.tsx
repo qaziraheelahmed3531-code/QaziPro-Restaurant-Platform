@@ -11,7 +11,6 @@ import {
 } from "@/components/waiter-pos-queue";
 import { mediaPreviewUrl } from "@/lib/media";
 import { requireAdmin } from "@/lib/auth";
-import { getSelectedBranch } from "@/lib/branch";
 import { createClient } from "@/lib/supabase/server";
 import "./pos.css";
 
@@ -48,11 +47,15 @@ export default async function Page({
   }
   const supabase = await createClient();
   const params = await searchParams;
-  const branch = await getSelectedBranch(
-    supabase,
-    context.businessId,
-    context.assignedBranchId,
-  );
+  // requireAdmin already resolves membership, allowed branches and the selected
+  // branch. Do not repeat network auth + membership resolution on POS bootstrap.
+  const selectedBranchId = context.activeBranchId;
+  const branch = selectedBranchId && context.allowedBranchIds.includes(selectedBranchId)
+    ? (await supabase.from("branches")
+        .select("id,name,restaurant_name,city,timezone,location_revision,address,formatted_address,phone")
+        .eq("business_id", context.businessId)
+        .eq("id", selectedBranchId).eq("is_active", true).maybeSingle()).data
+    : null;
   if (!branch)
     return (
       <div className="state-box">
@@ -111,7 +114,7 @@ export default async function Page({
     supabase
       .from("product_modifier_groups")
       .select(
-        "product_id,sort_order,modifier_groups(id,name,selection_type,is_required,min_selections,max_selections,modifier_options(id,name,price_adjustment,is_default,is_active,sort_order,image_url))",
+        "product_id,sort_order,modifier_groups(id,name,is_active,selection_type,is_required,min_selections,max_selections,modifier_options(id,name,price_adjustment,is_default,is_active,sort_order,image_url))",
       )
       .order("sort_order"),
     supabase

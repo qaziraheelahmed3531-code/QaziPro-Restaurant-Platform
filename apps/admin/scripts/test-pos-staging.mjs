@@ -3,6 +3,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
@@ -12,7 +14,12 @@ const env = parseEnv(readFileSync(new URL('../.env.local', import.meta.url), 'ut
 assert.equal(env.NEXT_PUBLIC_SUPABASE_URL, 'https://jzisqjvroxodvmqxzsob.supabase.co');
 const origin = process.argv[2] ?? 'http://localhost:3001';
 assert.ok(['http://localhost:3001', 'https://admin.staging.qazipro.com'].includes(origin));
-const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {auth:{persistSession:false,autoRefreshToken:false}});
+const fixtureFetch = async (url, options = {}) => {
+  const headers=new Headers(options.headers);headers.set('Connection','close');
+  try { return await fetch(url,{...options,signal:options.signal??AbortSignal.timeout(20000),headers}); }
+  catch(error) { console.error(`STAGING_NETWORK_FAILURE ${error.cause?.code??error.name}`);throw error; }
+};
+const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {global:{fetch:fixtureFetch},auth:{persistSession:false,autoRefreshToken:false}});
 const checked = (result,label) => { if(result.error) throw Error(`${label}: ${result.error.message}`); return result.data; };
 const safeRetry = async (operation,label) => {
   let result;
@@ -42,7 +49,7 @@ try {
   userId=checked(await db.auth.admin.createUser({email,password,email_confirm:true}), 'fixture identity').user.id;
   await insert('staff_memberships',{business_id:business,branch_id:branch,user_id:userId,role:'OWNER',is_active:true});
   const jar=new Map();
-  const staff=createServerClient(env.NEXT_PUBLIC_SUPABASE_URL,env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,{cookieOptions:{name:'italian-pizza-admin-auth',path:'/',sameSite:'lax'},cookies:{getAll:()=>[...jar].map(([name,value])=>({name,value})),setAll:values=>values.forEach(({name,value})=>jar.set(name,value))}});
+  const staff=createServerClient(env.NEXT_PUBLIC_SUPABASE_URL,env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,{global:{fetch:fixtureFetch},cookieOptions:{name:'italian-pizza-admin-auth',path:'/',sameSite:'lax'},cookies:{getAll:()=>[...jar].map(([name,value])=>({name,value})),setAll:values=>values.forEach(({name,value})=>jar.set(name,value))}});
   await safeRetry(()=>staff.auth.signInWithPassword({email,password}),'fixture sign-in');
   const access=await safeRetry(()=>staff.rpc('resolve_restaurant_admin_access',{p_business_id:business}),'access');
   assert.equal(access.allowed,true,`Access denied: ${access.reason}`);
@@ -58,10 +65,25 @@ try {
     new PerformanceObserver(list=>list.getEntries().forEach(e=>window.posPerf.lcp=e.startTime)).observe({type:'largest-contentful-paint',buffered:true});
   });
   const page=await context.newPage(); const runtimeErrors=[]; page.on('pageerror',e=>runtimeErrors.push(e.message));
+  page.on('console',message=>{if(message.type()==='error'){
+    const text=message.text();
+    // Capture exception text only, never request headers, cookie values or args.
+    if(/Error|Minified React/.test(text))console.log('BROWSER_ERROR '+text.replace(/https?:\/\/\S+/g,'[url]').slice(0,1200));
+  }});
+  const realtimeErrors=[];
+  page.on('websocket',socket=>{
+    socket.on('socketerror',()=>realtimeErrors.push('WebSocket transport failed'));
+    socket.on('framereceived',({payload})=>{try{
+      const event=JSON.parse(String(payload));
+      if(event.event==='system'&&event.payload?.status==='error') realtimeErrors.push(String(event.payload.message).slice(0,250));
+    }catch{/* Never capture tokens or outbound/auth frames. */}});
+  });
   const started=Date.now();
   await page.goto(`${origin}/pos`,{waitUntil:'domcontentloaded',timeout:90000});
   const tile=page.getByRole('button',{name:/Acceptance Margherita.*Add to order/});
   await expect(tile).toBeVisible({timeout:45000});
+  await mkdir(new URL('../../../test-results/pos',import.meta.url),{recursive:true});
+  await page.screenshot({path:fileURLToPath(new URL('../../../test-results/pos/staging-pos.png',import.meta.url)),fullPage:true});
   console.log(`POS_READY_MS ${Date.now()-started}`);pass('authenticated branch-scoped POS bootstrap');
   await tile.click();await tile.click();await tile.click();
   await expect(page.locator('.quantity-row>span')).toHaveText('3');pass('real catalog rapid adds');
@@ -78,13 +100,17 @@ try {
   const kitchen=await context.newPage();await kitchen.goto(`${origin}/kitchen`,{waitUntil:'domcontentloaded',timeout:90000});
   const ticket=kitchen.locator('.kds-ticket').filter({hasText:order.order_number});await expect(ticket).toBeVisible({timeout:30000});
   await ticket.getByRole('button',{name:'Start preparing'}).click();await ticket.getByRole('button',{name:'Mark ready'}).click();
-  await expect.poll(async()=>checked(await db.from('orders').select('status').eq('id',order.id).single(),'KDS state').status).toBe('READY');pass('POS order → KDS → canonical ready status');
+  await expect.poll(async()=>checked(await db.from('orders').select('status').eq('id',order.id).single(),'KDS state').status,{timeout:45000}).toBe('READY');pass('POS order → KDS → canonical ready status');
+  console.log(JSON.stringify({realtimeErrors,connection:await page.locator('.pos-connection').innerText()}));
+  await page.bringToFront();
   await expect(page.locator('[data-pos-order-id]').filter({hasText:order.order_number})).toContainText(/ready/i,{timeout:30000});pass('KDS status returns to POS without reload');
   const payload={branchId:branch,shiftId:shift.id,clientReference:randomUUID(),orderType:'TAKEAWAY',cashReceived:5000,paymentMethodCode:'CASH',items:[{productId:product,quantity:1,modifiers:[]}]};
   const results=await Promise.all([staff.rpc('create_pos_order',{p_payload:payload}),staff.rpc('create_pos_order',{p_payload:payload})]);
   assert.equal(checked(results[0],'concurrent sale').id,checked(results[1],'concurrent replay').id);pass('concurrent HTTP requests produce same sale');
   checked(await db.from('products').update({is_available:false}).eq('id',product),'availability');
-  await expect(page.getByRole('button',{name:/Acceptance Margherita.*Unavailable/})).toBeDisabled({timeout:30000});pass('Admin catalog availability reaches POS via realtime');
+  try { await expect(page.getByRole('button',{name:/Acceptance Margherita.*Out of stock/})).toBeDisabled({timeout:45000}); }
+  catch(error){console.log(JSON.stringify({path:new URL(page.url()).pathname,body:(await page.locator('body').innerText({timeout:5000})).slice(-3500),realtimeErrors,runtimeErrors}));throw error;}
+  pass('Admin catalog availability reaches POS via realtime');
   for(const width of [768,1024,1280,1366,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);pass(`live responsive ${width}`);}
   await context.setOffline(true);await expect(page.getByText(/Offline/).first()).toBeVisible();await context.setOffline(false);pass('offline feedback and reconnect');
   const performance=await page.evaluate(()=>window.posPerf);

@@ -68,6 +68,12 @@
 .pos-page .pos-products > button > span {
   height: 78px;
 }
+.pos-page .pos-product-image {
+  position: relative;
+  display: block;
+  overflow: hidden;
+}
+.pos-page .pos-product-image img { object-fit: cover; }
 .pos-page .pos-products strong {
   font-size: 13px;
   line-height: 1.35;

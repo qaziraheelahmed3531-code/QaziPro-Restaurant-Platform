@@ -51,6 +51,7 @@ type Option = {
 type Group = {
   id: string;
   name: string;
+  is_active?: boolean;
   selection_type: "SINGLE" | "MULTIPLE";
   is_required: boolean;
   min_selections: number;
@@ -283,7 +284,7 @@ export function PosTerminal({
               ? item.modifier_groups[0]
               : item.modifier_groups,
           )
-          .filter((group): group is Group => Boolean(group))
+          .filter((group): group is Group => Boolean(group) && group?.is_active !== false)
           .map((group) => ({
             ...group,
             modifier_options: (group.modifier_options ?? [])
@@ -582,7 +583,7 @@ export function PosTerminal({
       }
     }, 60_000);
     const channel = supabase
-      .channel(`pos-live-${businessId}-${branch.id}`)
+      .channel(`pos-live-${businessId}-${branch.id}-${crypto.randomUUID()}`)
       .on(
         "postgres_changes",
         {
@@ -1765,9 +1766,9 @@ export function PosTerminal({
                     }
                   >
                     {deal.image_url && (
-                      <span
-                        style={{ backgroundImage: `url(${deal.image_url})` }}
-                      />
+                      <span className="pos-product-image">
+                        <Image src={deal.image_url} alt="" fill sizes="180px" loading="lazy" unoptimized />
+                      </span>
                     )}
                     <strong>{deal.name}</strong>
                     <b>{formatPkr(deal.deal_price)}</b>
@@ -1783,9 +1784,9 @@ export function PosTerminal({
                     disabled={!product.is_available || draftLocked}
                   >
                     {image(product) && (
-                      <span
-                        style={{ backgroundImage: `url(${image(product)})` }}
-                      />
+                      <span className="pos-product-image">
+                        <Image src={image(product)!} alt="" fill sizes="180px" loading="lazy" unoptimized />
+                      </span>
                     )}
                     <strong>{product.name}</strong>
                     <b>{formatPkr(product.price)}</b>
