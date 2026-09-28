@@ -10,16 +10,42 @@ import {
   type WaiterPosOrder,
 } from "@/components/waiter-pos-queue";
 import { mediaPreviewUrl } from "@/lib/media";
-import { requirePermission } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { getSelectedBranch } from "@/lib/branch";
 import { createClient } from "@/lib/supabase/server";
+import "./pos.css";
+
+function promotionIsCurrent(promo: {
+  starts_at: string | null;
+  ends_at: string | null;
+}) {
+  const now = Date.now();
+  return (
+    (!promo.starts_at || Date.parse(promo.starts_at) <= now) &&
+    (!promo.ends_at || Date.parse(promo.ends_at) > now)
+  );
+}
 
 export default async function Page({
   searchParams,
 }: {
   searchParams: Promise<{ replace?: string }>;
 }) {
-  const context = await requirePermission("pos.use");
+  const context = await requireAdmin();
+  if (
+    !context.capabilities["pos.web"] ||
+    (context.role !== "OWNER" && !context.permissions.includes("pos.use"))
+  ) {
+    return (
+      <section className="state-box">
+        <h1>Web POS is unavailable</h1>
+        <p>
+          Your restaurant needs an active Web POS entitlement and your account
+          needs counter access. Ask your owner or manager to review access.
+        </p>
+      </section>
+    );
+  }
   const supabase = await createClient();
   const params = await searchParams;
   const branch = await getSelectedBranch(
@@ -30,7 +56,8 @@ export default async function Page({
   if (!branch)
     return (
       <div className="state-box">
-        Create an active branch before opening POS.
+        Select an active branch from the branch switcher to open its counter.
+        POS cannot run across all branches at once.
       </div>
     );
   const [
@@ -47,6 +74,12 @@ export default async function Page({
     paymentMethods,
     posOrders,
     invoiceTemplate,
+    branchModes,
+    tables,
+    sessions,
+    deliveryAreas,
+    deliveryRules,
+    promotions,
   ] = await Promise.all([
     supabase
       .from("pos_sections")
@@ -56,7 +89,9 @@ export default async function Page({
       .order("sort_order"),
     supabase
       .from("branch_product_overrides")
-      .select("product_id,is_available,price_override,pos_visible,stock_available,sort_order")
+      .select(
+        "product_id,is_available,price_override,pos_visible,stock_available,sort_order",
+      )
       .eq("business_id", context.businessId)
       .eq("branch_id", branch.id),
     supabase
@@ -100,7 +135,9 @@ export default async function Page({
       .single(),
     supabase
       .from("business_operating_settings")
-      .select("pos_replacement_window_minutes,pos_recent_order_limit")
+      .select(
+        "pos_replacement_window_minutes,pos_recent_order_limit,tax_rate_bps",
+      )
       .eq("business_id", context.businessId)
       .maybeSingle(),
     supabase
@@ -110,7 +147,7 @@ export default async function Page({
       )
       .eq("business_id", context.businessId)
       .eq("branch_id", branch.id)
-      .not("waiter_id", "is", null)
+      .eq("service_mode", "DINE_IN")
       .eq("payment_status", "UNPAID")
       .neq("status", "CANCELLED")
       .order("created_at", { ascending: true }),
@@ -137,7 +174,71 @@ export default async function Page({
       )
       .eq("business_id", context.businessId)
       .maybeSingle(),
+    supabase
+      .from("branches")
+      .select("pickup_enabled,delivery_enabled")
+      .eq("id", branch.id)
+      .eq("business_id", context.businessId)
+      .single(),
+    supabase
+      .from("restaurant_tables")
+      .select("id,name")
+      .eq("business_id", context.businessId)
+      .eq("branch_id", branch.id)
+      .eq("is_active", true)
+      .order("name"),
+    supabase
+      .from("restaurant_table_sessions")
+      .select("table_id")
+      .eq("business_id", context.businessId)
+      .eq("branch_id", branch.id)
+      .eq("status", "OPEN"),
+    supabase
+      .from("delivery_areas")
+      .select("id,name")
+      .eq("branch_id", branch.id)
+      .eq("is_active", true)
+      .order("name"),
+    supabase
+      .from("delivery_rules")
+      .select("free_distance_km,extra_km_rate,maximum_distance_km")
+      .eq("branch_id", branch.id)
+      .maybeSingle(),
+    context.role === "OWNER" ||
+    context.permissions.includes("promotions.manage")
+      ? supabase
+          .from("promotions")
+          .select(
+            "code,discount_type,discount_value,maximum_discount,starts_at,ends_at",
+          )
+          .eq("business_id", context.businessId)
+          .eq("is_active", true)
+      : Promise.resolve({ data: [], error: null }),
   ]);
+  if (
+    [
+      products,
+      productOverrides,
+      assignments,
+      shift,
+      operating,
+      paymentMethods,
+      branchModes,
+    ].some((result) => result.error)
+  ) {
+    return (
+      <section className="state-box" role="alert">
+        <h1>Counter data could not load</h1>
+        <p>
+          Your saved cart is unchanged. Reload this page to reconnect before
+          taking payment.
+        </p>
+        <a className="button button--outline" href="/pos">
+          Retry POS
+        </a>
+      </section>
+    );
+  }
   let replacementOrder: PosReplacementOrder | null = null;
   let replacementError = "";
   if (params.replace) {
@@ -174,17 +275,27 @@ export default async function Page({
       replacementError = `This order's ${replacementWindowMinutes}-minute replacement window has expired.`;
     else replacementOrder = data as unknown as PosReplacementOrder;
   }
-  const overrides = new Map((productOverrides.data ?? []).map((row) => [row.product_id, row]));
-  const branchProducts = (products.data ?? []).flatMap((product) => {
-    const override = overrides.get(product.id);
-    if (override?.pos_visible === false) return [];
-    return [{
-      ...product,
-      is_available: (override?.is_available ?? product.is_available) && (override?.stock_available ?? true),
-      sale_price: override?.price_override ?? product.sale_price,
-      branch_sort_order: override?.sort_order ?? 2147483647,
-    }];
-  }).sort((first, second) => first.branch_sort_order - second.branch_sort_order);
+  const overrides = new Map(
+    (productOverrides.data ?? []).map((row) => [row.product_id, row]),
+  );
+  const branchProducts = (products.data ?? [])
+    .flatMap((product) => {
+      const override = overrides.get(product.id);
+      if (override?.pos_visible === false) return [];
+      return [
+        {
+          ...product,
+          is_available:
+            (override?.is_available ?? product.is_available) &&
+            (override?.stock_available ?? true),
+          sale_price: override?.price_override ?? product.sale_price,
+          branch_sort_order: override?.sort_order ?? 2147483647,
+        },
+      ];
+    })
+    .sort(
+      (first, second) => first.branch_sort_order - second.branch_sort_order,
+    );
   return (
     <>
       {replacementError && (
@@ -194,12 +305,42 @@ export default async function Page({
       )}
       {!shift.data && <PosShiftStart branchId={branch.id} />}
       <WaiterPosQueue
-        key={(waiterOrders.data ?? []).map((order) => order.id).join(":")}
+        key={branch.id}
+        businessId={context.businessId}
         branchId={branch.id}
         shift={shift.data}
         initialOrders={(waiterOrders.data ?? []) as WaiterPosOrder[]}
       />
       <PosTerminal
+        canRefund={
+          context.role === "OWNER" ||
+          context.permissions.includes("payments.refund")
+        }
+        canLookupCustomers={
+          context.role === "OWNER" ||
+          context.permissions.includes("customers.read")
+        }
+        operations={{
+          taxRateBps: operating.data?.tax_rate_bps ?? 0,
+          modes: [
+            ...(branchModes.data?.pickup_enabled ? ["TAKEAWAY", "PICKUP"] : []),
+            ...(tables.data?.length ? ["DINE_IN"] : []),
+            ...(branchModes.data?.delivery_enabled &&
+            deliveryRules.data &&
+            deliveryAreas.data?.length
+              ? ["DELIVERY"]
+              : []),
+          ],
+          tables: (tables.data ?? []).map((table) => ({
+            ...table,
+            occupied: (sessions.data ?? []).some(
+              (session) => session.table_id === table.id,
+            ),
+          })),
+          deliveryAreas: deliveryAreas.data ?? [],
+          deliveryRules: deliveryRules.data,
+          promotions: (promotions.data ?? []).filter(promotionIsCurrent),
+        }}
         canPrint={
           context.role === "OWNER" ||
           context.permissions.includes("receipts.print")
@@ -248,7 +389,8 @@ export default async function Page({
                 receipt_header_alignment:
                   invoiceTemplate.data?.receipt_header_alignment ?? "CENTER",
                 receipt_footer:
-                  invoiceTemplate.data?.thank_you ?? printing.data.receipt_footer,
+                  invoiceTemplate.data?.thank_you ??
+                  printing.data.receipt_footer,
                 receipt_note: invoiceTemplate.data?.footer_text ?? null,
                 show_logo: invoiceTemplate.data?.show_logo ?? true,
                 show_phone: invoiceTemplate.data?.show_phone ?? true,
