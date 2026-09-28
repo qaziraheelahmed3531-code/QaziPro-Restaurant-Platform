@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
-import { AppLoader } from "@italian-pizza/shared/app-loader";
+import { NavigationPending } from "@/components/navigation-pending";
 import { MOTION_DURATION, MOTION_EASE } from "@italian-pizza/shared/motion";
 import {
   ArchiveRestore,
@@ -441,7 +441,6 @@ export function AdminShell({
   const collapsedPreference = useSyncExternalStore(subscribeSidebarPreference, sidebarPreference, () => false);
   const compactNavigation = useSyncExternalStore(subscribeCompactNavigation, () => window.matchMedia(compactNavigationQuery).matches, () => false);
   const sidebarCollapsed = collapsedPreference && !compactNavigation;
-  const [pendingPath, setPendingPath] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(
       groups.map((group) => [
@@ -605,8 +604,6 @@ export function AdminShell({
                         "/tables",
                         "/waiter",
                       ].includes(item.href);
-                      const pending =
-                        pendingPath === item.href && !active;
                       return (
                         <Link
                           key={item.href}
@@ -615,19 +612,15 @@ export function AdminShell({
                           aria-label={sidebarCollapsed ? item.label : undefined}
                           prefetch={priority ? true : false}
                           aria-current={active ? "page" : undefined}
-                          data-pending={pending || undefined}
                           onPointerEnter={() => router.prefetch(item.href)}
                           onFocus={() => router.prefetch(item.href)}
                           onClick={() => {
-                            if (!active) setPendingPath(item.href);
                             setMenuOpen(false);
                           }}
                         >
                           <Icon aria-hidden="true" />
                           <span>{item.label}</span>
-                          {pending && (
-                            <AppLoader active label={`Opening ${item.label}`} />
-                          )}
+                          <NavigationPending active={active} label={item.label} />
                         </Link>
                       );
                     })}

@@ -72,7 +72,7 @@ export async function permanentlyDeleteRestaurantAction(form: FormData): Promise
   const businessId = text(form, "businessId")
   const slug = text(form, "confirmSlug")
   const reason = text(form, "reason")
-  if (!/^[0-9a-f-]{36}$/i.test(businessId) || text(form, "confirmDelete") !== "DELETE" || reason.length < 10) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(businessId) || text(form, "confirmDelete") !== "DELETE" || reason.length < 10 || reason.length > 500) {
     return { error: "Enter the restaurant key, DELETE, and an audit reason of at least 10 characters." }
   }
   const supabase = await createClient()
@@ -83,15 +83,42 @@ export async function permanentlyDeleteRestaurantAction(form: FormData): Promise
   let media: Awaited<ReturnType<typeof tenantStorageObjects>>
   try { media = await tenantStorageObjects(admin, businessId) }
   catch { return { error: "Storage safety check failed. Nothing was deleted." } }
-  const result = await supabase.rpc("platform_delete_restaurant", { p_business_id: businessId, p_confirm_slug: slug, p_reason: reason })
-  if (result.error || result.data !== true) return { error: "Permanent deletion failed safely. No partial database deletion was committed. Check dependencies and try again." }
+  // Keep a durable, tenant-scoped cleanup manifest before the parent vanishes.
+  // If the storage provider fails afterward, filenames are not lost and no
+  // unrelated bucket/folder has to be guessed for a follow-up cleanup.
+  const cleanupAuditId = randomUUID()
+  try {
+    const prepared = await admin.from("platform_audit_logs").insert({
+      id: cleanupAuditId, actor_user_id: context.userId, business_id: businessId,
+      action: "RESTAURANT_MEDIA_CLEANUP_PREPARED", target_type: "businesses", target_id: businessId,
+      reason, after_data: { slug, media },
+    })
+    if (prepared.error) throw prepared.error
+  } catch { return { error: "Cleanup audit could not be saved. Nothing was deleted." } }
+  try {
+    const result = await supabase.rpc("platform_delete_restaurant", { p_business_id: businessId, p_confirm_slug: slug, p_reason: reason })
+    if (result.error || result.data !== true) return { error: "Permanent deletion failed safely. No partial database deletion was committed. Check dependencies and try again." }
+  } catch {
+    return { error: "The deletion response was interrupted. Refresh the restaurant directory and review the audit before retrying; the database outcome is not yet confirmed." }
+  }
   let mediaFailed = false
+  const remaining: typeof media = []
   for (const { bucket, paths } of media) {
     for (let index = 0; index < paths.length; index += 100) {
-      const { error } = await admin.storage.from(bucket).remove(paths.slice(index, index + 100))
-      if (error) mediaFailed = true
+      const batch = paths.slice(index, index + 100)
+      try {
+        const { error } = await admin.storage.from(bucket).remove(batch)
+        if (error) throw error
+      } catch { mediaFailed = true; remaining.push({ bucket, paths: batch }) }
     }
   }
+  try {
+    const cleanupLog = await admin.from("platform_audit_logs").update({
+      action: mediaFailed ? "RESTAURANT_MEDIA_CLEANUP_PENDING" : "RESTAURANT_MEDIA_CLEANUP_COMPLETED",
+      after_data: { slug, media: remaining },
+    }).eq("id", cleanupAuditId).eq("actor_user_id", context.userId).eq("target_id", businessId)
+    if (cleanupLog.error) throw cleanupLog.error
+  } catch { mediaFailed = true } // The prepared manifest remains for reconciliation.
   revalidatePath("/restaurants")
   redirect(mediaFailed ? "/restaurants?deleted=media-pending" : "/restaurants?deleted=1")
 }

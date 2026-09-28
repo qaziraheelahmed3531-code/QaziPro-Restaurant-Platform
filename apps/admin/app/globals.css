@@ -3050,13 +3050,14 @@ textarea:focus-visible {
   gap: 2px;
   overflow: hidden;
 }
-.admin-nav a[data-pending="true"] {
+.admin-nav a:has([data-navigation-pending="true"]) {
   background: #fff5ec;
   color: var(--brand);
 }
 .admin-nav a .app-loader {
   margin-left: auto;
 }
+.admin-nav a > [data-navigation-pending] { margin-left: auto; display: inline-flex; }
 .button:active,
 .icon-action:active,
 .table-actions button:active {

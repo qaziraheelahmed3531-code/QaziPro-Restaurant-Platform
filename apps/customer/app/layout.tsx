@@ -87,7 +87,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         {!storefront.branch.id ? <BranchSelector storefront={storefront}/> : restriction?.prevent_storefront_access ? <BlockedAccount restaurantName={restaurantName} contactHref={contactHref}/> : <AppProvider storefront={storefront}>
           <StorefrontRefresh businessId={storefront.business.id ?? ""} branchId={storefront.branch.id ?? ""}/>
           <StorefrontMotion />
-          <TableContextBanner />
+          <TableContextBanner key={storefront.tableContext?.token ?? "no-table"} />
           <PushPreferences />
           {children}
           <GoogleReviewsSection />

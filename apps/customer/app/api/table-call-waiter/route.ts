@@ -7,12 +7,12 @@ const headers = { "Cache-Control": "private, no-store" }
 
 export async function POST(request: NextRequest) {
   if (request.headers.get("origin") !== request.nextUrl.origin) return new Response(null, { status: 403 })
-  const storefront = await getStorefrontSnapshot()
-  const table = storefront.tableContext
-  if (!table || !table.waiterCallEnabled || storefront.resolutionError) {
-    return NextResponse.json({ error: "Waiter calls aren't available for this table." }, { status: 404, headers })
-  }
   try {
+    const storefront = await getStorefrontSnapshot()
+    const table = storefront.tableContext
+    if (!table || !table.waiterCallEnabled || storefront.resolutionError) {
+      return NextResponse.json({ error: "Waiter calls aren't available for this table." }, { status: 404, headers })
+    }
     const allowed = await consumeRateLimit(request, "table-waiter-call", 6, 60, `${storefront.business.id}:${table.branchId}`)
     if (!allowed) return NextResponse.json({ error: "Please wait a moment before calling again." }, { status: 429, headers })
     const supabase = await createClient()
@@ -21,7 +21,8 @@ export async function POST(request: NextRequest) {
       const cooldown = error.code === "P0001"
       return NextResponse.json({ error: cooldown ? "Please wait before calling again." : "We couldn't call a waiter right now. Please try again." }, { status: cooldown ? 429 : 503, headers })
     }
-    return NextResponse.json({ status: data?.status ?? "PENDING", alreadyOpen: Boolean(data?.alreadyOpen) }, { headers })
+    if (!data?.id || !["PENDING", "ACKNOWLEDGED"].includes(data.status)) throw new Error("Waiter request not confirmed")
+    return NextResponse.json({ status: data.status, alreadyOpen: Boolean(data.alreadyOpen) }, { headers })
   } catch {
     return NextResponse.json({ error: "We couldn't call a waiter right now. Please try again." }, { status: 503, headers })
   }

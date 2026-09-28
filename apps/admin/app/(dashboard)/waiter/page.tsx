@@ -20,7 +20,7 @@ export default async function Page() {
     supabase.from("business_branding").select("logo_url").eq("business_id",context.businessId).maybeSingle(),
     supabase.from("restaurant_table_service_requests").select("id,status,created_at,restaurant_tables(name)").eq("business_id",context.businessId).eq("branch_id",branch.id).in("status",["PENDING","ACKNOWLEDGED"]).order("created_at",{ascending:true}),
   ])
-  return <><WaiterServiceRequests businessId={context.businessId} branchId={branch.id} initialRequests={(serviceRequests.data??[]) as WaiterCallRow[]} initialError={Boolean(serviceRequests.error)} /><WaiterTerminal
+  return <><WaiterServiceRequests key={`${context.businessId}:${branch.id}`} businessId={context.businessId} branchId={branch.id} initialRequests={(serviceRequests.data??[]) as WaiterCallRow[]} initialError={Boolean(serviceRequests.error)} /><WaiterTerminal
     businessId={context.businessId}
     waiterId={context.userId}
     branch={{id:branch.id,name:branch.restaurant_name??branch.name,city:branch.city}}
