@@ -20,5 +20,6 @@ supabase/.temp
 /docs/
 /scripts/
 /supabase/
+/test-results/
 /apps/customer/.next/
 /apps/customer/node_modules/
