@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import { createClient } from '@supabase/supabase-js';
@@ -31,11 +31,13 @@ const safeRetry = async (operation,label) => {
 };
 const business = randomUUID(), branch = randomUUID(), otherBranch = randomUUID(), product = randomUUID(), table = randomUUID();
 const slug = `qa-web-pos-${randomUUID().slice(0,8)}`;
-let userId, browser, created = false, passed = 0;
+let userId, browser, page, created = false, passed = 0;
 const pass = name => { passed++; console.log(`PASS ${name}`); };
 const insert = async (name, rows) => checked(await db.from(name).insert(rows),name);
 try {
   await insert('businesses',{id:business,slug,name:'Disposable Web POS Acceptance',is_active:true,city:'Islamabad'}); created=true;
+  const customerOrigin=`https://${slug}.staging.qazipro.com`;
+  await insert('business_domains',{business_id:business,hostname:new URL(customerOrigin).hostname,domain_type:'SUBDOMAIN',is_primary:true,is_active:true,verified_at:new Date().toISOString()});
   await insert('service_entitlements',['admin.restaurant','pos.web','kitchen','waiter','website.ordering','ordering.delivery','ordering.pickup','inventory'].map(capability_key=>({business_id:business,capability_key,enabled:true,source:'OVERRIDE'})));
   await insert('branches',[{id:branch,business_id:business,name:'Acceptance counter',code:'QA1',slug:'qa1',address:'Disposable fixture',city:'Islamabad',pickup_enabled:true,delivery_enabled:true},{id:otherBranch,business_id:business,name:'Restricted counter',code:'QA2',slug:'qa2',address:'Disposable fixture',city:'Islamabad',pickup_enabled:true,delivery_enabled:true}]);
   checked(await db.from('business_hours').upsert(Array.from({length:7},(_,day_of_week)=>({branch_id:branch,day_of_week,opens_at:'00:00',closes_at:'23:59:59',is_closed:false})),{onConflict:'branch_id,day_of_week'}),'hours');
@@ -59,13 +61,19 @@ try {
   await context.addCookies([...jar].map(([name,value])=>({name,value,url:origin,sameSite:'Lax'})).concat([{name:'ip-admin-business',value:business,url:origin},{name:'ip-admin-branch',value:branch,url:origin}]));
   await context.addInitScript(()=>{
     window.print=()=>{window.printCalls=(window.printCalls??0)+1};
-    window.posPerf={longTasks:[],cls:0,lcp:0,maxEventDuration:0,shifts:[]};
+    window.posPerf={longTasks:[],cls:0,layoutShiftTotal:0,lcp:0,maxEventDuration:0,shifts:[]};
+    let shiftSessionStart=0,shiftPrevious=0,shiftSessionValue=0;
     new PerformanceObserver(list=>list.getEntries().forEach(e=>window.posPerf.longTasks.push(Math.round(e.duration)))).observe({type:'longtask',buffered:true});
-    new PerformanceObserver(list=>list.getEntries().forEach(e=>{if(!e.hadRecentInput){window.posPerf.cls+=e.value;window.posPerf.shifts.push({at:Math.round(e.startTime),value:e.value,nodes:(e.sources??[]).map(s=>s.node?.className).filter(x=>typeof x==='string')})}})).observe({type:'layout-shift',buffered:true});
+    new PerformanceObserver(list=>list.getEntries().forEach(e=>{if(!e.hadRecentInput){
+      if(e.startTime-shiftPrevious<1000&&e.startTime-shiftSessionStart<5000)shiftSessionValue+=e.value;
+      else{shiftSessionStart=e.startTime;shiftSessionValue=e.value}
+      shiftPrevious=e.startTime;window.posPerf.cls=Math.max(window.posPerf.cls,shiftSessionValue);window.posPerf.layoutShiftTotal+=e.value;
+      window.posPerf.shifts.push({at:Math.round(e.startTime),value:e.value,nodes:(e.sources??[]).map(s=>s.node?.className).filter(x=>typeof x==='string')});
+    }})).observe({type:'layout-shift',buffered:true});
     new PerformanceObserver(list=>list.getEntries().forEach(e=>window.posPerf.lcp=e.startTime)).observe({type:'largest-contentful-paint',buffered:true});
     if(PerformanceObserver.supportedEntryTypes.includes('event'))new PerformanceObserver(list=>list.getEntries().forEach(e=>window.posPerf.maxEventDuration=Math.max(window.posPerf.maxEventDuration,e.duration))).observe({type:'event',buffered:true,durationThreshold:16});
   });
-  const page=await context.newPage(); const runtimeErrors=[]; page.on('pageerror',e=>runtimeErrors.push(e.message));
+  page=await context.newPage(); const runtimeErrors=[]; page.on('pageerror',e=>runtimeErrors.push(e.message));
   const devtools=await context.newCDPSession(page);
   await devtools.send('Profiler.enable');await devtools.send('Profiler.start');
   page.on('console',message=>{if(message.type()==='error'){
@@ -88,7 +96,8 @@ try {
   await page.goto(`${origin}/pos`,{waitUntil:'domcontentloaded',timeout:90000});
   const tile=page.getByRole('button',{name:/Acceptance Margherita.*Add to order/});
   await expect(tile).toBeVisible({timeout:45000});
-  console.log(`POS_READY_MS ${Date.now()-started}`);
+  const posReadyMs=Date.now()-started;
+  console.log(`POS_READY_MS ${posReadyMs}`);
   await mkdir(new URL('../../../test-results/pos',import.meta.url),{recursive:true});
   await page.screenshot({path:fileURLToPath(new URL('../../../test-results/pos/staging-pos.png',import.meta.url)),fullPage:true});
   pass('authenticated branch-scoped POS bootstrap');
@@ -124,7 +133,22 @@ try {
   console.log(JSON.stringify({concurrentMs:Date.now()-concurrentStarted,codes:results.map(result=>result.error?.code??'OK')}));
   assert.equal(checked(results[0],'concurrent sale').id,checked(results[1],'concurrent replay').id);pass('concurrent HTTP requests produce same sale');
   const qrTable=checked(await db.from('restaurant_tables').select('public_token').eq('id',table).single(),'QR table');
-  const qr=checked(await db.rpc('create_order_authoritative',{p_payload:{channel:'WEBSITE',branchId:branch,serviceMode:'DINE_IN',tableToken:qrTable.public_token,idempotencyKey:randomUUID(),customerName:'QR acceptance guest',customerPhone:'Counter',paymentMethod:'CASH_ON_DELIVERY',items:[{productId:product,quantity:1,modifiers:[]}]},p_customer_id:null}),'canonical QR order');
+  const guestContext=await browser.newContext({viewport:{width:1440,height:1000}});
+  const guest=await guestContext.newPage();
+  await guest.goto(`${customerOrigin}/t/${qrTable.public_token}`,{waitUntil:'domcontentloaded',timeout:90000});
+  const guestProduct=guest.getByRole('article').filter({has:guest.getByRole('heading',{name:'Acceptance Margherita',exact:true})});
+  await expect(guestProduct).toBeVisible({timeout:45000});
+  await guestProduct.getByRole('button',{name:'Add',exact:true}).click();
+  // Adding a simple item canonically opens the cart drawer automatically.
+  await guest.getByRole('link',{name:'Checkout',exact:true}).click();
+  await guest.getByLabel(/Full name/).fill('QR acceptance guest');
+  await guest.getByLabel(/Phone/).fill('03001234567');
+  await expect(guest.getByText('Dining at Acceptance table.',{exact:false})).toBeVisible();
+  await guest.getByRole('button',{name:'Place order',exact:true}).filter({visible:true}).first().click();
+  await expect.poll(async()=>checked(await db.from('orders').select('id').eq('business_id',business).eq('channel','WEBSITE'),'QR browser order').length,{timeout:45000}).toBe(1);
+  const qrRow=checked(await db.from('orders').select('id,order_number').eq('business_id',business).eq('channel','WEBSITE').single(),'QR browser receipt');
+  const qr={id:qrRow.id,orderNumber:qrRow.order_number};
+  pass('public QR route → full menu → cart → guest dine-in checkout');
   const bill=page.locator('.waiter-pos-queue article').filter({hasText:qr.orderNumber});
   const tableDisclosure=page.locator('.waiter-pos-queue > summary');
   if(await tableDisclosure.count())await tableDisclosure.click();
@@ -137,27 +161,54 @@ try {
   assert.deepEqual(qrSaved,{business_id:business,branch_id:branch,service_mode:'DINE_IN',payment_status:'PAID'});
   assert.equal(checked(await db.from('payment_transactions').select('id').eq('order_id',qr.id),'QR ledger').length,1);
   pass('canonical QR order reaches correct POS table and is paid once');
+  await page.getByLabel('Customer phone',{exact:true}).fill('03001234567');
+  await page.getByRole('button',{name:'Find existing customer',exact:true}).click();
+  await page.getByRole('button',{name:/QR acceptance guest/}).click();
+  await expect(page.getByLabel('Customer name',{exact:true})).toHaveValue('QR acceptance guest');
+  pass('canonical customer lookup attaches QR guest');
+  checked(await db.from('products').update({base_price:1200}).eq('id',product),'catalog price');
+  await expect(tile).toContainText('1,200',{timeout:45000});
+  pass('Admin catalog price reaches POS via realtime');
   checked(await db.from('products').update({is_available:false}).eq('id',product),'availability');
   try { await expect(page.getByRole('button',{name:/Acceptance Margherita.*Out of stock/})).toBeDisabled({timeout:45000}); }
   catch(error){console.log(JSON.stringify({path:new URL(page.url()).pathname,body:(await page.locator('body').innerText({timeout:5000})).slice(-3500),realtimeErrors,runtimeErrors}));throw error;}
   pass('Admin catalog availability reaches POS via realtime');
-  const performance=await page.evaluate(()=>window.posPerf);
+  const performance=await page.evaluate(()=>{
+    const nav=performance.getEntriesByType('navigation')[0];
+    return {...window.posPerf,ttfb:Math.round(nav.responseStart),domContentLoaded:Math.round(nav.domContentLoadedEventEnd)};
+  });
+  console.log(JSON.stringify({publicPerformance:performance}));
   const {profile}=await devtools.send('Profiler.stop');
   console.log(JSON.stringify({devtoolsCpuTop:profile.nodes.filter(n=>n.hitCount).sort((a,b)=>b.hitCount-a.hitCount).slice(0,8).map(n=>({function:n.callFrame.functionName,hits:n.hitCount,script:n.callFrame.url?.split('?')[0].split('/').pop()}))}));
   for(const width of [768,1024,1280,1366,1440]){
     await page.setViewportSize({width,height:1000});
-    // ResizeObserver/sidebar transitions settle asynchronously after a viewport change.
-    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-    const overflow=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,elements:[...document.querySelectorAll('main *')].filter(el=>el.getBoundingClientRect().right>innerWidth+1).slice(0,15).map(el=>({tag:el.tagName,class:el.className,right:Math.round(el.getBoundingClientRect().right)}))}));
-    if(overflow.scrollWidth>width+1)console.log(JSON.stringify({overflow}));
-    assert.ok(overflow.scrollWidth<=width+1);pass(`live responsive ${width}`);
+    // Await real finite transitions; a frame during the shell's grid transition is not its final layout.
+    await page.evaluate(async()=>{
+      document.documentElement.getBoundingClientRect();
+      await Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));
+    });
+    try { await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true); }
+    catch(error){
+      const overflow=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,elements:[...document.querySelectorAll('body *')].filter(el=>{
+        if(el.getBoundingClientRect().right<=innerWidth+1)return false;
+        for(let parent=el.parentElement;parent&&parent!==document.body;parent=parent.parentElement){if(/auto|scroll|hidden|clip/.test(getComputedStyle(parent).overflowX))return false;}
+        return true;
+      }).slice(0,30).map(el=>({tag:el.tagName,class:el.className,right:Math.round(el.getBoundingClientRect().right)}))}));
+      console.log(JSON.stringify({overflow}));throw error;
+    }
+    pass(`live responsive ${width}`);
   }
   await context.setOffline(true);await expect(page.getByText(/Offline/).first()).toBeVisible();await context.setOffline(false);pass('offline feedback and reconnect');
   checked(await db.from('service_entitlements').update({enabled:false}).eq('business_id',business).eq('capability_key','pos.web'),'disable fixture POS');
-  await page.reload({waitUntil:'domcontentloaded'});await expect(page.getByRole('heading',{name:'Web POS is unavailable'})).toBeVisible({timeout:30000});pass('Super Admin entitlement gate denies POS');
+  await expect(page.getByRole('heading',{name:'Web POS is unavailable'})).toBeVisible({timeout:75000});pass('Super Admin entitlement revocation denies open POS without manual reload');
   assert.deepEqual(runtimeErrors,[]);pass('no browser runtime errors');
-  console.log(JSON.stringify({passed,failed:0,origin,performance}));
-} catch(error) { console.error(`FAIL ${error.message}`);process.exitCode=1; }
+  const evidence={passed,failed:0,origin,recordedAt:new Date().toISOString(),posReadyMs,performance};
+  await writeFile(new URL('../../../test-results/pos/public-evidence.json',import.meta.url),JSON.stringify(evidence,null,2));
+  console.log(JSON.stringify(evidence));
+} catch(error) {
+  if(page){await mkdir(new URL('../../../test-results/pos',import.meta.url),{recursive:true});await page.screenshot({path:fileURLToPath(new URL('../../../test-results/pos/staging-failure.png',import.meta.url)),fullPage:true}).catch(()=>{});}
+  console.error(`FAIL ${error.message}`);process.exitCode=1;
+}
 finally {
   await browser?.close();
   if(created){

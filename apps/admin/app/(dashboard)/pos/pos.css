@@ -1,6 +1,18 @@
 .pos-page {
   --pos-fast: 120ms;
 }
+/* Long staff addresses must shrink inside the POS header's grid track. */
+.admin-shell:has(.pos-page) .admin-topbar__actions {
+  min-width: 0;
+  justify-content: flex-end;
+}
+.admin-shell:has(.pos-page) .admin-profile-menu { min-width: 0; }
+.admin-shell:has(.pos-page) .admin-topbar__identity { min-width: 0; max-width: 170px; }
+.admin-shell:has(.pos-page) .admin-topbar__identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .waiter-pos-queue > summary {
   cursor: pointer;
   min-height: 44px;
