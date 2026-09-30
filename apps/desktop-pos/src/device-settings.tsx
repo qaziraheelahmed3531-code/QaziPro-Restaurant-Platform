@@ -8,9 +8,9 @@ export function DeviceSettings({branchId}:{branchId:string}){
  };
  const diagnostics=async()=>{
   setBusy(true);try{
-   const [meta,id,rows]=await Promise.all([window.desktopPOS?.meta(),deviceId(),db.orders.where("branchId").equals(branchId).toArray()]);
+   const [meta,id,rows,shifts,prints]=await Promise.all([window.desktopPOS?.meta(),deviceId(),db.orders.where("branchId").equals(branchId).toArray(),db.shifts.where("branchId").equals(branchId).toArray(),db.printJobs.where("branchId").equals(branchId).toArray()]);
    // Deliberate allowlist: no customer, receipt, token, address, payload or stack.
-   const summary={schemaVersion:db.verno,appVersion:meta?.version,platform:meta?.platform,deviceId:id,branchId,online:navigator.onLine,generatedAt:new Date().toISOString(),counts:{pending:rows.filter(r=>r.syncState!=="SYNCED").length,attention:rows.filter(r=>r.syncNeedsAttention).length},lastSync:rows.map(r=>r.syncedAt).filter(Boolean).sort().at(-1)??null};
+   const summary={schemaVersion:db.verno,appVersion:meta?.version,platform:meta?.platform,deviceId:id,branchId,online:navigator.onLine,generatedAt:new Date().toISOString(),counts:{pending:rows.filter(r=>r.syncState!=="SYNCED").length,attention:rows.filter(r=>r.syncNeedsAttention).length,shiftsPending:shifts.filter(s=>s.syncedRevision!==(s.revision??1)).length,shiftsAttention:shifts.filter(s=>s.syncNeedsAttention).length,kitchenAttention:prints.filter(p=>p.state!=="SUBMITTED").length},lastSync:rows.map(r=>r.syncedAt).filter(Boolean).sort().at(-1)??null};
    const url=URL.createObjectURL(new Blob([JSON.stringify(summary,null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="qazipro-device-diagnostics.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
    setNotice("Diagnostics prepared without customer details or credentials.");
   }catch{setNotice("Diagnostics could not be prepared. Check available device storage.");}finally{setBusy(false);}

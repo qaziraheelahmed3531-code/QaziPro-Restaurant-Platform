@@ -32,7 +32,7 @@ try{
     request.onsuccess=()=>{request.result.close();resolve()};request.onerror=()=>reject(request.error);
   });
   await db.open();
-  check(db.verno===5&&(await db.orders.get('pre-upgrade-sale')).syncState==='PENDING'&&Boolean(await db.held.get('pre-upgrade-hold'))&&(await deviceId())==='pre-upgrade-device','v2 to v5 migration preserves unsynced sale, held order and device identity');
+  check(db.verno===6&&(await db.orders.get('pre-upgrade-sale')).syncState==='PENDING'&&Boolean(await db.held.get('pre-upgrade-hold'))&&(await deviceId())==='pre-upgrade-device','v2 to v6 migration preserves unsynced sale, held order and device identity');
   await db.orders.clear();
   await Promise.all(Array.from({length:30},(_,i)=>commitSale(fixture('sale-'+i))));
   const sales=await db.orders.toArray();check(new Set(sales.map(s=>s.tokenNumber)).size===30,'30 concurrent sales allocate unique atomic tokens');

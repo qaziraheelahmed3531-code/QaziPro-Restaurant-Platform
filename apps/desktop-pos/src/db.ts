@@ -1,5 +1,5 @@
 import Dexie,{type EntityTable} from "dexie"
-import type {CatalogSnapshot,DesktopDraft,HeldOrder,LocalOrder,LocalShift,WebsiteOrder} from "./types"
+import type {CatalogSnapshot,DesktopDraft,HeldOrder,LocalOrder,LocalShift,WebsiteOrder,KitchenPrintJob} from "./types"
 
 class PosDatabase extends Dexie{
   catalogs!:EntityTable<CatalogSnapshot,"branchId">
@@ -9,7 +9,8 @@ class PosDatabase extends Dexie{
   settings!:EntityTable<{key:string;value:string},"key">
   drafts!:EntityTable<DesktopDraft,"key">
   cloudOrders!:EntityTable<WebsiteOrder & {branchId:string},"id">
-  constructor(){super("kings-cafe-offline-pos-v1",{chromeTransactionDurability:"strict"});this.version(1).stores({catalogs:"branchId,updatedAt",orders:"id,branchId,shiftId,businessDate,soldAt,syncState,serverOrderId",shifts:"id,branchId,status,openedAt",held:"id,createdAt",settings:"key"});this.version(2).stores({catalogs:"branchId,updatedAt",orders:"id,branchId,shiftId,businessDate,soldAt,syncState,serverOrderId,operationalStatus,paymentMethodCode",shifts:"id,branchId,status,openedAt",held:"id,createdAt",settings:"key"});this.version(3).stores({held:"id,branchId,createdAt"});this.version(4).stores({drafts:"key,branchId,userId",held:"id,branchId,userId,createdAt"});this.version(5).stores({cloudOrders:"id,branchId,updated_at"})}
+  printJobs!:EntityTable<KitchenPrintJob,"id">
+  constructor(){super("kings-cafe-offline-pos-v1",{chromeTransactionDurability:"strict"});this.version(1).stores({catalogs:"branchId,updatedAt",orders:"id,branchId,shiftId,businessDate,soldAt,syncState,serverOrderId",shifts:"id,branchId,status,openedAt",held:"id,createdAt",settings:"key"});this.version(2).stores({catalogs:"branchId,updatedAt",orders:"id,branchId,shiftId,businessDate,soldAt,syncState,serverOrderId,operationalStatus,paymentMethodCode",shifts:"id,branchId,status,openedAt",held:"id,createdAt",settings:"key"});this.version(3).stores({held:"id,branchId,createdAt"});this.version(4).stores({drafts:"key,branchId,userId",held:"id,branchId,userId,createdAt"});this.version(5).stores({cloudOrders:"id,branchId,updated_at"});this.version(6).stores({printJobs:"id,branchId,orderId,state,createdAt"})}
 }
 export const db=new PosDatabase()
 export const localId=()=>crypto.randomUUID()

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DesktopDialogs } from "./dialog-accessibility";
 import { clearOfflineAccess, permitsOffline, readOfflineAccess, requireOfflinePermission } from "./offline-access";
 import { CashManagement } from "./cash-management";
+import { KitchenOrderPrint, KitchenSettings } from "./kitchen-settings";
 import { HardwareSettings, printReceipt } from "./hardware";
 import { cachedCloudOrders } from "./cloud-orders";
 import { authStorage } from "./auth-storage";
@@ -419,7 +420,8 @@ export function App() {
       const pending=await db.orders.where("syncState").notEqual("SYNCED").count();
       const drafts=await db.drafts.toArray();
       const shifts=await db.shifts.toArray();
-      await window.desktopUpdates?.safety(!cart.length&&!savingSale&&!checkoutOpen&&!syncing&&!pending&&!drafts.some(d=>d.items?.length)&&!shifts.some(s=>s.syncedRevision!==(s.revision??1)));
+      const printing=await db.printJobs.where("state").anyOf("QUEUED","PRINTING").count();
+      await window.desktopUpdates?.safety(!cart.length&&!savingSale&&!checkoutOpen&&!syncing&&!pending&&!printing&&!drafts.some(d=>d.items?.length)&&!shifts.some(s=>s.syncedRevision!==(s.revision??1)));
     };
     void report().catch(()=>window.desktopUpdates?.safety(false));
     const interval=setInterval(()=>void report().catch(()=>window.desktopUpdates?.safety(false)),2000);
@@ -1470,8 +1472,11 @@ export function App() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search product or SKU"
+                    aria-label="Search product or SKU"
+                    title="Press / to focus search. Escape closes dialogs. F11 toggles fullscreen."
                   />
                 </label>
+                <small className="keyboard-hint">/ Search · Esc Close dialog · F11 Fullscreen</small>
                 <div className="categories">
                   <button
                     className={category === "all" ? "active" : ""}
@@ -1609,8 +1614,8 @@ export function App() {
         )}
         {view === "settings" && (
           <>
-          <CashManagement shift={shift} orders={orders} businessId={catalog.businessId} onChange={async()=>{await refreshLocal(catalog.branchId);}}/>
           <SettingsView
+            cashManagement={<CashManagement shift={shift} orders={orders} businessId={catalog.businessId} onChange={async()=>{await refreshLocal(catalog.branchId);}}/>}
             catalog={catalog}
             orders={orders}
             online={online}
@@ -2092,6 +2097,8 @@ function Cart({
             </div>
             <span>
               <button
+                aria-label={`Decrease ${line.name} quantity`}
+                disabled={line.quantity <= 1}
                 onClick={() =>
                   setCart((current) =>
                     current.map((x) =>
@@ -2106,6 +2113,7 @@ function Cart({
               </button>
               {line.quantity}
               <button
+                aria-label={`Increase ${line.name} quantity`}
                 onClick={() =>
                   setCart((current) =>
                     current.map((x) =>
@@ -2119,6 +2127,7 @@ function Cart({
                 <Plus />
               </button>
               <button
+                aria-label={`Remove ${line.name}`}
                 onClick={() =>
                   setCart((current) =>
                     current.filter((x) => x.lineId !== line.lineId),
@@ -2685,11 +2694,12 @@ function Receipt({
     <div className="modal receipt-modal">
       <section>
         <header>
-          <h2>Receipt ready</h2>
+        <h2>Receipt ready</h2>
           <button onClick={close}>
             <X />
           </button>
         </header>
+        <KitchenOrderPrint catalog={catalog} order={order}/>
         <div className="desktop-receipt-batch">
           {Array.from({ length: copies }, (_, index) => (
             <div className="desktop-receipt-copy" key={index}>
@@ -2999,6 +3009,7 @@ function Orders({
 }
 
 function SettingsView({
+  cashManagement,
   catalog,
   orders,
   online,
@@ -3015,6 +3026,7 @@ function SettingsView({
   deviceSoundDataUrl,
   setDeviceSoundDataUrl,
 }: {
+  cashManagement: React.ReactNode;
   catalog: CatalogSnapshot;
   orders: LocalOrder[];
   online: boolean;
@@ -3033,7 +3045,9 @@ function SettingsView({
 }) {
   return (
     <div className="settings-panel">
+      {cashManagement}
       <HardwareSettings branchId={catalog.branchId}/>
+      <KitchenSettings catalog={catalog}/>
       <DeviceSettings branchId={catalog.branchId}/>
       <h2>Offline-first connection</h2>
       <p>

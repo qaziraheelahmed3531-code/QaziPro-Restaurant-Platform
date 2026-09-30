@@ -28,7 +28,7 @@ try{
    const restarted=Date.now();app=await launch(true);page=await app.firstWindow();page.on('pageerror',error=>errors.push(error.message));
    assert.equal(resolve(await app.evaluate(({app})=>app.getPath('userData'))),resolve(profile));
    assert.equal(await page.evaluate(()=>fetch('https://example.com').then(()=>false,()=>true)),true,'restart backend transport must be blocked');
-   try{await expect(page.getByRole('button',{name:/Offline Pizza/})).toBeVisible({timeout:30000});}
+   try{await expect(page.getByRole('button',{name:'O Offline Pizza Rs 1,000 P1',exact:true})).toBeVisible({timeout:30000});}
    catch(error){
      await page.evaluate(seed.outputFiles[0].text);
      console.log('CRASH_RECOVERY_DIAGNOSTIC',await page.evaluate(async()=>{
@@ -76,7 +76,8 @@ try{
  await page.evaluate(async()=>{
    await window.fixtureDB.catalogs.put({branchId:'native-branch',businessId:'native-business',catalogVersionId:'fixture-version',branchName:'Offline counter',businessName:'Native Fixture',city:'Fixture',logoUrl:null,logoDataUrl:null,faviconUrl:null,faviconDataUrl:null,primaryColor:'#a92114',secondaryColor:'#e7a81a',replacementWindowMinutes:10,recentOrderLimit:10,desktopOrderSound:false,paymentMethods:[{id:'cash',code:'CASH',name:'Cash',kind:'CASH',requiresReference:false,sortOrder:0},{id:'card',code:'CARD',name:'Terminal',kind:'CARD',requiresReference:true,sortOrder:1}],categories:[{id:'food',name:'Food'}],products:[{id:'pizza',categoryId:'food',name:'Offline Pizza',sku:'P1',price:1000,imageUrl:null,imageDataUrl:null,groups:[],variants:[]}],deals:[],updatedAt:new Date().toISOString()});
    await window.fixtureDB.shifts.put({id:'native-shift',branchId:'native-branch',openingCash:0,openedAt:new Date().toISOString(),closedAt:null,countedCash:null,status:'OPEN',syncedAt:null});
-   await window.desktopCredentials.set('sb-desktop-offline-access',JSON.stringify({userId:'native-staff',branches:[{id:'native-branch',business_id:'native-business'}],verifiedAt:Date.now(),expiresAt:Date.now()+3600000}));
+   await window.desktopCredentials.set('sb-desktop-offline-access',JSON.stringify({userId:'native-staff',branches:[{id:'native-branch',business_id:'native-business',permissions:['receipts.print','register.manage']}],verifiedAt:Date.now(),expiresAt:Date.now()+3600000}));
+   await window.fixtureDB.settings.put({key:'kitchen-printer:native-branch',value:'QaziPRO deliberate missing printer fixture'});
    await window.fixtureDB.settings.put({key:'locked',value:'false'});
    const expires=Math.floor(Date.now()/1000)+3600;
    const token=btoa(JSON.stringify({alg:'none'}))+'.'+btoa(JSON.stringify({sub:'native-staff',exp:expires}))+'.fixture';
@@ -90,7 +91,7 @@ try{
  // Electron's navigator.onLine follows OS adapter state, not DevTools network
  // emulation. Assert actual transport failure and the application's outage UX.
  assert.equal(await page.evaluate(()=>fetch('https://example.com').then(()=>false,()=>true)),true,'actual network request must fail');
- const product=page.getByRole('button',{name:/Offline Pizza/});
+ const product=page.getByRole('button',{name:'O Offline Pizza Rs 1,000 P1',exact:true});
  try{await expect(product).toBeVisible({timeout:30000})}catch(error){console.log(JSON.stringify({body:await page.locator('body').innerText(),errors}));throw error}
  metrics.cachedMenuMs=Date.now()-warmStarted;
  await product.evaluate(async button=>{const started=performance.now();button.click();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));window.nativePerf.interactions.push(performance.now()-started)});
@@ -100,6 +101,15 @@ try{
  await expect.poll(()=>page.evaluate(async()=>(await window.fixtureDB.drafts.toArray())[0]?.items.length)).toBe(2);
  await crashRestart();await expect(page.locator('.cart-lines')).toContainText('Offline Pizza');
  console.log('PASS actual network disconnected: cashier cart survives SIGKILL and fresh offline process launch');
+ const increase=page.getByRole('button',{name:'Increase Offline Pizza quantity'}).first();
+ const decrease=page.getByRole('button',{name:'Decrease Offline Pizza quantity'}).first();
+ await expect(decrease).toBeDisabled();await increase.focus();await page.keyboard.press('Enter');await expect(decrease).toBeEnabled();
+ await decrease.focus();await page.keyboard.press('Enter');await expect(decrease).toBeDisabled();
+ assert.equal(await increase.evaluate(button=>{const bounds=button.getBoundingClientRect();return bounds.width>=44&&bounds.height>=44}),true);
+ await increase.focus();await page.keyboard.press('/');await expect(page.getByRole('textbox',{name:'Search product or SKU'})).toBeFocused();
+ await page.keyboard.type('/');await expect(page.getByRole('textbox',{name:'Search product or SKU'})).toHaveValue('/');
+ await page.getByRole('textbox',{name:'Search product or SKU'}).fill('');
+ console.log('PASS labeled 44px quantity controls, keyboard quantity and non-conflicting search shortcut');
  const checkout=page.getByRole('button',{name:/Checkout/});await checkout.click();
  await expect(page.getByRole('button',{name:/Terminal CARD/})).toBeDisabled();
  console.log('PASS offline terminal payment disabled');
@@ -111,8 +121,18 @@ try{
  await page.evaluate(seed.outputFiles[0].text);
  const offlineOrders=await page.evaluate(()=>window.fixtureDB.orders.toArray());assert.equal(offlineOrders.length,1);assert.equal(offlineOrders[0].total,2000);assert.equal(offlineOrders[0].syncState,'PENDING');
  console.log('PASS actual offline double submit creates one durable cash sale, no fake cloud confirmation');
+ await page.getByRole('button',{name:'Send local kitchen ticket',exact:true}).evaluate(button=>{button.click();button.click()});
+ await expect(page.getByText('Kitchen printer unavailable.',{exact:false})).toBeVisible();
+ assert.equal(await page.evaluate(()=>window.fixtureDB.printJobs.count()),1);
+ assert.equal((await page.evaluate(()=>window.fixtureDB.printJobs.toArray()))[0].state,'FAILED');
+ console.log('PASS native kitchen ticket validates unavailable OS destination without fake print or duplicate job');
  await crashRestart();await page.evaluate(seed.outputFiles[0].text);assert.equal(await page.evaluate(()=>window.fixtureDB.orders.count()),1);
  await expect(page.locator('.cart-lines')).not.toContainText('Offline Pizza');console.log('PASS restart after commit retains sale and does not resurrect paid cart');
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await expect(page.getByRole('region',{name:'Local kitchen diagnostics'})).toContainText('FAILED');
+ await page.getByRole('button',{name:'Discover kitchen printers',exact:true}).click();
+ await expect(page.getByLabel('Kitchen printer')).toContainText('QaziPRO deliberate missing printer fixture');
+ await page.getByRole('button',{name:'New sale',exact:true}).click();
  for(const [width,height] of [[1024,768],[1366,768],[1440,900],[1920,1080]]){
    await app.evaluate(({BrowserWindow},{width,height})=>{const window=BrowserWindow.getAllWindows()[0];window.unmaximize();window.setContentSize(width,height)},{width,height});
    await expect.poll(()=>page.evaluate(()=>innerWidth)).toBe(width);
@@ -124,7 +144,13 @@ try{
  metrics.heapUsedBytes=await page.evaluate(()=>performance.memory?.usedJSHeapSize??null);
  await mkdir(new URL('../../../test-results/desktop',import.meta.url),{recursive:true});
  await page.screenshot({path:fileURLToPath(new URL('../../../test-results/desktop/native-counter.png',import.meta.url))});
- await writeFile(new URL(`../../../test-results/desktop/${packaged?'packaged':'native'}-evidence.json`,import.meta.url),JSON.stringify({recordedAt:new Date().toISOString(),packaged,metrics,errors,passed:13,failed:0},null,2));
+ await writeFile(new URL(`../../../test-results/desktop/${packaged?'packaged':'native'}-evidence.json`,import.meta.url),JSON.stringify({recordedAt:new Date().toISOString(),packaged,metrics,errors,passed:15,failed:0},null,2));
  console.log(JSON.stringify({nativePerformance:metrics}));
- console.log('13 passed, 0 failed; cash UI tested offline; physical printer/provider and server delivery NOT tested');
+ console.log('15 passed, 0 failed; cash UI tested offline; physical printer/provider and server delivery NOT tested');
+}catch(error){
+ await mkdir(new URL('../../../test-results/desktop',import.meta.url),{recursive:true});
+ const failedPage=app?.windows().at(-1);
+ if(failedPage)await failedPage.screenshot({path:fileURLToPath(new URL('../../../test-results/desktop/native-failure.png',import.meta.url))}).catch(()=>{});
+ await writeFile(new URL('../../../test-results/desktop/native-failure.txt',import.meta.url),String(error));
+ throw error;
 }finally{await app?.close();assert.ok(resolve(profile).startsWith(resolve(tmpdir()))&&profile.includes('qazipro-native-test-'));await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:200})}

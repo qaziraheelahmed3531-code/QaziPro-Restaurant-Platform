@@ -6,6 +6,8 @@ export type ModifierOption = {
   price: number;
   isDefault: boolean;
 };
+export type KitchenTicket={width:58|80;title:string;branch:string;reference:string;notes:string;lines:Array<{quantity:number;name:string;details:string[]}>};
+export type KitchenPrintJob={id:string;branchId:string;orderId:string;deviceName:string;ticket:KitchenTicket;state:"QUEUED"|"PRINTING"|"SUBMITTED"|"CANCELLED"|"FAILED"|"UNKNOWN";message:string;createdAt:string;updatedAt:string};
 export type ModifierGroup = {
   id: string;
   name: string;

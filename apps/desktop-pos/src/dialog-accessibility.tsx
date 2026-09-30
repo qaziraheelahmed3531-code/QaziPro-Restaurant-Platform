@@ -21,7 +21,15 @@ export function DesktopDialogs() {
       frame = requestAnimationFrame(() => controls(next)[0]?.focus({preventScroll:true}));
     };
     const keydown = (event: KeyboardEvent) => {
-      if (!active) return;
+      if (!active) {
+        const target = event.target;
+        if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey &&
+            !(target instanceof Element && target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))) {
+          const search = document.querySelector<HTMLInputElement>('input[aria-label="Search product or SKU"]');
+          if (search) { event.preventDefault(); search.focus(); }
+        }
+        return;
+      }
       if (event.key === "Escape") {
         const close = active.querySelector<HTMLButtonElement>("header button");
         if (close && !close.disabled) { event.preventDefault(); close.click(); }

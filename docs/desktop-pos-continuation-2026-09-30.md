@@ -197,3 +197,53 @@ GHSA-vcvr-r3jv-pc5j; nodemailer and brace-expansion high advisories. No blind au
 fix performed. Review scoped patch upgrades and regressions before production.
 Tables/modes, encrypted operational DB, kitchen routing/diagnostics, revocation
 backlog reconciliation, installer upgrade, distribution and full role matrix remain.
+
+## Continuation verified at 2026-09-30 18:53 UTC
+
+Kitchen software and basic cashier keyboard improvements are now implemented:
+
+- One explicitly configured local branch kitchen printer, available without cloud.
+  This is not station routing or LAN KDS. The receipt screen provides a separate
+  manual kitchen action and warns against duplicating an existing receipt kitchen copy.
+- Version 6 adds durable print jobs. Order/revision identity deduplicates rapid taps;
+  the database claims a job before native IPC. Interrupted/uncertain attempts are
+  never automatically replayed. Operator-confirmed COPY retains the original audit
+  and can use a newly selected fallback printer.
+- Typed, bounded and escaped 58/80mm preparation documents render in a sandboxed,
+  JavaScript-disabled hidden window. Only the trusted main renderer can invoke IPC.
+  OS submission is not reported as confirmed physical paper output.
+- Hardware settings now include discovery, selected destination, diagnostic ticket,
+  recent job states and explicit recovery. Diagnostics export includes only counts,
+  not ticket/customer payloads. Pending printing also blocks updater restart.
+- Quantity/remove buttons have accessible names; quantity targets are 44px and
+  decrement disables at one. Documented `/` search preserves typing in editable
+  fields. Cash management uses the existing settings scroll container.
+
+### Current test/build evidence
+
+29 reliability, 16 shift reconciliation, 6 KDS status reconciliation, 8 kitchen
+queue and 11 native adapter checks pass. Packaged native groups: **15 passed,
+0 failed**, including real disconnected process-kill recovery, keyboard controls,
+missing OS printer failure without duplicate jobs, and 1024/1366/1440/1920 layouts.
+The first native attempt exposed an ambiguous test locator after accessibility
+labels were added; the exact accessible locator was corrected and the full run passed.
+No real paper was printed. Tests use disposable profiles; no production data touched.
+
+Latest packaged measurements, after packaging finished: cold login 3798ms, cached
+menu 189ms, add-to-paint 20.9ms, disconnected process restarts 3978/1039ms, short-run
+heap 10MB. Long tasks 74/151/88ms remain; **full performance gate is not PASS**.
+Renderer errors: none. This is not an hours-long memory or physical touch test.
+
+Windows staging artifacts rebuilt at 18:52:47 UTC, unsigned, publish disabled:
+- Setup SHA256 `ebea147470d20484c19de6f35b238995ec9e2de4983235d05e70300d6d23b36c`
+- Portable SHA256 `a76b2db3f444f8c0960b1bc49c523c20626888a464c9a4884cdd0dc5dfbfd278`
+
+Version 2 to version 6 migration preserves pending sales, held orders and device
+identity in regression tests. A real old-installer to new-installer upgrade is still
+unverified. No new server migration or Web deployment in this kitchen batch.
+
+Remaining independent software: canonical table/order modes, encrypted operational
+DB, complete revoked-backlog policy, late-commit/delete backfill, full offline RBAC,
+installer-upgrade preservation, distribution links/role foundation, complete
+performance/long-session acceptance and dependency advisory remediation. Hardware
+acceptance is separate and is not the reason these remain incomplete.

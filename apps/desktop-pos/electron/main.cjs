@@ -14,6 +14,8 @@ const crypto = require("node:crypto")
 const { pathToFileURL } = require("node:url")
 const { createSecureStore } = require("./secure-store.cjs")
 const { createPrinterAdapter } = require("./printer-adapter.cjs")
+const { createTicketPrinter } = require("./ticket-printer.cjs")
+const ticketPrinter=createTicketPrinter({createWindow:()=>new BrowserWindow({show:false,width:400,height:600,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,javascript:false}})})
 const { createUpdateAdapter } = require("./update-adapter.cjs")
 const runtime=JSON.parse(fs.readFileSync(path.join(__dirname,"../dist/desktop-runtime.json"),"utf8"))
 let updater
@@ -281,6 +283,7 @@ handle("desktop:fullscreen",()=>{mainWindow.setFullScreen(!mainWindow.isFullScre
 handle("desktop:printers", async (event) =>
   printerFor(event.sender).list())
 handle("desktop:print-receipt", (event,options)=>printerFor(event.sender).print(options))
+handle("desktop:print-ticket",(_event,payload)=>ticketPrinter.print(payload))
 handle(
   "desktop:print",
   (event) =>
