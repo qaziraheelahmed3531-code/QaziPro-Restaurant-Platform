@@ -2,18 +2,20 @@ import type { Metadata } from "next"
 import { cache } from "react"
 
 import { AdminShell } from "@/components/admin-shell"
-import { requireAdmin } from "@/lib/auth"
+import { getAdminAccessResolution, requireAdmin } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
 
 const getDashboardChrome = cache(async () => {
-  const context = await requireAdmin()
-  const { data: branding } = await (await createClient())
+  const contextPromise = requireAdmin()
+  const access=await getAdminAccessResolution()
+  const brandingPromise=access.allowed&&access.businessId?(await createClient())
     .from("business_branding")
     .select("favicon_url,primary_color,secondary_color,text_color")
-    .eq("business_id", context.businessId)
-    .maybeSingle()
+    .eq("business_id", access.businessId)
+    .maybeSingle():Promise.resolve({data:null})
+  const [context,{data:branding}]=await Promise.all([contextPromise,brandingPromise])
   return { context, branding }
 })
 

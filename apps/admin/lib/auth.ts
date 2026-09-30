@@ -89,14 +89,22 @@ export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
   const access = await getAdminAccessResolution()
   if (!access.allowed || !access.membershipId || !access.businessId || !access.role) return null
   const requestedBranch = cookieStore.get("ip-admin-branch")?.value
+  const resolvedBranches=access.branchIds??[]
+  const anticipatedBranch=requestedBranch&&requestedBranch!=="all"
+    ? (resolvedBranches.includes(requestedBranch)?requestedBranch:null)
+    : resolvedBranches.length===1?resolvedBranches[0]:null
+  const entitlementRequest=(branchId:string|null)=>supabase.rpc("resolve_runtime_entitlements",{
+    p_business_id:access.businessId!,p_branch_id:branchId,p_capability_keys:[...runtimeCapabilityKeys],
+  })
   // All three reads are scoped by the canonical access resolution. Starting
   // them together removes one network waterfall without caching authorization.
-  const [membershipResult,permissionResult,branchesResult] = await Promise.all([
+  const [membershipResult,permissionResult,branchesResult,anticipatedEntitlements] = await Promise.all([
     supabase.from("staff_memberships")
     .select("business_id,branch_id,role,businesses!inner(name),staff_membership_branches(branch_id)")
     .eq("id", access.membershipId).eq("user_id", userId).eq("is_active", true).maybeSingle(),
     access.role === "OWNER" ? Promise.resolve({ data: [], error: null }) : supabase.rpc("effective_permissions", { p_business_id: access.businessId }),
     supabase.from("branches").select("id,restaurant_name,name,city,timezone,location_revision,address,formatted_address,phone,pickup_enabled,delivery_enabled").eq("business_id",access.businessId).eq("is_active",true).order("sort_order"),
+    entitlementRequest(anticipatedBranch),
   ])
   const data = membershipResult.data
   if (!data) return null
@@ -110,11 +118,9 @@ export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
   const availableBranches=allBranches.filter(row=>allowedBranchIds.includes(String(row.id)))
   const selectedBranch=requestedBranch&&requestedBranch!=="all"?availableBranches.find(row=>String(row.id)===requestedBranch):availableBranches.length===1?availableBranches[0]:null
   const assignedBranchId=data.role==="OWNER"||allowedBranchIds.length!==1?null:allowedBranchIds[0]
-  const entitlementResult=await supabase.rpc("resolve_runtime_entitlements",{
-    p_business_id:data.business_id,
-    p_branch_id:selectedBranch?.id??null,
-    p_capability_keys:[...runtimeCapabilityKeys],
-  })
+  // Canonical resolver scopes the parallel request. If branch state changed
+  // during resolution, discard its result and resolve the actual selection.
+  const entitlementResult=(selectedBranch?.id??null)===anticipatedBranch?anticipatedEntitlements:await entitlementRequest(selectedBranch?.id??null)
   const entitlementRows=(entitlementResult.data??{}) as Record<string,{enabled?:boolean}>
   const capabilities=Object.fromEntries(runtimeCapabilityKeys.map(key=>[key,Boolean(entitlementRows[key]?.enabled)]))
   return {

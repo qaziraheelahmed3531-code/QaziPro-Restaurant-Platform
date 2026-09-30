@@ -38,7 +38,7 @@ try {
   await insert('businesses',{id:business,slug,name:'Disposable Web POS Acceptance',is_active:true,city:'Islamabad'}); created=true;
   const customerOrigin=`https://${slug}.staging.qazipro.com`;
   await insert('business_domains',{business_id:business,hostname:new URL(customerOrigin).hostname,domain_type:'SUBDOMAIN',is_primary:true,is_active:true,verified_at:new Date().toISOString()});
-  await insert('service_entitlements',['admin.restaurant','pos.web','kitchen','waiter','website.ordering','ordering.delivery','ordering.pickup','inventory'].map(capability_key=>({business_id:business,capability_key,enabled:true,source:'OVERRIDE'})));
+  await insert('service_entitlements',['admin.restaurant','pos.web','pos.desktop','kitchen','waiter','website.ordering','ordering.delivery','ordering.pickup','inventory'].map(capability_key=>({business_id:business,capability_key,enabled:true,source:'OVERRIDE'})));
   await insert('branches',[{id:branch,business_id:business,name:'Acceptance counter',code:'QA1',slug:'qa1',address:'Disposable fixture',city:'Islamabad',pickup_enabled:true,delivery_enabled:true},{id:otherBranch,business_id:business,name:'Restricted counter',code:'QA2',slug:'qa2',address:'Disposable fixture',city:'Islamabad',pickup_enabled:true,delivery_enabled:true}]);
   checked(await db.from('business_hours').upsert(Array.from({length:7},(_,day_of_week)=>({branch_id:branch,day_of_week,opens_at:'00:00',closes_at:'23:59:59',is_closed:false})),{onConflict:'branch_id,day_of_week'}),'hours');
   checked(await db.from('business_operating_settings').upsert({business_id:business,tax_rate_bps:1000}),'tax');
@@ -203,6 +203,18 @@ try {
     pass(`live responsive ${width}`);
   }
   await context.setOffline(true);await expect(page.getByText(/Offline/).first()).toBeVisible();await context.setOffline(false);pass('offline feedback and reconnect');
+  const {data:{session:desktopSession}}=await staff.auth.getSession();
+  const desktopHeaders={Authorization:`Bearer ${desktopSession.access_token}`};
+  const desktopResponse=await fetch(`${origin}/api/desktop-pos/orders?branch=${branch}&sync=1`,{headers:desktopHeaders});
+  assert.equal(desktopResponse.status,200);const desktopPage=await desktopResponse.json();
+  assert.ok(desktopPage.orders.length>0&&desktopPage.cursor?.updatedAt&&desktopPage.cursor?.id);
+  const checkpoint=new URLSearchParams({branch,sync:'1',after:desktopPage.cursor.updatedAt,afterId:desktopPage.cursor.id});
+  const nextDesktop=await fetch(`${origin}/api/desktop-pos/orders?${checkpoint}`,{headers:desktopHeaders});assert.equal(nextDesktop.status,200);
+  const nextDesktopPage=await nextDesktop.json();assert.ok(!nextDesktopPage.orders.some(o=>o.id===desktopPage.cursor.id));
+  pass('Desktop authenticated order cursor reads QR order and advances without replay');
+  const foreignDesktop=await fetch(`${origin}/api/desktop-pos/orders?branch=${randomUUID()}&sync=1`,{headers:desktopHeaders});assert.equal(foreignDesktop.status,403);
+  const invalidCursor=await fetch(`${origin}/api/desktop-pos/orders?branch=${branch}&sync=1&after=invalid`,{headers:desktopHeaders});assert.equal(invalidCursor.status,400);
+  pass('Desktop foreign branch and malformed cursor denied');
   checked(await db.from('service_entitlements').update({enabled:false}).eq('business_id',business).eq('capability_key','pos.web'),'disable fixture POS');
   await expect(page.getByRole('heading',{name:'Web POS is unavailable'})).toBeVisible({timeout:75000});pass('Super Admin entitlement revocation denies open POS without manual reload');
   assert.deepEqual(runtimeErrors,[]);pass('no browser runtime errors');
