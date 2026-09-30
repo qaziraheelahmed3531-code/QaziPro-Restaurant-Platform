@@ -610,10 +610,12 @@ export function AdminShell({
                           href={item.href}
                           title={sidebarCollapsed ? item.label : undefined}
                           aria-label={sidebarCollapsed ? item.label : undefined}
-                          prefetch={priority ? true : false}
+                          // A cashier's cold boot must not compete with eight
+                          // full operational routes (and their auth/data work).
+                          prefetch={pathname.startsWith("/pos") ? false : priority}
                           aria-current={active ? "page" : undefined}
-                          onPointerEnter={() => router.prefetch(item.href)}
-                          onFocus={() => router.prefetch(item.href)}
+                          onPointerEnter={() => { if(!active) router.prefetch(item.href); }}
+                          onFocus={() => { if(!active) router.prefetch(item.href); }}
                           onClick={() => {
                             setMenuOpen(false);
                           }}

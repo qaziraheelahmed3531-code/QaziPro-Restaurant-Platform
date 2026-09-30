@@ -88,15 +88,19 @@ export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
   const access = await getAdminAccessResolution()
   if (!access.allowed || !access.membershipId || !access.businessId || !access.role) return null
   const requestedBranch = cookieStore.get("ip-admin-branch")?.value
-  const { data } = await supabase.from("staff_memberships")
+  // All three reads are scoped by the canonical access resolution. Starting
+  // them together removes one network waterfall without caching authorization.
+  const [membershipResult,permissionResult,branchesResult] = await Promise.all([
+    supabase.from("staff_memberships")
     .select("business_id,branch_id,role,businesses!inner(name),staff_membership_branches(branch_id)")
-    .eq("id", access.membershipId).eq("user_id", userId).eq("is_active", true).maybeSingle()
-  if (!data) return null
-  const business = Array.isArray(data.businesses) ? data.businesses[0] : data.businesses
-  const [permissionResult,branchesResult] = await Promise.all([
-    data.role === "OWNER" ? Promise.resolve({ data: [] }) : supabase.rpc("effective_permissions", { p_business_id: data.business_id }),
-    supabase.from("branches").select("id,restaurant_name,name,city").eq("business_id",data.business_id).eq("is_active",true).order("sort_order"),
+    .eq("id", access.membershipId).eq("user_id", userId).eq("is_active", true).maybeSingle(),
+    access.role === "OWNER" ? Promise.resolve({ data: [], error: null }) : supabase.rpc("effective_permissions", { p_business_id: access.businessId }),
+    supabase.from("branches").select("id,restaurant_name,name,city").eq("business_id",access.businessId).eq("is_active",true).order("sort_order"),
   ])
+  const data = membershipResult.data
+  if (!data) return null
+  if(data.business_id!==access.businessId || data.role!==access.role || permissionResult.error || branchesResult.error)return null
+  const business = Array.isArray(data.businesses) ? data.businesses[0] : data.businesses
   const permissionRows = permissionResult.data
   const allBranches=branchesResult.data??[]
   const mapped=(data.staff_membership_branches??[]).map((row:{branch_id:string})=>String(row.branch_id))

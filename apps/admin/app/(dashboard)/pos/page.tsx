@@ -52,7 +52,7 @@ export default async function Page({
   const selectedBranchId = context.activeBranchId;
   const branch = selectedBranchId && context.allowedBranchIds.includes(selectedBranchId)
     ? (await supabase.from("branches")
-        .select("id,name,restaurant_name,city,timezone,location_revision,address,formatted_address,phone")
+        .select("id,name,restaurant_name,city,timezone,location_revision,address,formatted_address,phone,pickup_enabled,delivery_enabled")
         .eq("business_id", context.businessId)
         .eq("id", selectedBranchId).eq("is_active", true).maybeSingle()).data
     : null;
@@ -77,7 +77,6 @@ export default async function Page({
     paymentMethods,
     posOrders,
     invoiceTemplate,
-    branchModes,
     tables,
     sessions,
     deliveryAreas,
@@ -178,12 +177,6 @@ export default async function Page({
       .eq("business_id", context.businessId)
       .maybeSingle(),
     supabase
-      .from("branches")
-      .select("pickup_enabled,delivery_enabled")
-      .eq("id", branch.id)
-      .eq("business_id", context.businessId)
-      .single(),
-    supabase
       .from("restaurant_tables")
       .select("id,name")
       .eq("business_id", context.businessId)
@@ -226,7 +219,6 @@ export default async function Page({
       shift,
       operating,
       paymentMethods,
-      branchModes,
     ].some((result) => result.error)
   ) {
     return (
@@ -326,9 +318,9 @@ export default async function Page({
         operations={{
           taxRateBps: operating.data?.tax_rate_bps ?? 0,
           modes: [
-            ...(branchModes.data?.pickup_enabled ? ["TAKEAWAY", "PICKUP"] : []),
+            ...(branch.pickup_enabled ? ["TAKEAWAY", "PICKUP"] : []),
             ...(tables.data?.length ? ["DINE_IN"] : []),
-            ...(branchModes.data?.delivery_enabled &&
+            ...(branch.delivery_enabled &&
             deliveryRules.data &&
             deliveryAreas.data?.length
               ? ["DELIVERY"]

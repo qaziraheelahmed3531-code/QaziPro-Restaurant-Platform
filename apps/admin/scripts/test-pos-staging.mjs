@@ -61,7 +61,7 @@ try {
   await context.addCookies([...jar].map(([name,value])=>({name,value,url:origin,sameSite:'Lax'})).concat([{name:'ip-admin-business',value:business,url:origin},{name:'ip-admin-branch',value:branch,url:origin}]));
   await context.addInitScript(()=>{
     window.print=()=>{window.printCalls=(window.printCalls??0)+1};
-    window.posPerf={longTasks:[],cls:0,layoutShiftTotal:0,lcp:0,maxEventDuration:0,shifts:[]};
+    window.posPerf={longTasks:[],cls:0,layoutShiftTotal:0,lcp:0,maxEventDuration:0,shifts:[],slowEvents:[]};
     let shiftSessionStart=0,shiftPrevious=0,shiftSessionValue=0;
     new PerformanceObserver(list=>list.getEntries().forEach(e=>window.posPerf.longTasks.push(Math.round(e.duration)))).observe({type:'longtask',buffered:true});
     new PerformanceObserver(list=>list.getEntries().forEach(e=>{if(!e.hadRecentInput){
@@ -71,7 +71,10 @@ try {
       window.posPerf.shifts.push({at:Math.round(e.startTime),value:e.value,nodes:(e.sources??[]).map(s=>s.node?.className).filter(x=>typeof x==='string')});
     }})).observe({type:'layout-shift',buffered:true});
     new PerformanceObserver(list=>list.getEntries().forEach(e=>window.posPerf.lcp=e.startTime)).observe({type:'largest-contentful-paint',buffered:true});
-    if(PerformanceObserver.supportedEntryTypes.includes('event'))new PerformanceObserver(list=>list.getEntries().forEach(e=>window.posPerf.maxEventDuration=Math.max(window.posPerf.maxEventDuration,e.duration))).observe({type:'event',buffered:true,durationThreshold:16});
+    if(PerformanceObserver.supportedEntryTypes.includes('event'))new PerformanceObserver(list=>list.getEntries().forEach(e=>{
+      window.posPerf.maxEventDuration=Math.max(window.posPerf.maxEventDuration,e.duration);
+      if(e.duration>=100)window.posPerf.slowEvents.push({name:e.name,duration:e.duration,inputDelay:Math.round(e.processingStart-e.startTime),handler:Math.round(e.processingEnd-e.processingStart),target:e.target?.getAttribute?.('aria-label')??e.target?.className});
+    })).observe({type:'event',buffered:true,durationThreshold:16});
   });
   page=await context.newPage(); const runtimeErrors=[]; page.on('pageerror',e=>runtimeErrors.push(e.message));
   const devtools=await context.newCDPSession(page);
@@ -149,8 +152,9 @@ try {
   const qrRow=checked(await db.from('orders').select('id,order_number').eq('business_id',business).eq('channel','WEBSITE').single(),'QR browser receipt');
   const qr={id:qrRow.id,orderNumber:qrRow.order_number};
   pass('public QR route → full menu → cart → guest dine-in checkout');
-  const bill=page.locator('.waiter-pos-queue article').filter({hasText:qr.orderNumber});
-  const tableDisclosure=page.locator('.waiter-pos-queue > summary');
+  const liveQueue=page.locator('.waiter-pos-queue').filter({visible:true});
+  const bill=liveQueue.locator('article').filter({hasText:qr.orderNumber});
+  const tableDisclosure=liveQueue.locator(':scope > summary');
   if(await tableDisclosure.count())await tableDisclosure.click();
   await expect(bill).toBeVisible({timeout:45000});
   await bill.getByRole('button',{name:/ORDER \/ TOKEN/}).click();
