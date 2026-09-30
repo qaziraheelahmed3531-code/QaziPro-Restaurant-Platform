@@ -59,16 +59,22 @@ try {
   await context.addCookies([...jar].map(([name,value])=>({name,value,url:origin,sameSite:'Lax'})).concat([{name:'ip-admin-business',value:business,url:origin},{name:'ip-admin-branch',value:branch,url:origin}]));
   await context.addInitScript(()=>{
     window.print=()=>{window.printCalls=(window.printCalls??0)+1};
-    window.posPerf={longTasks:[],cls:0,lcp:0};
+    window.posPerf={longTasks:[],cls:0,lcp:0,maxEventDuration:0,shifts:[]};
     new PerformanceObserver(list=>list.getEntries().forEach(e=>window.posPerf.longTasks.push(Math.round(e.duration)))).observe({type:'longtask',buffered:true});
-    new PerformanceObserver(list=>list.getEntries().forEach(e=>{if(!e.hadRecentInput)window.posPerf.cls+=e.value})).observe({type:'layout-shift',buffered:true});
+    new PerformanceObserver(list=>list.getEntries().forEach(e=>{if(!e.hadRecentInput){window.posPerf.cls+=e.value;window.posPerf.shifts.push({at:Math.round(e.startTime),value:e.value,nodes:(e.sources??[]).map(s=>s.node?.className).filter(x=>typeof x==='string')})}})).observe({type:'layout-shift',buffered:true});
     new PerformanceObserver(list=>list.getEntries().forEach(e=>window.posPerf.lcp=e.startTime)).observe({type:'largest-contentful-paint',buffered:true});
+    if(PerformanceObserver.supportedEntryTypes.includes('event'))new PerformanceObserver(list=>list.getEntries().forEach(e=>window.posPerf.maxEventDuration=Math.max(window.posPerf.maxEventDuration,e.duration))).observe({type:'event',buffered:true,durationThreshold:16});
   });
   const page=await context.newPage(); const runtimeErrors=[]; page.on('pageerror',e=>runtimeErrors.push(e.message));
+  const devtools=await context.newCDPSession(page);
+  await devtools.send('Profiler.enable');await devtools.send('Profiler.start');
   page.on('console',message=>{if(message.type()==='error'){
     const text=message.text();
     // Capture exception text only, never request headers, cookie values or args.
-    if(/Error|Minified React/.test(text))console.log('BROWSER_ERROR '+text.replace(/https?:\/\/\S+/g,'[url]').slice(0,1200));
+    if(/Error|Minified React/.test(text)){
+      const safe=text.replace(/https?:\/\/\S+/g,'[url]').slice(0,1200);
+      runtimeErrors.push(safe);console.log('BROWSER_ERROR '+safe);
+    }
   }});
   const realtimeErrors=[];
   page.on('websocket',socket=>{
@@ -82,11 +88,17 @@ try {
   await page.goto(`${origin}/pos`,{waitUntil:'domcontentloaded',timeout:90000});
   const tile=page.getByRole('button',{name:/Acceptance Margherita.*Add to order/});
   await expect(tile).toBeVisible({timeout:45000});
+  console.log(`POS_READY_MS ${Date.now()-started}`);
   await mkdir(new URL('../../../test-results/pos',import.meta.url),{recursive:true});
   await page.screenshot({path:fileURLToPath(new URL('../../../test-results/pos/staging-pos.png',import.meta.url)),fullPage:true});
-  console.log(`POS_READY_MS ${Date.now()-started}`);pass('authenticated branch-scoped POS bootstrap');
+  pass('authenticated branch-scoped POS bootstrap');
   await tile.click();await tile.click();await tile.click();
   await expect(page.locator('.quantity-row>span')).toHaveText('3');pass('real catalog rapid adds');
+  await page.getByRole('button',{name:'Hold',exact:true}).click();
+  await expect(page.getByText('Select a product to start a counter order.')).toBeVisible();
+  await page.getByRole('button',{name:/Held orders/}).click();
+  await page.getByRole('button',{name:/Resume/}).click();
+  await expect(page.locator('.quantity-row>span')).toHaveText('3');pass('canonical held order persists and resumes');
   await page.getByRole('button',{name:'Checkout',exact:true}).click();
   const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Exact cash',exact:true}).click();
   const response=page.waitForResponse(r=>r.url().includes('/rpc/create_pos_order'));
@@ -97,6 +109,8 @@ try {
   assert.equal(orders.length,1);const order=orders[0];assert.equal(order.total,3300);assert.equal(order.payment_status,'PAID');assert.equal(order.branch_id,branch);pass('UI cash sale → server tax → one paid order');
   assert.equal(checked(await db.from('payment_transactions').select('id').eq('order_id',order.id),'ledger').length,1);pass('one payment ledger entry');
   await page.getByRole('button',{name:'Print receipt',exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.printCalls??0)).toBe(1);pass('persisted receipt → browser print');
+  await page.locator('.receipt-preview').getByRole('button',{name:/Close/}).click();
+  await expect(page.locator('.receipt-preview')).toHaveCount(0);
   const kitchen=await context.newPage();await kitchen.goto(`${origin}/kitchen`,{waitUntil:'domcontentloaded',timeout:90000});
   const ticket=kitchen.locator('.kds-ticket').filter({hasText:order.order_number});await expect(ticket).toBeVisible({timeout:30000});
   await ticket.getByRole('button',{name:'Start preparing'}).click();await ticket.getByRole('button',{name:'Mark ready'}).click();
@@ -105,15 +119,40 @@ try {
   await page.bringToFront();
   await expect(page.locator('[data-pos-order-id]').filter({hasText:order.order_number})).toContainText(/ready/i,{timeout:30000});pass('KDS status returns to POS without reload');
   const payload={branchId:branch,shiftId:shift.id,clientReference:randomUUID(),orderType:'TAKEAWAY',cashReceived:5000,paymentMethodCode:'CASH',items:[{productId:product,quantity:1,modifiers:[]}]};
+  const concurrentStarted=Date.now();
   const results=await Promise.all([staff.rpc('create_pos_order',{p_payload:payload}),staff.rpc('create_pos_order',{p_payload:payload})]);
+  console.log(JSON.stringify({concurrentMs:Date.now()-concurrentStarted,codes:results.map(result=>result.error?.code??'OK')}));
   assert.equal(checked(results[0],'concurrent sale').id,checked(results[1],'concurrent replay').id);pass('concurrent HTTP requests produce same sale');
+  const qrTable=checked(await db.from('restaurant_tables').select('public_token').eq('id',table).single(),'QR table');
+  const qr=checked(await db.rpc('create_order_authoritative',{p_payload:{channel:'WEBSITE',branchId:branch,serviceMode:'DINE_IN',tableToken:qrTable.public_token,idempotencyKey:randomUUID(),customerName:'QR acceptance guest',customerPhone:'Counter',paymentMethod:'CASH_ON_DELIVERY',items:[{productId:product,quantity:1,modifiers:[]}]},p_customer_id:null}),'canonical QR order');
+  const bill=page.locator('.waiter-pos-queue article').filter({hasText:qr.orderNumber});
+  const tableDisclosure=page.locator('.waiter-pos-queue > summary');
+  if(await tableDisclosure.count())await tableDisclosure.click();
+  await expect(bill).toBeVisible({timeout:45000});
+  await bill.getByRole('button',{name:/ORDER \/ TOKEN/}).click();
+  await bill.getByLabel('Cash received').fill('1200');
+  await bill.getByRole('button',{name:'Mark paid',exact:true}).click();
+  await expect(page.getByText(`${qr.orderNumber} paid.`,{exact:false})).toBeVisible({timeout:30000});
+  const qrSaved=checked(await db.from('orders').select('business_id,branch_id,service_mode,payment_status').eq('id',qr.id).single(),'QR paid state');
+  assert.deepEqual(qrSaved,{business_id:business,branch_id:branch,service_mode:'DINE_IN',payment_status:'PAID'});
+  assert.equal(checked(await db.from('payment_transactions').select('id').eq('order_id',qr.id),'QR ledger').length,1);
+  pass('canonical QR order reaches correct POS table and is paid once');
   checked(await db.from('products').update({is_available:false}).eq('id',product),'availability');
   try { await expect(page.getByRole('button',{name:/Acceptance Margherita.*Out of stock/})).toBeDisabled({timeout:45000}); }
   catch(error){console.log(JSON.stringify({path:new URL(page.url()).pathname,body:(await page.locator('body').innerText({timeout:5000})).slice(-3500),realtimeErrors,runtimeErrors}));throw error;}
   pass('Admin catalog availability reaches POS via realtime');
-  for(const width of [768,1024,1280,1366,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);pass(`live responsive ${width}`);}
-  await context.setOffline(true);await expect(page.getByText(/Offline/).first()).toBeVisible();await context.setOffline(false);pass('offline feedback and reconnect');
   const performance=await page.evaluate(()=>window.posPerf);
+  const {profile}=await devtools.send('Profiler.stop');
+  console.log(JSON.stringify({devtoolsCpuTop:profile.nodes.filter(n=>n.hitCount).sort((a,b)=>b.hitCount-a.hitCount).slice(0,8).map(n=>({function:n.callFrame.functionName,hits:n.hitCount,script:n.callFrame.url?.split('?')[0].split('/').pop()}))}));
+  for(const width of [768,1024,1280,1366,1440]){
+    await page.setViewportSize({width,height:1000});
+    // ResizeObserver/sidebar transitions settle asynchronously after a viewport change.
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    const overflow=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,elements:[...document.querySelectorAll('main *')].filter(el=>el.getBoundingClientRect().right>innerWidth+1).slice(0,15).map(el=>({tag:el.tagName,class:el.className,right:Math.round(el.getBoundingClientRect().right)}))}));
+    if(overflow.scrollWidth>width+1)console.log(JSON.stringify({overflow}));
+    assert.ok(overflow.scrollWidth<=width+1);pass(`live responsive ${width}`);
+  }
+  await context.setOffline(true);await expect(page.getByText(/Offline/).first()).toBeVisible();await context.setOffline(false);pass('offline feedback and reconnect');
   checked(await db.from('service_entitlements').update({enabled:false}).eq('business_id',business).eq('capability_key','pos.web'),'disable fixture POS');
   await page.reload({waitUntil:'domcontentloaded'});await expect(page.getByRole('heading',{name:'Web POS is unavailable'})).toBeVisible({timeout:30000});pass('Super Admin entitlement gate denies POS');
   assert.deepEqual(runtimeErrors,[]);pass('no browser runtime errors');

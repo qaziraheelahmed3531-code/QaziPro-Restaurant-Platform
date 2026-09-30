@@ -61,6 +61,17 @@ try{
   await page.evaluate(()=>window.finish({data:null,error:{code:"22023",message:"POS_TOTAL_CHANGED",details:JSON.stringify({subtotal:6000,discount:0,tax:900,deliveryFee:0,total:6900})}}));await expect(dialog.getByText(/Prices or fees changed/)).toBeVisible();await expect(dialog.getByLabel("Cash received",{exact:true})).toHaveValue("");pass("stale server pricing forces explicit payment review");
   await dialog.getByRole("button",{name:"Exact cash",exact:true}).click();await dialog.getByRole("button",{name:"Complete sale",exact:true}).click();await page.evaluate(()=>{window.receiptRow={subtotal:6000,discount:0,tax:900,delivery_fee:0,total:6900,created_at:new Date().toISOString(),order_items:[{product_name:"Margherita",variant_name:null,quantity:6,unit_price:1000,order_item_modifiers:[]}]};window.finish({data:{id:"order-paid",orderNumber:"POS-42",tokenNumber:42,total:6900,change:0},error:null})});await expect.poll(()=>page.evaluate(()=>window.requests.at(-1).operation)).toBe("delete");await page.evaluate(()=>window.finish({error:null,data:null}));await expect(page.getByText("Receipt ready",{exact:true})).toBeVisible();await expect(page.getByText("Select a product to start a counter order.")).toBeVisible();assert.equal(await page.evaluate(()=>window.printCount??0),0);pass("confirmed sale resets cart and honors auto-print off");
   await page.getByRole("button",{name:"Print receipt",exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.printCount??0)).toBe(1);pass("browser print path uses persisted receipt");
+  const receiptDialog=page.getByRole('dialog',{name:'Receipt ready'});
+  await expect(receiptDialog).toBeVisible();
+  await receiptDialog.getByRole('button',{name:/Close receipt/}).focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(receiptDialog.getByRole('button',{name:'Print receipt',exact:true})).toBeFocused();
+  await page.keyboard.press('/');
+  await expect(receiptDialog.getByRole('button',{name:'Print receipt',exact:true})).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(receiptDialog).toHaveCount(0);
+  await expect(page.getByLabel('Search POS products')).toBeFocused();
+  pass('receipt traps focus, blocks search shortcut and Escape starts next order');
   for(const width of [768,1024,1280,1366,1440]){await page.setViewportSize({width,height:1000});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));pass(`responsive ${width}px no horizontal page overflow`);}
   await reset();await page.getByRole("button",{name:/Margherita/}).click();await page.getByRole("button",{name:"Checkout",exact:true}).click();await page.keyboard.press("Escape");await expect(page.getByRole("dialog")).toHaveCount(0);await expect(page.getByRole("button",{name:"Checkout",exact:true})).toBeFocused();await page.keyboard.press("/");await expect(page.getByLabel("Search POS products")).toBeFocused();pass("Escape focus restoration and documented search shortcut");
   await page.emulateMedia({reducedMotion:"reduce"});assert.ok(await page.getByRole("button",{name:"All",exact:true}).evaluate(el=>parseFloat(getComputedStyle(el).transitionDuration)<=0.001));pass("reduced motion disables perceptible press transitions");

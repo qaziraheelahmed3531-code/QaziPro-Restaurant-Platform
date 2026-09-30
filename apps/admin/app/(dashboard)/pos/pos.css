@@ -1,6 +1,23 @@
 .pos-page {
   --pos-fast: 120ms;
 }
+.waiter-pos-queue > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+}
+.waiter-pos-queue > summary::before { content: "+"; }
+.waiter-pos-queue[open] > summary::before { content: "−"; }
+.waiter-pos-queue > summary b {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.waiter-pos-queue > summary:focus-visible { outline: 3px solid #b45309; outline-offset: 3px; }
+.waiter-pos-queue[open] .waiter-pos-cards { margin-top: 12px; }
 .pos-page .pos-layout {
   grid-template-columns: minmax(0, 1fr) minmax(320px, 370px);
   gap: 20px;

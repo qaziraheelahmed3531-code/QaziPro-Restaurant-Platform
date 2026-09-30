@@ -484,6 +484,7 @@ export function PosTerminal({
         !event.altKey &&
         !checkoutOpen &&
         !editing &&
+        !receipt &&
         !target?.closest('input,textarea,select,[contenteditable="true"]')
       ) {
         event.preventDefault();
@@ -492,7 +493,7 @@ export function PosTerminal({
     };
     document.addEventListener("keydown", shortcut);
     return () => document.removeEventListener("keydown", shortcut);
-  }, [checkoutOpen, editing]);
+  }, [checkoutOpen, editing, receipt]);
   useEffect(() => {
     const initial = window.setTimeout(() => setClock(Date.now()), 0);
     const timer = window.setInterval(() => setClock(Date.now()), 30_000);
@@ -1701,7 +1702,7 @@ export function PosTerminal({
         )}
         <div
           className="pos-layout no-print"
-          inert={checkoutOpen || Boolean(editing)}
+          inert={checkoutOpen || Boolean(editing) || Boolean(receipt)}
         >
           <section className="pos-catalog">
             <div className="pos-search">
@@ -2588,12 +2589,16 @@ export function PosTerminal({
           )}
         </AnimatePresence>
         {receipt && (
-          <div className="receipt-preview">
+          <div className="receipt-preview" role="dialog" aria-modal="true" aria-labelledby="pos-receipt-title">
             <div className="receipt-preview__actions no-print">
-              <strong>Receipt ready</strong>
+              <strong id="pos-receipt-title">Receipt ready</strong>
               <button
                 className="button button--outline"
-                onClick={() => setReceipt(null)}
+                aria-label="Close receipt and start new order"
+                onClick={() => {
+                  setReceipt(null);
+                  requestAnimationFrame(() => searchRef.current?.focus());
+                }}
               >
                 <X />
                 Close

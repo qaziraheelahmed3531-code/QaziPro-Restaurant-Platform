@@ -3,7 +3,7 @@ declare
   business uuid; branch uuid; other_branch uuid; actor uuid:=gen_random_uuid(); cashier uuid:=gen_random_uuid(); membership uuid;
   category uuid; product uuid:=gen_random_uuid(); table_id uuid:=gen_random_uuid(); other_table uuid:=gen_random_uuid(); area uuid:=gen_random_uuid();
   shift_id uuid; request jsonb; result jsonb; replay jsonb; denied boolean; first_order uuid; payment_count integer; tax_bps integer;
-  ingredient uuid:=gen_random_uuid(); qr_table uuid:=gen_random_uuid(); qr_order uuid; table_token text; other_shift uuid; other_result jsonb;
+  ingredient uuid:=gen_random_uuid(); qr_table uuid:=gen_random_uuid(); qr_order uuid; table_token text; other_shift uuid; other_result jsonb; foreign_branch uuid; promo text;
 begin
   select b.id,br.id into business,branch from public.businesses b join public.branches br on br.business_id=b.id where b.slug='italian-pizza' and br.is_active order by br.created_at limit 1;
   if business is null then raise exception 'Staging restaurant fixture is unavailable'; end if;
@@ -31,6 +31,14 @@ begin
   if replay->>'id'<>result->>'id' or not (replay->>'idempotent')::boolean then raise exception 'Replay created another sale'; end if;
   select count(*) into payment_count from public.payment_transactions where order_id=first_order;
   if payment_count<>1 then raise exception 'Duplicate payment'; end if;
+  if (result->>'change')::integer<>5000-(result->>'total')::integer then raise exception 'Incorrect cash change';end if;
+  select id into foreign_branch from public.branches where business_id<>business and is_active limit 1;
+  if foreign_branch is null then raise exception 'Second staging business required for tenant isolation acceptance';end if;
+  denied:=false;begin perform public.create_pos_order(request||jsonb_build_object('clientReference',gen_random_uuid(),'branchId',foreign_branch));exception when sqlstate '42501' then denied:=true;end;if not denied then raise exception 'Cross-business POS access accepted';end if;
+  promo:='POSQA'||upper(substr(actor::text,1,8));
+  insert into public.promotions(business_id,code,discount_type,discount_value,is_active) values(business,promo,'FIXED',100,true);
+  replay:=public.create_pos_order(request||jsonb_build_object('clientReference',gen_random_uuid(),'promoCode',promo));
+  if (select discount from public.orders where id=(replay->>'id')::uuid)<>100 then raise exception 'Authorized discount not applied';end if;
   denied:=false;begin perform public.create_pos_order(request||jsonb_build_object('cashReceived',9000));exception when sqlstate '22023' then denied:=true;end;if not denied then raise exception 'Changed replay accepted';end if;
   denied:=false;begin perform public.create_pos_order(request||jsonb_build_object('clientReference',gen_random_uuid(),'expectedTotal',1));exception when sqlstate '22023' then denied:=true;end;if not denied then raise exception 'Stale price accepted';end if;
   denied:=false;begin perform public.create_pos_order(request||jsonb_build_object('clientReference',gen_random_uuid(),'cashReceived',1));exception when sqlstate '22023' then denied:=true;end;if not denied then raise exception 'Insufficient cash accepted';end if;

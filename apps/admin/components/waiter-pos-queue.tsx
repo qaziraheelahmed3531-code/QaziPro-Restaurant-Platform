@@ -113,7 +113,6 @@ export function WaiterPosQueue({
       void client.removeChannel(channel);
     };
   }, [businessId, branchId]);
-  if (!orders.length && !message) return null;
   const settle = async (order: WaiterPosOrder) => {
     if (settlingRef.current) return;
     if (!shift) {
@@ -165,18 +164,12 @@ export function WaiterPosQueue({
     }
   };
   return (
-    <section className="waiter-pos-queue no-print">
-      <header>
-        <div>
-          <span className="eyebrow">LIVE TABLE SERVICE</span>
-          <h2>Table payments</h2>
-          <p>
-            QR and waiter table orders use the same operational bill. Collect
-            payment here.
-          </p>
-        </div>
-        <b>{orders.length} awaiting payment</b>
-      </header>
+    <details className="waiter-pos-queue no-print">
+      <summary>
+        <span>Table payments</span>
+        <b aria-live="polite">{orders.length} awaiting payment</b>
+      </summary>
+      <p>QR and waiter orders use the same table bill. Collect payment here.</p>
       {message && (
         <p
           className={`inline-notice ${message.includes("paid.") ? "" : "is-error"}`}
@@ -186,6 +179,7 @@ export function WaiterPosQueue({
         </p>
       )}
       <div className="waiter-pos-cards">
+        {!orders.length && <p>No unpaid table bills. New QR and waiter orders will appear here.</p>}
         {orders.map((order) => {
           const open = selected === order.id;
           return (
@@ -291,6 +285,6 @@ export function WaiterPosQueue({
           );
         })}
       </div>
-    </section>
+    </details>
   );
 }
