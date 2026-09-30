@@ -23,3 +23,18 @@ test('protected store validates keys, serializes writes, atomically replaces and
   await assert.rejects(store.set('sb-test-auth-token','x'),/unavailable/)
  }finally{await fs.rm(dir,{recursive:true,force:true})}
 })
+test('async encryption cannot acknowledge provisioning before its profile key is durable',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'qazipro-store-test-'))
+ let durable=false,encrypted=false
+ const encryption={isEncryptionAvailable:()=>true,
+  encryptStringAsync:async value=>{encrypted=true;return Buffer.from('protected:'+value)},
+  decryptStringAsync:async bytes=>({result:bytes.toString().slice(10),shouldReEncrypt:false})}
+ try{
+  const store=createSecureStore(dir,encryption,async()=>{assert.ok(encrypted);assert.equal((await fs.readdir(dir)).length,0);if(!durable)throw Error('key not durable')})
+  await assert.rejects(store.set('sb-test-auth-token','first'),/not durable/)
+  assert.equal(await store.get('sb-test-auth-token'),null)
+  durable=true
+  await store.set('sb-test-auth-token','second')
+  assert.equal(await store.get('sb-test-auth-token'),'second')
+ }finally{await fs.rm(dir,{recursive:true,force:true})}
+})

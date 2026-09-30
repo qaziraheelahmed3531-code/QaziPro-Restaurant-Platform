@@ -122,6 +122,14 @@ export type LocalShift = {
   countedCash: number | null;
   status: "OPEN" | "CLOSED";
   syncedAt: string | null;
+  revision?: number;
+  syncedRevision?: number;
+  serverId?: string;
+  syncError?: string | null;
+  syncRetryAt?: string | null;
+  syncNeedsAttention?: boolean;
+  syncAttempts?: number;
+  cashMovements?: Array<{id:string;type:"CASH_IN"|"CASH_OUT";amount:number;reason:string;createdAt:string}>;
 };
 export type LocalOrder = {
   id: string;
@@ -196,7 +204,7 @@ export type WebsiteOrder = {
   id: string;
   order_number: string;
   token_number: number;
-  service_mode: "DELIVERY" | "PICKUP";
+  service_mode: "DELIVERY" | "PICKUP" | "DINE_IN";
   operational_order_type: string | null;
   status: WebsiteOrderStatus;
   payment_method: string;

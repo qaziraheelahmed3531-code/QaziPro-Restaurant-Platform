@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DesktopDialogs } from "./dialog-accessibility";
-import { clearOfflineAccess, permitsOffline, readOfflineAccess } from "./offline-access";
+import { clearOfflineAccess, permitsOffline, readOfflineAccess, requireOfflinePermission } from "./offline-access";
+import { CashManagement } from "./cash-management";
 import { HardwareSettings, printReceipt } from "./hardware";
 import { cachedCloudOrders } from "./cloud-orders";
 import { authStorage } from "./auth-storage";
@@ -48,6 +49,7 @@ import {
   downloadCatalog,
   imageDataUrl,
   loadWebsiteOrders,
+  refreshCounterOrderStatuses,
   supabase,
   syncPendingOrders,
   updateWebsiteOrderStatus,
@@ -302,9 +304,12 @@ export function App() {
       try {
         const rows = await loadWebsiteOrders(branchId);
         if(activeCloudBranch.current!==branchId)return;
-        if (!websiteLoaded.current) {
-          knownWebsiteIds.current = new Set(rows.map((order) => order.id));
-          websiteLoaded.current = true;
+        const missed=rows.filter(order=>order.status==="RECEIVED"&&!knownWebsiteIds.current.has(order.id));
+        rows.forEach(order=>knownWebsiteIds.current.add(order.id));
+        websiteLoaded.current = true;
+        if(missed.length){
+          setUnreadWebsiteIds(current=>new Set([...current,...missed.map(order=>order.id)]));
+          setMessage(`${missed.length} incoming order${missed.length===1?"":"s"} received. Review online orders.`);
         }
         setWebsiteOrders(rows);
       } catch (error) {
@@ -329,6 +334,7 @@ export function App() {
       try {
         const result = await syncPendingOrders(!silent);
         setOnline(true);
+        if(branchForSync)await refreshCounterOrderStatuses(branchForSync);
         if (branchForSync) setCatalog(await downloadCatalog(branchForSync));
         await Promise.all([
           refreshLocal(branchForSync),
@@ -412,7 +418,8 @@ export function App() {
     const report=async()=>{
       const pending=await db.orders.where("syncState").notEqual("SYNCED").count();
       const drafts=await db.drafts.toArray();
-      await window.desktopUpdates?.safety(!cart.length&&!savingSale&&!checkoutOpen&&!syncing&&!pending&&!drafts.some(d=>d.items?.length));
+      const shifts=await db.shifts.toArray();
+      await window.desktopUpdates?.safety(!cart.length&&!savingSale&&!checkoutOpen&&!syncing&&!pending&&!drafts.some(d=>d.items?.length)&&!shifts.some(s=>s.syncedRevision!==(s.revision??1)));
     };
     void report().catch(()=>window.desktopUpdates?.safety(false));
     const interval=setInterval(()=>void report().catch(()=>window.desktopUpdates?.safety(false)),2000);
@@ -645,9 +652,13 @@ export function App() {
       // Keep the last confirmed rows visible during connection loss.
       return;
     }
-    knownWebsiteIds.current.clear();
-    websiteLoaded.current = false;
     void refreshWebsite(branchForSync, false);
+    let disposed=false;
+    const refreshCounter=()=>void refreshCounterOrderStatuses(branchForSync)
+      .then(()=>db.orders.where("branchId").equals(branchForSync).sortBy("soldAt"))
+      .then(rows=>{if(!disposed&&activeCloudBranch.current===branchForSync)setOrders(rows.reverse());})
+      .catch(()=>{/* Durable state remains visible; periodic sync retries. */});
+    refreshCounter();
     const channel = supabase
       .channel(`desktop-website-orders-${branchForSync}`)
       .on(
@@ -676,7 +687,7 @@ export function App() {
           table: "orders",
           filter: `branch_id=eq.${branchForSync}`,
         },
-        () => void refreshWebsite(branchForSync),
+        () => {void refreshWebsite(branchForSync);refreshCounter();},
       )
       .on(
         "postgres_changes",
@@ -694,6 +705,7 @@ export function App() {
       15_000,
     );
     return () => {
+      disposed=true;
       window.clearInterval(fallback);
       void supabase.removeChannel(channel);
     };
@@ -1270,11 +1282,12 @@ export function App() {
             onClick={() =>
               void openShift(catalog.branchId, Number(openingCash)).then(
                 setShift,
-              )
+              ).catch(()=>setMessage("Enter a valid whole opening cash amount."))
             }
           >
             Open shift
           </button>
+          {message&&<p role="status">{message}</p>}
           <Connection online={online} />
           <button className="logout-button" onClick={() => void logout()}>
             <LogOut />
@@ -1595,6 +1608,8 @@ export function App() {
           />
         )}
         {view === "settings" && (
+          <>
+          <CashManagement shift={shift} orders={orders} businessId={catalog.businessId} onChange={async()=>{await refreshLocal(catalog.branchId);}}/>
           <SettingsView
             catalog={catalog}
             orders={orders}
@@ -1609,11 +1624,14 @@ export function App() {
               setView("sale");
             }}
             logout={logout}
-            close={() =>
-              void closeShift(shift.id, Number(countedCash)).then(() =>
-                setShift(null),
-              )
-            }
+            close={() => void (async()=>{
+              try{
+                if(cart.length||savingSale||checkoutOpen){setMessage("Finish or hold the current order before closing this shift.");return;}
+                if(!countedCash.trim()){setMessage("Enter the counted cash before closing this shift.");return;}
+                await requireOfflinePermission(catalog.branchId,catalog.businessId,"register.manage");
+                await closeShift(shift.id,Number(countedCash));setShift(null);void sync(true);
+              }catch(error){setMessage(error instanceof Error?error.message:"Shift could not be closed. Your records are preserved.");}
+            })()}
             deviceAlertsEnabled={deviceAlertsEnabled}
             setDeviceAlertsEnabled={async (value) => {
               setDeviceAlertsEnabled(value);
@@ -1636,6 +1654,7 @@ export function App() {
               else await db.settings.delete("orderAlertSound");
             }}
           />
+          </>
         )}
       </section>
       {checkoutOpen && (

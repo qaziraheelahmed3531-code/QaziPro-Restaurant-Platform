@@ -54,7 +54,26 @@ if (smokeMode) {
 }
 
 const userDataPath = app.getPath("userData")
-const credentials = createSecureStore(path.join(userDataPath, "credentials"), safeStorage)
+let keyDurability
+const ensureKeyDurable=()=>{
+  if(process.platform!=="win32")return Promise.resolve()
+  if(!keyDurability)keyDurability=(async()=>{
+    const file=path.join(userDataPath,"Local State"),deadline=Date.now()+30_000
+    while(Date.now()<deadline){
+      try{
+        const state=JSON.parse(await fs.promises.readFile(file,"utf8"))
+        if(state.os_crypt?.encrypted_key){
+          const handle=await fs.promises.open(file,"r+");try{await handle.sync()}finally{await handle.close()}
+          return
+        }
+      }catch(error){if(error.code&&error.code!=="ENOENT")throw error}
+      await new Promise(resolve=>setTimeout(resolve,100))
+    }
+    throw Error("Secure profile setup has not finished. Keep the app open and retry sign-in.")
+  })().catch(error=>{keyDurability=null;throw error})
+  return keyDurability
+}
+const credentials = createSecureStore(path.join(userDataPath, "credentials"), safeStorage,ensureKeyDurable)
 const rendererUrl = !app.isPackaged && process.env.ELECTRON_RENDERER_URL
   ? new URL(process.env.ELECTRON_RENDERER_URL).href
   : pathToFileURL(path.join(__dirname, "../dist/index.html")).href
@@ -372,6 +391,12 @@ handle("desktop:notify", (_event, value) => {
 })
 
 app.whenReady().then(() => {
+  // Test-only transport outage, installed before any renderer can issue a
+  // request. Available solely in the validated disposable smoke profile.
+  if (smokeMode && process.argv.includes("--desktop-smoke-offline")) {
+    require("electron").session.defaultSession.webRequest.onBeforeRequest(
+      {urls:["http://*/*","https://*/*"]}, (_details, callback) => callback({cancel:true}))
+  }
   deliverOAuth(oauthArgument(process.argv))
   createWindow()
   app.on("activate", () => {

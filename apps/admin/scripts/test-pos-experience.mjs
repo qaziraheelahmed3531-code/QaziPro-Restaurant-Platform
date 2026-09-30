@@ -24,6 +24,11 @@ const mock=`
  }};
 `;
 const output=await build({tsconfig:appRoot+"tsconfig.json",alias:{react:dirname(appRequire.resolve("react")),"react-dom":dirname(appRequire.resolve("react-dom"))},stdin:{resolveDir:appRoot,loader:"tsx",contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {PosTerminal} from './components/pos-terminal';import {DialogAccessibility} from './components/dialog-accessibility';import {PosSkeleton} from './components/pos-skeleton';const root=createRoot(document.getElementById('root'));window.requests=[];window.print=()=>{window.printCount=(window.printCount??0)+1};window.renderPos=(props,key='fixture')=>root.render(<><DialogAccessibility/><PosTerminal key={key} {...props}/></>);window.showSkeleton=()=>root.render(<PosSkeleton/>);window.renderPos(${JSON.stringify(props)});`},bundle:true,write:false,format:"iife",platform:"browser",jsx:"automatic",plugins:[{name:"transport-fixture",setup(b){
+  b.onLoad({filter:/pos-terminal\.tsx$/},async args=>{
+    const source=await readFile(args.path,"utf8"),anchor='  const search=query.trim().toLowerCase();';
+    assert.ok(source.includes(anchor),'product grid instrumentation anchor');
+    return {contents:source.replace(anchor,'  window.gridRenderCount=(window.gridRenderCount??0)+1;\n'+anchor),loader:'tsx'};
+  });
   b.onResolve({filter:/^next\/(link|navigation|image)$/},args=>({path:args.path,namespace:"next"}));
   b.onLoad({filter:/.*/,namespace:"next"},args=>({contents:args.path.endsWith("navigation")?"const router={refresh(){window.refreshCount=(window.refreshCount??0)+1},push(){}};export const useRouter=()=>router;":args.path.endsWith("image")?'import React from "react";export default ({unoptimized,fill,priority,...props})=><img {...props}/>;':'import React from "react";export default props=><a {...props}/>;',loader:"jsx",resolveDir:appRoot}));
   b.onResolve({filter:/^@\/lib\/supabase\/client$/},()=>({path:"mock",namespace:"mock"}));b.onLoad({filter:/.*/,namespace:"mock"},()=>({contents:mock,loader:"js"}));
@@ -45,8 +50,10 @@ try{
   await page.getByRole("button",{name:"Drinks",exact:true}).click();await expect(page.getByRole("button",{name:/Water.*Add to order/})).toBeVisible();await expect(page.getByRole("button",{name:/Margherita/})).toHaveCount(0);pass("instant category filtering without loader");
   await page.getByRole("button",{name:"All",exact:true}).click();await page.getByLabel("Search POS products").fill("Lunch");await expect(page.getByRole("button",{name:/Lunch deal/})).toBeVisible();await expect(page.getByRole("button",{name:/Margherita/})).toHaveCount(0);await page.getByLabel("Clear search").click();pass("search includes deals and clear retains focus");
   await expect(page.getByRole("button",{name:/Sold out/})).toBeDisabled();pass("unavailable product cannot be added");
+  const gridBefore=await page.evaluate(()=>window.gridRenderCount);
   await page.getByRole("button",{name:/Margherita/}).evaluate(button=>{for(let n=0;n<5;n++)button.click()});await expect(page.getByLabel("Increase Margherita")).toHaveCount(1);await expect(page.locator(".quantity-row>span")).toHaveText("5");pass("five rapid adds merge without losing input");
   await page.getByLabel("Increase Margherita").evaluate(button=>{button.click();button.click()});await page.getByLabel("Decrease Margherita").click();await expect(page.locator(".quantity-row>span")).toHaveText("6");pass("rapid quantity input");
+  assert.equal(await page.evaluate(()=>window.gridRenderCount),gridBefore);pass("cart adds and quantity changes do not rerender product grid");
   await page.getByRole("button",{name:/Custom burger.*Add to order/}).click();await expect(page.getByRole("dialog")).toBeVisible();await page.getByRole("button",{name:/Add to order ·/}).click();await expect(page.getByRole("alert")).toContainText("Sauce");await page.getByRole("button",{name:/Hot sauce/}).click();await page.getByRole("button",{name:/Add to order ·/}).click();await expect(page.getByRole("dialog")).toHaveCount(0);pass("variant/modifier validation and submission");
   await page.getByLabel("Edit Custom burger").click();await expect(page.getByRole("button",{name:/Hot sauce/})).toHaveClass(/is-selected/);await page.getByRole("button",{name:/Update item/}).click();pass("edit restores selected variant and modifiers");
   await page.getByLabel("Remove Custom burger").click();await expect(page.getByLabel("Increase Custom burger")).toHaveCount(0);pass("local row removal");

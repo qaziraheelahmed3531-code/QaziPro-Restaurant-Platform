@@ -19,7 +19,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { calculateCashChange, formatPkr } from "@italian-pizza/shared";
@@ -180,6 +180,24 @@ function image(product: RawProduct) {
   );
 }
 const browserPrinter = createBrowserPrintAdapter();
+// Cart, cash-input and realtime status updates must not reconcile the entire
+// menu. Catalogue props and callbacks change only when this panel needs work.
+const PosProductGrid = memo(function PosProductGrid({products,deals,category,query,locked,onProduct,onDeal}:{products:Product[];deals:Deal[];category:string;query:string;locked:boolean;onProduct:(product:Product)=>void;onDeal:(deal:Deal)=>void}){
+  const search=query.trim().toLowerCase();
+  const visible=category==="deals"?[]:products.filter(product=>(category==="all"||product.pos_section_id===category)&&`${product.name} ${product.sku??""}`.toLowerCase().includes(search));
+  const visibleDeals=category==="all"||category==="deals"?deals.filter(deal=>deal.name.toLowerCase().includes(search)):[];
+  return <div className="pos-products">
+    {visibleDeals.map(deal=><button key={`deal-${deal.id}`} className="is-deal" disabled={locked} onClick={()=>onDeal(deal)}>
+      {deal.image_url&&<span className="pos-product-image"><Image src={deal.image_url} alt="" fill sizes="180px" loading="lazy" unoptimized/></span>}
+      <strong>{deal.name}</strong><b>{formatPkr(deal.deal_price)}</b><small>Deal · Add to order</small>
+    </button>)}
+    {visible.map(product=>{const url=image(product);return <button key={product.id} className={!product.is_available?"is-unavailable":""} disabled={!product.is_available||locked} onClick={()=>onProduct(product)}>
+      {url&&<span className="pos-product-image"><Image src={url} alt="" fill sizes="180px" loading="lazy" unoptimized/></span>}
+      <strong>{product.name}</strong><b>{formatPkr(product.price)}</b><small>{product.is_available?"Add to order":"Out of stock"}</small>
+    </button>})}
+    {!visible.length&&!visibleDeals.length&&<div className="state-box">No matching available products.</div>}
+  </div>;
+});
 export function PosTerminal({
   canPrint,
   businessId,
@@ -682,21 +700,6 @@ export function PosTerminal({
       void supabase.removeChannel(channel);
     };
   }, [branch.id, businessId, router]);
-  const visible = products.filter(
-    (product) =>
-      (category === "all" ||
-        category === "deals" ||
-        product.pos_section_id === category) &&
-      [product.name, product.sku ?? ""]
-        .join(" ")
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
-  const showProducts = category !== "deals";
-  const showDeals = category === "all" || category === "deals";
-  const visibleDeals = deals.filter((deal) =>
-    deal.name.toLowerCase().includes(query.trim().toLowerCase()),
-  );
   const subtotal = cart.reduce(
     (sum, line) =>
       sum +
@@ -786,7 +789,7 @@ export function PosTerminal({
   const recentPosOrders = posOrders
     .filter((order) => order.status === "DELIVERED")
     .slice(0, recentOrderLimit);
-  const openProduct = (product: Product) => {
+  const openProduct = useCallback((product: Product) => {
     if (!product.is_available || draftLocked) return;
     dialogOpener.current = document.activeElement as HTMLElement;
     setEditingLineId(null);
@@ -827,7 +830,11 @@ export function PosTerminal({
           })),
       ),
     );
-  };
+  },[draftLocked]);
+  const addDeal=useCallback((deal:Deal)=>{
+    if(draftLocked)return;
+    setCart(rows=>mergePosLine(rows,{lineId:crypto.randomUUID(),productId:deal.id,itemKind:"deal",name:deal.name,unitPrice:Number(deal.deal_price),quantity:1,selections:[]}));
+  },[draftLocked]);
   const toggle = (group: Group, option: Option) =>
     setSelected((current) => {
       const exists = current.some((item) => item.optionId === option.id);
@@ -1745,64 +1752,7 @@ export function PosTerminal({
                   </button>
                 ))}
             </div>
-            <div className="pos-products">
-              {showDeals &&
-                visibleDeals.map((deal) => (
-                  <button
-                    key={`deal-${deal.id}`}
-                    className="is-deal"
-                    disabled={draftLocked}
-                    onClick={() =>
-                      setCart((rows) =>
-                        mergePosLine(rows, {
-                          lineId: crypto.randomUUID(),
-                          productId: deal.id,
-                          itemKind: "deal",
-                          name: deal.name,
-                          unitPrice: Number(deal.deal_price),
-                          quantity: 1,
-                          selections: [],
-                        }),
-                      )
-                    }
-                  >
-                    {deal.image_url && (
-                      <span className="pos-product-image">
-                        <Image src={deal.image_url} alt="" fill sizes="180px" loading="lazy" unoptimized />
-                      </span>
-                    )}
-                    <strong>{deal.name}</strong>
-                    <b>{formatPkr(deal.deal_price)}</b>
-                    <small>Deal · Add to order</small>
-                  </button>
-                ))}
-              {showProducts &&
-                visible.map((product) => (
-                  <button
-                    key={product.id}
-                    className={!product.is_available ? "is-unavailable" : ""}
-                    onClick={() => openProduct(product)}
-                    disabled={!product.is_available || draftLocked}
-                  >
-                    {image(product) && (
-                      <span className="pos-product-image">
-                        <Image src={image(product)!} alt="" fill sizes="180px" loading="lazy" unoptimized />
-                      </span>
-                    )}
-                    <strong>{product.name}</strong>
-                    <b>{formatPkr(product.price)}</b>
-                    <small>
-                      {product.is_available ? "Add to order" : "Out of stock"}
-                    </small>
-                  </button>
-                ))}
-              {(!showProducts || !visible.length) &&
-                (!showDeals || !visibleDeals.length) && (
-                  <div className="state-box">
-                    No matching available products.
-                  </div>
-                )}
-            </div>
+            <PosProductGrid products={products} deals={deals} category={category} query={query} locked={draftLocked} onProduct={openProduct} onDeal={addDeal}/>
           </section>
           <aside className="pos-cart">
             <header>

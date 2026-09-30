@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { db, deviceId } from "./db";
 import { authStorage } from "./auth-storage";
+import { syncShifts } from "./shift-sync";
+import { reconcileOrderStatuses } from "./order-status-sync";
 import { drainOutbox } from "./outbox";
 import { backfillCloudOrders, cachedCloudOrders, type OrderCursor } from "./cloud-orders";
 import { saveOfflineAccess, clearOfflineAccess } from "./offline-access";
@@ -71,6 +73,7 @@ async function resolveBranches() {
   const businessIds = [
     ...new Set(memberships.data.map((item) => item.business_id)),
   ];
+  const permissionSnapshots=new Map<string,string[]>();
   const grants = await Promise.all(
     businessIds.map(async (businessId) => {
       const result = await supabase.rpc("effective_permissions", {
@@ -78,6 +81,7 @@ async function resolveBranches() {
       });
       if (result.error) throw result.error;
       const permissions = new Set((result.data ?? []) as string[]);
+      permissionSnapshots.set(businessId,[...permissions]);
       return permissions.has("desktop_pos.use") &&
         permissions.has("pos.use") &&
         permissions.has("orders.read") &&
@@ -119,7 +123,7 @@ async function resolveBranches() {
     return gate.data?.["pos.desktop"]?.enabled===true ? branch : null;
   }))).filter((branch):branch is NonNullable<typeof branch>=>Boolean(branch));
   if(!allowed.length){await clearOfflineAccess();throw {code:"42501",message:"Desktop POS access is unavailable. Ask the owner to review this device and your permissions."};}
-  await saveOfflineAccess(user.id,allowed.map(({id,business_id})=>({id,business_id})));
+  await saveOfflineAccess(user.id,allowed.map(({id,business_id})=>({id,business_id,permissions:permissionSnapshots.get(business_id)??[]})));
   return allowed;
 }
 
@@ -168,6 +172,14 @@ export async function loadWebsiteOrders(branchId: string) {
     if(cursor){params.set("after",cursor.updatedAt);params.set("afterId",cursor.id);}
     const result=await desktopApi(`/api/desktop-pos/orders?${params}`);
     return {...result,orders:result.orders??[]};
+  });
+}
+
+export async function refreshCounterOrderStatuses(branchId:string){
+  const catalog=await db.catalogs.get(branchId);if(!catalog||!navigator.onLine)return;
+  await reconcileOrderStatuses(branchId,async ids=>{
+    const result=await supabase.from("orders").select("id,status").eq("business_id",catalog.businessId).eq("branch_id",branchId).in("id",ids).abortSignal(AbortSignal.timeout(15_000));
+    if(result.error)throw result.error;return result.data??[];
   });
 }
 
@@ -572,7 +584,7 @@ export async function syncPendingOrders(retryAttention = false) {
   // any device outbox. Another login must not flush a previous tenant's sales.
   const branches = await availableBranches();
   const id = await deviceId();
-  return drainOutbox({branchIds:branches.map(branch=>branch.id),retryAttention,send:async(order)=>{
+  const orders=await drainOutbox({branchIds:branches.map(branch=>branch.id),retryAttention,send:async(order)=>{
     const shift = await db.shifts.get(order.shiftId),
       catalog = await db.catalogs.get(order.branchId);
     if (!shift || !catalog) throw {code:"LOCAL_CONTEXT_MISSING"};
@@ -600,4 +612,9 @@ export async function syncPendingOrders(retryAttention = false) {
       }
       return result;
   }});
+  const shifts=await syncShifts({branchIds:branches.map(branch=>branch.id),retryAttention,send:async shift=>{
+    const result=await supabase.rpc("sync_offline_pos_shift",{p_payload:{...shift,deviceId:id,revision:shift.revision??1}}).abortSignal(AbortSignal.timeout(30_000));
+    if(result.error)throw result.error;return result.data;
+  }});
+  return {synced:orders.synced,failed:orders.failed+shifts.failed};
 }

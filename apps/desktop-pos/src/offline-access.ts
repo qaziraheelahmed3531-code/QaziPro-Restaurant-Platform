@@ -3,7 +3,7 @@ const KEY = "sb-desktop-offline-access";
 // Conservative device policy: one working day after the last successful server
 // authorization. No cached grant is indefinite and clock rollback fails closed.
 export const OFFLINE_ACCESS_MS = 24 * 60 * 60 * 1000;
-export type OfflineAccess = {userId:string;branches:Array<{id:string;business_id:string}>;verifiedAt:number;expiresAt:number};
+export type OfflineAccess = {userId:string;branches:Array<{id:string;business_id:string;permissions?:string[]}>;verifiedAt:number;expiresAt:number};
 function validAccess(value:unknown):value is OfflineAccess {
   if(!value||typeof value!=="object")return false;
   const v=value as OfflineAccess;
@@ -24,3 +24,8 @@ export async function saveOfflineAccess(userId:string,branches:OfflineAccess["br
   const verifiedAt=Date.now();await authStorage.setItem(KEY,JSON.stringify({userId,branches,verifiedAt,expiresAt:verifiedAt+OFFLINE_ACCESS_MS}));
 }
 export async function clearOfflineAccess(){await authStorage.removeItem(KEY);}
+export async function requireOfflinePermission(branchId:string,businessId:string,permission:string){
+  const grant=await readOfflineAccess();
+  if(!permitsOffline(grant,branchId,businessId)||!grant?.branches.some(b=>b.id===branchId&&b.business_id===businessId&&Array.isArray(b.permissions)&&b.permissions.includes(permission)))
+    throw Error("Manager permission is required. Reconnect with an authorized account to refresh access.");
+}

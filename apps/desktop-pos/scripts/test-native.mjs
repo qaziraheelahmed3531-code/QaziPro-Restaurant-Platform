@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron, expect } from 'playwright/test';
 import { build } from 'esbuild';
+import {execFileSync} from 'node:child_process';
 const root=resolve(fileURLToPath(new URL('../',import.meta.url)));
 const profile=await mkdtemp(join(tmpdir(),'qazipro-native-test-'));
 const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
@@ -12,11 +13,34 @@ let app;
 try{
  const started=Date.now();const metrics={};
  const packaged=process.argv.includes('--packaged');
- app=await electron.launch({executablePath:packaged?join(root,'release-staging/win-unpacked/QaziPRO POS Desktop.exe'):fileURLToPath(new URL('../../../node_modules/electron/dist/electron.exe',import.meta.url)),args:[...(packaged?[]:[root]),`--user-data-dir=${profile}`,'--desktop-smoke'],env,timeout:30000});
+ const launch=offline=>electron.launch({executablePath:packaged?join(root,'release-staging/win-unpacked/QaziPRO POS Desktop.exe'):fileURLToPath(new URL('../../../node_modules/electron/dist/electron.exe',import.meta.url)),args:[...(packaged?[]:[root]),`--user-data-dir=${profile}`,'--desktop-smoke',...(offline?['--desktop-smoke-offline']:[])],env,timeout:30000});
+ app=await launch(false);
  assert.equal(resolve(await app.evaluate(({app})=>app.getPath('userData'))),resolve(profile),'must never use the real operator profile');
- const page=await app.firstWindow();const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ let page=await app.firstWindow();const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ const crashRestart=async()=>{
+   const child=app.process();
+   await new Promise((resolve,reject)=>{
+     child.once('exit',resolve);child.once('error',reject);
+     // Kill only the exact disposable Electron PID and its descendants. Killing
+     // the main process alone leaves Chromium children holding IndexedDB files.
+     execFileSync('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore'});
+   });
+   const restarted=Date.now();app=await launch(true);page=await app.firstWindow();page.on('pageerror',error=>errors.push(error.message));
+   assert.equal(resolve(await app.evaluate(({app})=>app.getPath('userData'))),resolve(profile));
+   assert.equal(await page.evaluate(()=>fetch('https://example.com').then(()=>false,()=>true)),true,'restart backend transport must be blocked');
+   try{await expect(page.getByRole('button',{name:/Offline Pizza/})).toBeVisible({timeout:30000});}
+   catch(error){
+     await page.evaluate(seed.outputFiles[0].text);
+     console.log('CRASH_RECOVERY_DIAGNOSTIC',await page.evaluate(async()=>{
+       try{return {catalogs:await window.fixtureDB.catalogs.count(),drafts:await window.fixtureDB.drafts.count(),locked:await window.fixtureDB.settings.get('locked'),protectedGrantPresent:Boolean(await window.desktopCredentials.get('sb-desktop-offline-access'))}}catch(e){return {name:e.name,message:e.message}}
+     }));throw error;
+   }
+   (metrics.offlineProcessRestartMs??=[]).push(Date.now()-restarted);
+   await page.evaluate(()=>{window.dispatchEvent(new Event('offline'));window.nativePerf={longTasks:[],interactions:[]};new PerformanceObserver(list=>list.getEntries().forEach(e=>window.nativePerf.longTasks.push(Math.round(e.duration)))).observe({type:'longtask',buffered:true});});
+ };
  try{await expect(page.getByRole('button',{name:/Google/})).toBeVisible({timeout:10000})}
  catch(error){console.log(JSON.stringify({url:page.url(),body:await page.locator('body').innerText(),errors}));throw error}
+ metrics.coldLoginMs=Date.now()-started;
  const meta=await page.evaluate(()=>window.desktopPOS.meta());assert.equal(meta.platform,'win32');console.log('PASS real Electron shell and sender-validated bridge');
  // Native accelerator handlers receive Electron input, not CDP's renderer-only
  // keyboard dispatch. Exercise the same path as a physical desktop keyboard.
@@ -24,7 +48,6 @@ try{
  await expect.poll(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isFullScreen())).toBe(true);
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'}));
  await expect.poll(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isFullScreen())).toBe(false);
- metrics.coldLoginMs=Date.now()-started;
  await page.context().addInitScript(()=>{
    window.nativePerf={longTasks:[],interactions:[]};
    new PerformanceObserver(list=>list.getEntries().forEach(e=>window.nativePerf.longTasks.push(Math.round(e.duration)))).observe({type:'longtask',buffered:true});
@@ -75,8 +98,8 @@ try{
  metrics.addToPaintMs=await page.evaluate(()=>window.nativePerf.interactions[0]);
  await page.evaluate(seed.outputFiles[0].text);
  await expect.poll(()=>page.evaluate(async()=>(await window.fixtureDB.drafts.toArray())[0]?.items.length)).toBe(2);
- await page.reload();await expect(page.locator('.cart-lines')).toContainText('Offline Pizza');
- console.log('PASS actual network disconnected: cashier can add items and recover cart after renderer restart');
+ await crashRestart();await expect(page.locator('.cart-lines')).toContainText('Offline Pizza');
+ console.log('PASS actual network disconnected: cashier cart survives SIGKILL and fresh offline process launch');
  const checkout=page.getByRole('button',{name:/Checkout/});await checkout.click();
  await expect(page.getByRole('button',{name:/Terminal CARD/})).toBeDisabled();
  console.log('PASS offline terminal payment disabled');
@@ -88,7 +111,7 @@ try{
  await page.evaluate(seed.outputFiles[0].text);
  const offlineOrders=await page.evaluate(()=>window.fixtureDB.orders.toArray());assert.equal(offlineOrders.length,1);assert.equal(offlineOrders[0].total,2000);assert.equal(offlineOrders[0].syncState,'PENDING');
  console.log('PASS actual offline double submit creates one durable cash sale, no fake cloud confirmation');
- await page.reload();await page.evaluate(seed.outputFiles[0].text);assert.equal(await page.evaluate(()=>window.fixtureDB.orders.count()),1);
+ await crashRestart();await page.evaluate(seed.outputFiles[0].text);assert.equal(await page.evaluate(()=>window.fixtureDB.orders.count()),1);
  await expect(page.locator('.cart-lines')).not.toContainText('Offline Pizza');console.log('PASS restart after commit retains sale and does not resurrect paid cart');
  for(const [width,height] of [[1024,768],[1366,768],[1440,900],[1920,1080]]){
    await app.evaluate(({BrowserWindow},{width,height})=>{const window=BrowserWindow.getAllWindows()[0];window.unmaximize();window.setContentSize(width,height)},{width,height});

@@ -15,8 +15,27 @@ export const db=new PosDatabase()
 export const localId=()=>crypto.randomUUID()
 export async function deviceId(){return db.transaction("rw",db.settings,async()=>{const existing=await db.settings.get("deviceId");if(existing)return existing.value;const value=localId();await db.settings.put({key:"deviceId",value});return value})}
 export async function activeShift(branchId:string){return db.shifts.where({branchId,status:"OPEN"}).first()}
-export async function openShift(branchId:string,openingCash:number){return db.transaction("rw",db.shifts,async()=>{const existing=await activeShift(branchId);if(existing)return existing;const shift:LocalShift={id:localId(),branchId,openingCash:Math.max(0,Math.floor(openingCash)),openedAt:new Date().toISOString(),closedAt:null,countedCash:null,status:"OPEN",syncedAt:null};await db.shifts.add(shift);return shift})}
-export async function closeShift(id:string,countedCash:number){await db.shifts.update(id,{status:"CLOSED",closedAt:new Date().toISOString(),countedCash:Math.max(0,Math.floor(countedCash)),syncedAt:null})}
+export async function openShift(branchId:string,openingCash:number){
+  if(!Number.isSafeInteger(openingCash)||openingCash<0)throw Error("Enter a valid whole opening cash amount.");
+  return db.transaction("rw",db.shifts,async()=>{const existing=await activeShift(branchId);if(existing)return existing;const shift:LocalShift={id:localId(),branchId,openingCash,openedAt:new Date().toISOString(),closedAt:null,countedCash:null,status:"OPEN",syncedAt:null,revision:1};await db.shifts.add(shift);return shift});
+}
+export async function closeShift(id:string,countedCash:number){
+  if(!Number.isSafeInteger(countedCash)||countedCash<0)throw Error("Enter a valid whole cash amount.");
+  return db.transaction("rw",db.shifts,async()=>{
+    const shift=await db.shifts.get(id);if(!shift)throw Error("Shift not found.");
+    if(shift.status==="CLOSED")return shift;
+    const closed={...shift,status:"CLOSED" as const,closedAt:new Date().toISOString(),countedCash,syncedAt:null,revision:(shift.revision??1)+1};
+    await db.shifts.put(closed);return closed;
+  });
+}
+export async function recordLocalCashMovement(shiftId:string,movement:NonNullable<LocalShift["cashMovements"]>[number]){
+  if(!movement.id||!Number.isSafeInteger(movement.amount)||movement.amount<=0||movement.reason.trim().length<2||movement.reason.length>300||!["CASH_IN","CASH_OUT"].includes(movement.type))throw Error("Enter a positive cash amount and a reason.");
+  return db.transaction("rw",db.shifts,async()=>{
+    const shift=await db.shifts.get(shiftId);if(!shift||shift.status!=="OPEN")throw Error("An open shift is required.");
+    if(shift.cashMovements?.some(row=>row.id===movement.id))return;
+    await db.shifts.update(shiftId,{cashMovements:[...(shift.cashMovements??[]),movement],revision:(shift.revision??1)+1,syncedAt:null});
+  });
+}
 export async function nextToken(branchId:string,date:string){return db.transaction("rw",db.orders,async()=>{const sameDay=await db.orders.where({branchId,businessDate:date}).toArray();return sameDay.reduce((max,row)=>Math.max(max,row.tokenNumber),0)+1})}
 // Sequence allocation and sale insertion must commit or roll back together.
 export async function commitSale(order:LocalOrder,draftKey?:string,heldId?:string|null){return db.transaction("rw",db.orders,db.drafts,db.held,db.settings,async()=>{

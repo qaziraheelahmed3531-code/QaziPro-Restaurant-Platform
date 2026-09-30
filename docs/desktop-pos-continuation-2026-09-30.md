@@ -140,3 +140,60 @@ fail if reapplied. Do not repair or push production migration history.
 Web commits: `5e7ab60`, `cb23423`, `5ea56b7`, `53f1ac5`, `eb94dff`.
 Desktop source/tests are captured in the commit containing this checkpoint. Generated
 `apps/desktop-pos/tsconfig.app.tsbuildinfo` is deliberately not part of that source commit.
+
+## Continuation verified at 2026-09-30 17:02 UTC
+
+This section supersedes the earlier shift/crash/KDS entries, not the entire gate.
+Overall remains PARTIAL; remaining software must not be relabeled PASS.
+
+- Independent local shift revisions now reconcile via `sync_offline_pos_shift`:
+  open/empty shifts, paid-in/out/drop, final count, authoritative cash/refunds,
+  expected/difference, idempotent movement IDs, audit, branch/device scope and
+  manager permission. Closed shift waits for pending sales; late acknowledgements
+  cannot swallow newer revisions. Migration `20260930170000` applied/history
+  recorded on staging `jzisqjvroxodvmqxzsob` only. Deployed rollback checks pass.
+- Process-kill testing found a real first-profile encryption-key durability bug.
+  Electron async safeStorage now waits for Windows profile key persistence before
+  acknowledging credential provisioning. Actual process-tree kill + offline fresh
+  launch verifies cart recovery and committed cash sale without duplicate/revived
+  cart. Uncertain server-ack kill and complete flapping matrix still remain.
+- Counter orders now receive canonical server/KDS status through branch/business
+  scoped reconciliation, realtime and reconnect. Pending local mutations and
+  changed revisions are not overwritten. Late branch responses do not reset UI.
+- Three real cloud orders inserted while Desktop transport was blocked backfilled
+  through authenticated API once. KDS canonical query sees one sale with one line;
+  authenticated PREPARING and READY updates reach Desktop through realtime.
+  This is not the complete late-commit/delete cursor or customer UI matrix.
+- Web product grid memoization/stable functional callbacks eliminate menu renders
+  during cart adds/quantity changes. Render-count regression test proves this.
+  Next.js and React skill guidance informed these boundaries and callback review.
+
+### Latest verification
+
+29 reliability + 16 shift + 6 status reconciliation + 8 native adapter checks pass.
+10 live Desktop staging checks pass; 13 packaged Electron groups pass; 32 isolated
+Web browser checks and 24 live Web staging checks pass. TypeScript/build pass.
+Disposable staging identities/restaurants and native profiles were removed.
+No physical print, provider charge or real customer email was sent.
+
+Web: ready 4211ms, LCP 2536ms, max recorded event 120ms (was 264ms), longest task
+69ms (was 140ms), CLS .0741. Full butter-smooth gate still not passed; no threshold
+was relaxed. Latest packaged Desktop: login 4032ms, cached menu 197ms, add-to-paint
+22.7ms, actual offline process restarts 4145/978ms, short-run heap 10MB, long task
+145ms. Cold-login instrumentation now stops at visible login, before F11 checks.
+No hours-long memory or full scaling acceptance yet.
+
+Web staging READY: `dpl_GjuTWRynpwR4eq1SS9McB1nj9DU4`,
+`https://qazipro-restaurant-admin-staging-4ji47mm2y.vercel.app`, alias
+`https://admin.staging.qazipro.com`. Existing admin-staging project only; root
+customer-staging Vercel link preserved; no production project deployment.
+
+Latest Windows staging artifacts generated 17:00:04 UTC (unsigned):
+- Setup SHA256 `7baf356fa3184fc00735ac1dd5f922f93f6b2065f230b13b13fe3fc190bfbc9b`
+- Portable SHA256 `8d113628d21cd9639e11b49f9c17731c4721c673e130b9ec3bad3fb4310181a5`
+
+Additional release risk confirmed by npm audit: Next 16.3.4 critical
+GHSA-vcvr-r3jv-pc5j; nodemailer and brace-expansion high advisories. No blind audit
+fix performed. Review scoped patch upgrades and regressions before production.
+Tables/modes, encrypted operational DB, kitchen routing/diagnostics, revocation
+backlog reconciliation, installer upgrade, distribution and full role matrix remain.
