@@ -300,7 +300,7 @@ export default async function Page({
       )}
       {!shift.data && <PosShiftStart branchId={branch.id} />}
       <WaiterPosQueue
-        key={branch.id}
+        key={`table-queue:${branch.id}`}
         businessId={context.businessId}
         branchId={branch.id}
         shift={shift.data}
@@ -340,7 +340,7 @@ export default async function Page({
           context.role === "OWNER" ||
           context.permissions.includes("receipts.print")
         }
-        key={branch.id}
+        key={`terminal:${branch.id}`}
         businessId={context.businessId}
         userId={context.userId}
         businessName={
