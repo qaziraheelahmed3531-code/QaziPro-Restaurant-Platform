@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { db, deviceId } from "./db";
+import { authStorage } from "./auth-storage";
+import { drainOutbox } from "./outbox";
+import { backfillCloudOrders, cachedCloudOrders, type OrderCursor } from "./cloud-orders";
+import { saveOfflineAccess, clearOfflineAccess } from "./offline-access";
 import type {
   CatalogSnapshot,
   LocalOrder,
@@ -12,11 +16,13 @@ export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_KEY,
   {
+    global:{fetch:(url,options={})=>fetch(url,{...options,signal:options.signal??AbortSignal.timeout(12_000)})},
     auth: {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,
       flowType: "pkce",
+      storage: authStorage,
     },
   },
 );
@@ -29,7 +35,7 @@ export const absoluteAssetUrl = (url: string | null) =>
 export async function imageDataUrl(url: string | null) {
   if (!url) return null;
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     if (!response.ok) return null;
     const blob = await response.blob();
     return await new Promise<string>((resolve, reject) => {
@@ -43,11 +49,15 @@ export async function imageDataUrl(url: string | null) {
   }
 }
 
-export async function availableBranches() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Sign in is required for POS access.");
+let accessInFlight:ReturnType<typeof resolveBranches>|null=null;
+export function availableBranches(){
+  if(!accessInFlight)accessInFlight=resolveBranches().finally(()=>{accessInFlight=null;});
+  return accessInFlight;
+}
+async function resolveBranches() {
+  const { data: { user },error:userError } = await supabase.auth.getUser();
+  if(userError)throw userError;
+  if (!user) throw {code:"42501",message:"Sign in is required for POS access."};
   const claim = await supabase.rpc("claim_staff_invitations");
   if (claim.error) throw claim.error;
   const memberships = await supabase
@@ -57,9 +67,7 @@ export async function availableBranches() {
     .eq("is_active", true);
   if (memberships.error) throw memberships.error;
   if (!memberships.data?.length)
-    throw new Error(
-      "No active POS restaurant access is assigned to this email.",
-    );
+    throw {code:"42501",message:"No active POS restaurant access is assigned to this email."};
   const businessIds = [
     ...new Set(memberships.data.map((item) => item.business_id)),
   ];
@@ -83,9 +91,7 @@ export async function availableBranches() {
     Boolean(value),
   );
   if (!allowedBusinesses.length)
-    throw new Error(
-      "This account does not have QaziPRO POS Desktop access. Ask the owner to assign it from Staff & Roles.",
-    );
+    throw {code:"42501",message:"This account does not have QaziPRO POS Desktop access. Ask the owner to assign it from Staff & Roles."};
   const result = await supabase
     .from("branches")
     .select(
@@ -95,13 +101,26 @@ export async function availableBranches() {
     .eq("is_active", true)
     .order("sort_order");
   if (result.error) throw result.error;
-  return (result.data ?? []).filter((branch) =>
+  const scoped = (result.data ?? []).filter((branch) =>
     memberships.data.some(
       (member) =>
         member.business_id === branch.business_id &&
         (member.role === "OWNER" || member.branch_id === branch.id || (member.staff_membership_branches ?? []).some((assignment:{branch_id:string})=>assignment.branch_id===branch.id)),
     ),
   );
+  const device=await supabase.from("pos_offline_devices").select("business_id,branch_id,is_active").eq("id",await deviceId()).maybeSingle();
+  if(device.error)throw device.error;
+  if(device.data&&!device.data.is_active){await clearOfflineAccess();throw {code:"42501",message:"This desktop device was deauthorized. Saved sales are preserved for manager reconciliation."};}
+  const boundDevice=device.data;
+  const boundBranches=boundDevice?scoped.filter(branch=>branch.id===boundDevice.branch_id&&branch.business_id===boundDevice.business_id):scoped;
+  const allowed = (await Promise.all(boundBranches.map(async branch=>{
+    const gate=await supabase.rpc("resolve_runtime_entitlements",{p_business_id:branch.business_id,p_branch_id:branch.id,p_capability_keys:["pos.desktop"]}).abortSignal(AbortSignal.timeout(12_000));
+    if(gate.error)throw gate.error;
+    return gate.data?.["pos.desktop"]?.enabled===true ? branch : null;
+  }))).filter((branch):branch is NonNullable<typeof branch>=>Boolean(branch));
+  if(!allowed.length){await clearOfflineAccess();throw {code:"42501",message:"Desktop POS access is unavailable. Ask the owner to review this device and your permissions."};}
+  await saveOfflineAccess(user.id,allowed.map(({id,business_id})=>({id,business_id})));
+  return allowed;
 }
 
 async function desktopApi(path: string, init?: RequestInit) {
@@ -114,36 +133,42 @@ async function desktopApi(path: string, init?: RequestInit) {
   try {
     response = await fetch(`${baseUrl}${path}`, {
       ...init,
+      signal: init?.signal ?? AbortSignal.timeout(15_000),
       headers: {
         Authorization: `Bearer ${token}`,
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
         ...init?.headers,
       },
     });
-  } catch (error) {
-    const detail =
-      error instanceof Error ? error.message : "Network request failed";
+  } catch {
     throw new Error(
-      `Website order service is unreachable at ${baseUrl}. Check the internet/server connection and retry. (${detail})`,
+      "Cloud orders are temporarily unavailable. Saved local sales are safe. Check your connection and retry.",
     );
   }
   const result = (await response.json().catch(() => ({}))) as {
     error?: string;
     orders?: WebsiteOrder[];
+    cursor?:OrderCursor|null;
+    hasMore?:boolean;
     status?: WebsiteOrderStatus;
     emailStatus?: string;
   };
   if (!response.ok)
-    throw new Error(result.error ?? "Desktop POS server request failed.");
+    throw new Error(response.status === 401 ? "Your session has expired. Sign in again when online."
+      : response.status === 403 ? "You do not have access to this action. Ask your manager to review your permissions."
+      : response.status === 409 ? "This order changed on another device. Refresh its status before trying again."
+      : "The cloud action could not be completed. Refresh the order status before retrying.");
   return result;
 }
 
 export async function loadWebsiteOrders(branchId: string) {
-  if (!navigator.onLine) return [] as WebsiteOrder[];
-  const result = await desktopApi(
-    `/api/desktop-pos/orders?branch=${encodeURIComponent(branchId)}`,
-  );
-  return result.orders ?? [];
+  if (!navigator.onLine) return cachedCloudOrders(branchId);
+  return backfillCloudOrders(branchId,async cursor=>{
+    const params=new URLSearchParams({branch:branchId,sync:"1"});
+    if(cursor){params.set("after",cursor.updatedAt);params.set("afterId",cursor.id);}
+    const result=await desktopApi(`/api/desktop-pos/orders?${params}`);
+    return {...result,orders:result.orders??[]};
+  });
 }
 
 export async function updateWebsiteOrderStatus(
@@ -346,6 +371,8 @@ export async function downloadCatalog(branchId: string) {
       p_app_version: meta?.version ?? "0.1.0",
     });
   if (registration.error) throw registration.error;
+  const proof=await supabase.from("pos_catalog_snapshots").select("rules").eq("id",String(registration.data)).eq("business_id",businessId).eq("branch_id",branchId).single();
+  if(proof.error)throw proof.error;
   const logo = absoluteAssetUrl(branding.data?.logo_url ?? null);
   const favicon = absoluteAssetUrl(branding.data?.favicon_url ?? null);
   const oldProducts = new Map(
@@ -419,6 +446,7 @@ export async function downloadCatalog(branchId: string) {
     branchId,
     businessId,
     catalogVersionId: String(registration.data),
+    taxRateBps:Number(proof.data.rules?.taxRateBps??0),
     branchName: branch.restaurant_name ?? branch.name,
     city: branch.city,
     businessAddress: branch.formatted_address ?? branch.address ?? null,
@@ -513,6 +541,8 @@ function payload(
     orderType: order.orderType,
     tableReference: order.tableReference,
     cashReceived: order.cashReceived,
+    tax:order.tax??0,
+    total:order.total,
     paymentMethodCode: order.paymentMethodCode ?? "CASH",
     paymentReference: order.paymentReference ?? "",
     operationalStatus: order.operationalStatus ?? "CONFIRMED",
@@ -536,20 +566,16 @@ function payload(
     replacement: order.replacement,
   };
 }
-export async function syncPendingOrders() {
+export async function syncPendingOrders(retryAttention = false) {
   if (!navigator.onLine) return { synced: 0, failed: 0 };
+  // Resolve the authenticated staff's allowed branches before reading/sending
+  // any device outbox. Another login must not flush a previous tenant's sales.
+  const branches = await availableBranches();
   const id = await deviceId();
-  const pending = await db.orders
-    .where("syncState")
-    .anyOf("PENDING", "FAILED")
-    .sortBy("soldAt");
-  let synced = 0,
-    failed = 0;
-  for (const order of pending) {
+  return drainOutbox({branchIds:branches.map(branch=>branch.id),retryAttention,send:async(order)=>{
     const shift = await db.shifts.get(order.shiftId),
       catalog = await db.catalogs.get(order.branchId);
-    if (!shift || !catalog) continue;
-    await db.orders.update(order.id, { syncState: "SYNCING", syncError: null });
+    if (!shift || !catalog) throw {code:"LOCAL_CONTEXT_MISSING"};
     const { data, error } = await supabase.rpc("sync_offline_pos_order", {
       p_payload: payload(
         order,
@@ -557,14 +583,8 @@ export async function syncPendingOrders() {
         order.catalogVersionId ?? catalog.catalogVersionId,
         shift,
       ),
-    });
-    if (error) {
-      failed++;
-      await db.orders.update(order.id, {
-        syncState: "FAILED",
-        syncError: error.message.slice(0, 300),
-      });
-    } else {
+    }).abortSignal(AbortSignal.timeout(30_000));
+    if (error) throw error;
       const result = data as {
         id: string;
         orderNumber: string;
@@ -574,27 +594,10 @@ export async function syncPendingOrders() {
         const cancellation = await supabase.rpc("cancel_pos_order", {
           p_order_id: result.id,
           p_reason: "Cancelled from Desktop POS",
-        });
-        if (cancellation.error) {
-          failed++;
-          await db.orders.update(order.id, {
-            syncState: "FAILED",
-            syncError: cancellation.error.message.slice(0, 300),
-          });
-          continue;
-        }
+        }).abortSignal(AbortSignal.timeout(30_000));
+        if (cancellation.error) throw cancellation.error;
         result.status = "CANCELLED";
       }
-      synced++;
-      await db.orders.update(order.id, {
-        syncState: "SYNCED",
-        serverOrderId: result.id,
-        serverOrderNumber: result.orderNumber,
-        operationalStatus: result.status ?? order.operationalStatus,
-        syncedAt: new Date().toISOString(),
-        syncError: null,
-      });
-    }
-  }
-  return { synced, failed };
+      return result;
+  }});
 }

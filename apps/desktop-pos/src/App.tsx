@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DesktopDialogs } from "./dialog-accessibility";
+import { clearOfflineAccess, permitsOffline, readOfflineAccess } from "./offline-access";
+import { HardwareSettings, printReceipt } from "./hardware";
+import { cachedCloudOrders } from "./cloud-orders";
+import { authStorage } from "./auth-storage";
+import { DeviceSettings } from "./device-settings";
 import {
   Banknote,
   Bell,
@@ -33,7 +38,7 @@ import {
   closeShift,
   db,
   localId,
-  nextToken,
+  commitSale,
   openShift,
   posLocked,
   setPosLocked,
@@ -248,6 +253,15 @@ export function App() {
     [paymentCode, setPaymentCode] = useState("CASH"),
     [paymentReference, setPaymentReference] = useState(""),
     [cash, setCash] = useState("");
+  const [savingSale, setSavingSale] = useState(false);
+  const saleInFlight = useRef(false);
+  const syncInFlight = useRef(false);
+  const saleIdentity = useRef<string>(localId());
+  const [activeUserId,setActiveUserId]=useState("");
+  const [draftReady,setDraftReady]=useState("");
+  const resumedHold=useRef<string|null>(null);
+  const draftWrite=useRef<Promise<unknown>>(Promise.resolve());
+  const holdInFlight=useRef(false);
   const [customizing, setCustomizing] = useState<CatalogProduct | null>(null),
     [chosen, setChosen] = useState<Record<string, string[]>>({}),
     [chosenVariantId,setChosenVariantId]=useState<string|null>(null),
@@ -275,15 +289,19 @@ export function App() {
     setCatalog(activeCatalog);
     setShift((await activeShift(activeCatalog.branchId)) ?? null);
     setOrders(localOrders.reverse());
-    setHeld(await db.held.orderBy("createdAt").reverse().toArray());
+    const access=await readOfflineAccess();
+    setHeld((await db.held.where("branchId").equals(activeCatalog.branchId).sortBy("createdAt")).filter(row=>row.userId===access?.userId).reverse());
     return activeCatalog;
   }, []);
+  const activeCloudBranch=useRef<string|undefined>(undefined);
+  const cancelInFlight=useRef(new Set<string>());
   const refreshWebsite = useCallback(
     async (branchId?: string, quiet = true) => {
       if (!branchId || !navigator.onLine) return;
       if (!quiet) setWebsiteBusy(true);
       try {
         const rows = await loadWebsiteOrders(branchId);
+        if(activeCloudBranch.current!==branchId)return;
         if (!websiteLoaded.current) {
           knownWebsiteIds.current = new Set(rows.map((order) => order.id));
           websiteLoaded.current = true;
@@ -297,18 +315,20 @@ export function App() {
               : "Website orders could not be loaded.",
           );
       } finally {
-        if (!quiet) setWebsiteBusy(false);
+        if (!quiet && activeCloudBranch.current===branchId) setWebsiteBusy(false);
       }
     },
     [],
   );
   const sync = useCallback(
     async (silent = false) => {
-      if (!navigator.onLine) return;
+      if (!navigator.onLine || syncInFlight.current) return;
+      syncInFlight.current = true;
       setSyncing(true);
       if (!silent) setMessage("Syncing catalog and offline sales…");
       try {
-        const result = await syncPendingOrders();
+        const result = await syncPendingOrders(!silent);
+        setOnline(true);
         if (branchForSync) setCatalog(await downloadCatalog(branchForSync));
         await Promise.all([
           refreshLocal(branchForSync),
@@ -321,11 +341,17 @@ export function App() {
               : `Everything synced · ${result.synced} new order${result.synced === 1 ? "" : "s"}`,
           );
       } catch (error) {
+        if(String((error as {code?:string})?.code)==="42501") {
+          await clearOfflineAccess();await setPosLocked(true);setLocked(true);
+          setAuthError("Desktop access has been revoked. Saved sales remain on this device for reconciliation.");
+        }
+        else if(!String((error as {code?:string})?.code))setOnline(false);
         if (!silent)
           setMessage(
             error instanceof Error ? error.message : "Sync unavailable",
           );
       } finally {
+        syncInFlight.current = false;
         setSyncing(false);
       }
     },
@@ -381,17 +407,35 @@ export function App() {
     [catalog, deviceAlertsEnabled, deviceSoundDataUrl],
   );
 
+  const latestSync = useRef(sync);
+  useEffect(()=>{
+    const report=async()=>{
+      const pending=await db.orders.where("syncState").notEqual("SYNCED").count();
+      const drafts=await db.drafts.toArray();
+      await window.desktopUpdates?.safety(!cart.length&&!savingSale&&!checkoutOpen&&!syncing&&!pending&&!drafts.some(d=>d.items?.length));
+    };
+    void report().catch(()=>window.desktopUpdates?.safety(false));
+    const interval=setInterval(()=>void report().catch(()=>window.desktopUpdates?.safety(false)),2000);
+    return()=>{clearInterval(interval);void window.desktopUpdates?.safety(false)};
+  },[cart.length,savingSale,checkoutOpen,syncing]);
+  useEffect(() => { latestSync.current = sync; }, [sync]);
   useEffect(() => {
     void (async () => {
+      try {
       const cached = await refreshLocal(),
         storedLock = await posLocked(),
         alertPreference = await db.settings.get("orderAlertsEnabled"),
         soundPreference = await db.settings.get("orderAlertSound"),
         { data } = await supabase.auth.getSession();
+      const offlineAccess=await readOfflineAccess();
+      setActiveUserId(data.session?.user.id??offlineAccess?.userId??"");
       setSession(Boolean(data.session));
       setLocked(storedLock);
       setDeviceAlertsEnabled(alertPreference?.value !== "false");
       setDeviceSoundDataUrl(soundPreference?.value || null);
+      // A protected, unexpired grant permits immediate cached startup. Cloud
+      // verification continues below and can revoke access without losing work.
+      if(data.session&&cached&&!storedLock&&permitsOffline(offlineAccess,cached.branchId,cached.businessId))setBooting(false);
       if (data.session && navigator.onLine)
         try {
           const assigned = await availableBranches();
@@ -408,24 +452,34 @@ export function App() {
             setShift(null);
           }
         } catch (error) {
+          const denied=String((error as {code?:string})?.code)==="42501";
+          if(!denied)setOnline(false);
+          setLocked(storedLock || denied || !cached || !permitsOffline(offlineAccess,cached.branchId,cached.businessId));
           setAuthError(
             error instanceof Error
               ? error.message
               : "Unable to load assigned restaurant.",
           );
         }
+      if(!navigator.onLine && (!cached||!permitsOffline(offlineAccess,cached.branchId,cached.businessId))) {
+        setLocked(true);setAuthError("Offline access has expired or is not provisioned. Connect to verify your staff access; saved sales are preserved.");
+      }
       if (!data.session && (navigator.onLine || !cached)) setLocked(true);
-      setBooting(false);
+      } catch {
+        setLocked(true);
+        setAuthError("Your counter could not be opened safely. Check device storage and sign in again.");
+      } finally { setBooting(false); }
     })();
     const onOnline = () => {
         setOnline(true);
-        void sync(true);
+        void latestSync.current(true);
       },
       onOffline = () => setOnline(false);
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     const { data } = supabase.auth.onAuthStateChange((_event, value) => {
       setSession(Boolean(value));
+      if(value)setActiveUserId(value.user.id);
       if (!value && navigator.onLine) setLocked(true);
     });
     return () => {
@@ -433,7 +487,41 @@ export function App() {
       window.removeEventListener("offline", onOffline);
       data.subscription.unsubscribe();
     };
-  }, [refreshLocal, sync]);
+  }, [refreshLocal]);
+  const draftKey=catalog&&activeUserId?`${catalog.businessId}:${catalog.branchId}:${activeUserId}`:"";
+  useEffect(()=>{
+    if(!draftKey)return;
+    let cancelled=false;setDraftReady("");
+    void db.drafts.get(draftKey).then(async draft=>{
+      // A crash after committing a sale must not revive its former cart.
+      if(draft && await db.orders.get(draft.intentId)){await db.drafts.delete(draftKey);draft=undefined;}
+      if(cancelled)return;
+      saleIdentity.current=draft?.intentId??localId();resumedHold.current=draft?.heldId??null;
+      setCart(draft?.items??[]);setCustomer(draft?.customerName??"");setPhone(draft?.customerPhone??"");
+      setNotes(draft?.notes??"");setOrderType(draft?.orderType??"TAKEAWAY");setTable(draft?.tableReference??"");
+      setDraftReady(draftKey);
+    }).catch(()=>{setMessage("Saved cart could not be read. Check device storage before taking payment.");});
+    return()=>{cancelled=true;};
+  },[draftKey]);
+  useEffect(()=>{
+    if(!catalog||!draftKey||draftReady!==draftKey||replacing||saleInFlight.current)return;
+    const draft={key:draftKey,branchId:catalog.branchId,userId:activeUserId,intentId:saleIdentity.current,items:cart,
+      customerName:customer,customerPhone:phone,notes,orderType,tableReference:table,heldId:resumedHold.current,updatedAt:new Date().toISOString()};
+    draftWrite.current=draftWrite.current.catch(()=>{}).then(()=>db.drafts.put(draft)).catch(()=>{
+      setMessage("Cart backup could not be saved. Keep this window open and check available disk space.");
+    });
+  },[draftKey,draftReady,catalog,activeUserId,cart,customer,phone,notes,orderType,table,replacing]);
+  useEffect(()=>{
+    if(!catalog||loginRequired)return;
+    const timer=setInterval(()=>{
+      void readOfflineAccess().then(access=>{
+        if(!permitsOffline(access,catalog.branchId,catalog.businessId)){
+          setLocked(true);setAuthError("Offline authorization expired. Reconnect to verify access. Your cart and saved sales are preserved.");
+        }
+      });
+    },30_000);
+    return()=>clearInterval(timer);
+  },[catalog,loginRequired]);
   useEffect(() => {
     const unsubscribe = window.desktopPOS?.onOAuthCallback(async (url) => {
       setAuthError("");
@@ -517,7 +605,7 @@ export function App() {
   useEffect(() => {
     if (booting || !loginRequired) return;
     let cancelled = false;
-    void imageDataUrl("/qazipro-logo.png").then((logo) => {
+    void imageDataUrl(new URL("qazipro-logo.png",document.baseURI).href).then((logo) => {
       if (!cancelled && logo)
         void window.desktopPOS?.setBranding(logo, "QaziPRO POS Desktop");
     });
@@ -538,14 +626,23 @@ export function App() {
         );
   }, [session, online, branches.length]);
   useEffect(() => {
-    if (!branchForSync || !online || !session) return;
-    void sync(true);
-    const timer = window.setInterval(() => void sync(true), 60_000);
+    if (!branchForSync || !session || locked) return;
+    if(online)void sync(true);
+    // Backend outages do not necessarily fire an OS "online" event on recovery.
+    const timer = window.setInterval(() => void sync(true), online?60_000:15_000);
     return () => window.clearInterval(timer);
-  }, [branchForSync, online, session, sync]);
+  }, [branchForSync, online, session, sync,locked]);
+  useEffect(()=>{
+    activeCloudBranch.current=branchForSync;
+    setWebsiteOrders([]);setWebsiteBusy(false);setUnreadWebsiteIds(new Set());
+    knownWebsiteIds.current.clear();websiteLoaded.current=false;
+    if(branchForSync)void cachedCloudOrders(branchForSync).then(rows=>{
+      if(activeCloudBranch.current===branchForSync&&!websiteLoaded.current)setWebsiteOrders(rows);
+    }).catch(()=>setMessage("Saved online orders could not be read. Connect to refresh them."));
+  },[branchForSync]);
   useEffect(() => {
-    if (!branchForSync || !online || !session) {
-      if (!online) setWebsiteOrders([]);
+    if (!branchForSync || !online || !session || locked) {
+      // Keep the last confirmed rows visible during connection loss.
       return;
     }
     knownWebsiteIds.current.clear();
@@ -606,6 +703,7 @@ export function App() {
     online,
     refreshWebsite,
     session,
+    locked,
   ]);
   useEffect(() => {
     const active = new Set(
@@ -653,10 +751,12 @@ export function App() {
         ),
       [cart],
     ),
+    tax=Math.round(subtotal*(catalog?.taxRateBps??0)/10000),
+    total=subtotal+tax,
     cashValue = Math.floor(Number(cash) || 0),
     change =
-      isCash && cashValue >= subtotal
-        ? cashValue - subtotal
+      isCash && cashValue >= total
+        ? cashValue - total
         : isCash
           ? null
           : 0;
@@ -769,6 +869,8 @@ export function App() {
     setCustomizing(null);
   };
   const resetSale = () => {
+    saleIdentity.current = localId();
+    resumedHold.current=null;
     setCart([]);
     setCustomer("");
     setPhone("");
@@ -781,9 +883,10 @@ export function App() {
   };
   const printAfterRender = () =>
     requestAnimationFrame(() =>
-      requestAnimationFrame(() => void window.desktopPOS?.print()),
+      requestAnimationFrame(() => {if(catalog)void printReceipt(catalog.branchId).then(result=>setMessage(result.message)).catch(()=>setMessage("Printing failed. Your sale is saved; retry printing only."));}),
     );
   const complete = async () => {
+    if (saleInFlight.current) return;
     if (
       !catalog ||
       !shift ||
@@ -792,8 +895,19 @@ export function App() {
       (isCash && change === null)
     )
       return;
+    if (!online && !isCash) {
+      setMessage("Offline payment is cash only. Card and wallet payments require a confirmed online provider/terminal result.");
+      return;
+    }
+    saleInFlight.current = true;
+    setSavingSale(true);
+    try {
+    await draftWrite.current;
+    if(!permitsOffline(await readOfflineAccess(),catalog.branchId,catalog.businessId)){
+      setLocked(true);setAuthError("Verify your staff access online before creating another sale. Your cart is preserved.");return;
+    }
     const soldAt = new Date().toISOString(),
-      received = isCash ? cashValue : subtotal;
+      received = isCash ? cashValue : total;
     if (replacing) {
       if (
         Date.now() - new Date(replacing.soldAt).getTime() >
@@ -807,12 +921,14 @@ export function App() {
         catalogVersionId: catalog.catalogVersionId,
         items: cart,
         subtotal,
-        total: subtotal,
+        tax,
+        total,
         cashReceived: received,
         paymentMethodCode: selectedPayment.code,
         paymentMethodName: selectedPayment.name,
         paymentReference: paymentReference.trim(),
         syncState: "PENDING",
+        revision: (replacing.revision ?? 0) + 1,
         syncError: null,
         replacement: {
           reason: replacementReason.trim(),
@@ -825,14 +941,13 @@ export function App() {
       setReceipt(updated);
       setMessage(`${replacing.localNumber} replacement saved offline.`);
     } else {
-      const token = await nextToken(catalog.branchId, today()),
-        order: LocalOrder = {
-          id: localId(),
+      const order: LocalOrder = {
+          id: saleIdentity.current,
           branchId: catalog.branchId,
           catalogVersionId: catalog.catalogVersionId,
           shiftId: shift.id,
-          localNumber: `OFF-${today().replaceAll("-", "")}-${String(token).padStart(4, "0")}`,
-          tokenNumber: token,
+          localNumber: "",
+          tokenNumber: 0,
           businessDate: today(),
           soldAt,
           customerName: customer.trim() || "Counter guest",
@@ -846,7 +961,8 @@ export function App() {
           paymentReference: paymentReference.trim(),
           operationalStatus: "CONFIRMED",
           subtotal,
-          total: subtotal,
+          tax,
+          total,
           items: cart,
           syncState: "PENDING",
           syncError: null,
@@ -855,15 +971,23 @@ export function App() {
           syncedAt: null,
           replacement: null,
         };
-      await db.orders.add(order);
-      setReceipt(order);
+      setReceipt(await commitSale(order,draftKey,resumedHold.current));
     }
     resetSale();
     await refreshLocal(catalog.branchId);
     printAfterRender();
     if (navigator.onLine) void sync(true);
+    } catch {
+      setMessage("Sale could not be saved. Your cart is unchanged. Check available disk space and retry; do not collect payment again.");
+    } finally {
+      saleInFlight.current = false;
+      setSavingSale(false);
+    }
   };
-  const editReplacement = (o: LocalOrder) => {
+  const editReplacement = async (o: LocalOrder) => {
+    if(!online||!catalog){setMessage("Connect to request a replacement. Saved orders remain unchanged.");return;}
+    const permission=await supabase.rpc("effective_permissions",{p_business_id:catalog.businessId});
+    if(permission.error||!(permission.data??[]).includes("payments.refund")){setMessage("An authorized manager must approve order replacements.");return;}
     setReplacing(o);
     setCart(o.items);
     setCustomer(o.customerName);
@@ -882,6 +1006,7 @@ export function App() {
     if (stages.indexOf(target) !== stages.indexOf(current) + 1) return;
     await db.orders.update(o.id, {
       operationalStatus: target,
+      revision: (o.revision ?? 0) + 1,
       syncState: "PENDING",
       syncError: null,
     });
@@ -889,24 +1014,37 @@ export function App() {
     if (navigator.onLine) void sync(true);
   };
   const cancelLocalOrder = async (order: LocalOrder) => {
+    if(cancelInFlight.current.has(order.id))return;
     const current = order.operationalStatus ?? "CONFIRMED";
     if (["DELIVERED", "CANCELLED"].includes(current)) return;
+    if(order.paymentMethodCode&&order.paymentMethodCode!=="CASH"){setMessage("Use the configured payment provider's online refund workflow. Desktop does not issue terminal refunds.");return;}
+    if (!online) {setMessage("Connect to cancel or refund this sale. Your saved sale is unchanged.");return;}
+    if (!order.serverOrderId || order.syncState !== "SYNCED") {setMessage("Sync this sale before requesting a cancellation or refund.");return;}
     if (
       !window.confirm(
-        `Cancel ${order.serverOrderNumber ?? order.localNumber}? Its payment will be recorded as refunded.`,
+        `Cancel ${order.serverOrderNumber ?? order.localNumber}? The server will check your refund permission and reconcile the payment.`,
       )
     )
       return;
+    cancelInFlight.current.add(order.id);
+    try{
+    setMessage("Requesting cancellation…");
+    const result=await supabase.rpc("cancel_pos_order",{p_order_id:order.serverOrderId,p_reason:"Cancelled from Desktop POS"}).abortSignal(AbortSignal.timeout(30_000));
+    if(result.error || result.data?.status!=="CANCELLED") {
+      setMessage("Cancellation was not confirmed. Ask an authorized manager to check the order before returning money.");return;
+    }
     await db.orders.update(order.id, {
       operationalStatus: "CANCELLED",
-      syncState: "PENDING",
+      revision: (order.revision ?? 0) + 1,
+      syncState: "SYNCED",
       syncError: null,
     });
     await refreshLocal(catalog?.branchId);
     setMessage(
-      `${order.serverOrderNumber ?? order.localNumber} cancelled. The cancellation is saved and will sync automatically.`,
+      `${order.serverOrderNumber ?? order.localNumber} cancellation confirmed by the server.`,
     );
-    if (navigator.onLine) void sync(true);
+    }catch{setMessage("Cancellation response is uncertain. Check the order online before returning money; do not retry the payment.");}
+    finally{cancelInFlight.current.delete(order.id);}
   };
   const updateWebsiteStage = async (
     order: WebsiteOrder,
@@ -1026,6 +1164,8 @@ export function App() {
     }
   };
   const logout = async () => {
+    await draftWrite.current;
+    await clearOfflineAccess();
     await setPosLocked(true);
     setLocked(true);
     setSession(false);
@@ -1033,7 +1173,12 @@ export function App() {
     setCatalog(null);
     setShift(null);
     resetSale();
-    if (navigator.onLine) await supabase.auth.signOut();
+    supabase.auth.stopAutoRefresh();
+    if(online)await supabase.auth.signOut({scope:"local"}).catch(()=>{});
+    // signOut can fail while the server is unreachable. Clear this installation's
+    // persisted session anyway; never keep an offline sign-out token on disk.
+    const authKey=`sb-${new URL(import.meta.env.VITE_SUPABASE_URL).hostname.split(".")[0]}-auth-token`;
+    await Promise.all([authKey,`${authKey}-code-verifier`,`${authKey}-user`].map(key=>authStorage.removeItem(key)));
   };
 
   if (booting)
@@ -1385,14 +1530,19 @@ export function App() {
               </main>
               <Cart
                 cart={cart}
-                subtotal={subtotal}
+                subtotal={total}
                 heldCount={held.length}
                 replacing={replacing}
                 setCart={setCart}
                 onCheckout={() => setCheckoutOpen(true)}
                 onHold={async () => {
+                  if(holdInFlight.current)return;
+                  holdInFlight.current=true;
+                  try{
                   const v: HeldOrder = {
-                    id: localId(),
+                    id: resumedHold.current??localId(),
+                    branchId: catalog.branchId,
+                    userId: activeUserId,
                     label: `Held ${held.length + 1}`,
                     createdAt: new Date().toISOString(),
                     customerName: customer,
@@ -1402,9 +1552,12 @@ export function App() {
                     tableReference: table,
                     items: cart,
                   };
-                  await db.held.add(v);
-                  setCart([]);
+                  await draftWrite.current;
+                  await db.transaction("rw",db.held,db.drafts,async()=>{await db.held.put(v);await db.drafts.delete(draftKey);});
+                  resetSale();
                   await refreshLocal(catalog.branchId);
+                  }catch{setMessage("Order could not be held. Your cart is unchanged; check device storage.");}
+                  finally{holdInFlight.current=false;}
                 }}
               />
             </div>
@@ -1426,13 +1579,16 @@ export function App() {
             refreshWebsite={() => refreshWebsite(catalog.branchId, false)}
             focusedWebsiteOrderId={focusedWebsiteOrderId}
             onResume={async (v) => {
+              if(v.branchId !== catalog.branchId || v.userId!==activeUserId) return;
+              if(cart.length){setMessage("Hold or finish the current cart before resuming another order.");return;}
               setCart(v.items);
               setCustomer(v.customerName);
               setPhone(v.customerPhone);
               setNotes(v.notes);
               setOrderType(v.orderType);
               setTable(v.tableReference);
-              await db.held.delete(v.id);
+              // Keep the recovery copy until the sale commits atomically.
+              resumedHold.current=v.id;
               setView("sale");
               await refreshLocal(catalog.branchId);
             }}
@@ -1484,7 +1640,8 @@ export function App() {
       </section>
       {checkoutOpen && (
         <Checkout
-          subtotal={subtotal}
+          subtotal={total}
+          tax={tax}
           cart={cart}
           customer={customer}
           phone={phone}
@@ -1512,7 +1669,9 @@ export function App() {
           replacementReason={replacementReason}
           setReplacementReason={setReplacementReason}
           ready={paymentReady && (!isCash || change !== null)}
-          close={() => setCheckoutOpen(false)}
+          saving={savingSale}
+          online={online}
+          close={() => { if(!saleInFlight.current) setCheckoutOpen(false); }}
           complete={complete}
         />
       )}
@@ -2009,6 +2168,7 @@ function Cart({
 
 type CheckoutProps = {
   subtotal: number;
+  tax:number;
   cart: CartLine[];
   customer: string;
   phone: string;
@@ -2032,6 +2192,8 @@ type CheckoutProps = {
   replacementReason: string;
   setReplacementReason: (v: string) => void;
   ready: boolean;
+  saving: boolean;
+  online: boolean;
   close: () => void;
   complete: () => Promise<void>;
 };
@@ -2048,7 +2210,7 @@ function Checkout(p: CheckoutProps) {
             <small>FINAL CHECK</small>
             <h2>{p.replacing ? "Confirm replacement" : "Checkout"}</h2>
           </div>
-          <button onClick={p.close} aria-label="Close checkout">
+          <button onClick={p.close} disabled={p.saving} aria-label="Close checkout">
             <X />
           </button>
         </header>
@@ -2158,6 +2320,7 @@ function Checkout(p: CheckoutProps) {
               {p.methods.map((method) => (
                 <button
                   key={method.id}
+                  disabled={p.saving || (!p.online && method.kind !== "CASH")}
                   className={p.selected.code === method.code ? "active" : ""}
                   onClick={() => p.setPayment(method.code)}
                 >
@@ -2225,19 +2388,22 @@ function Checkout(p: CheckoutProps) {
               </>
             )}
             <div className="checkout-total">
+              {p.tax>0&&<small>Includes tax {money(p.tax)}</small>}
               <span>Total</span>
               <strong>{money(p.subtotal)}</strong>
             </div>
+            {!p.online && <p role="status">Offline: cash only. Sales are saved on this device until sync is confirmed.</p>}
             <button
               className="primary place-order"
               disabled={
                 !p.ready ||
+                p.saving || (!p.online && !isCash) ||
                 (Boolean(p.replacing) && p.replacementReason.trim().length < 3)
               }
               onClick={() => void p.complete()}
             >
               <Printer />
-              {p.replacing
+              {p.saving ? "Saving sale…" : p.replacing
                 ? "Save replacement & print"
                 : "Place order & print receipt"}
             </button>
@@ -2450,6 +2616,7 @@ function ReceiptDocument({
       </div>
       {!kitchen ? (
         <div className="receipt-totals">
+          {Boolean(order.tax)&&settings?.showTax!==false?<><div><span>Subtotal</span><strong>{money(order.subtotal)}</strong></div><div><span>Tax</span><strong>{money(order.tax??0)}</strong></div></>:null}
           <div>
             <span>Total</span>
             <strong>{money(order.total)}</strong>
@@ -2524,7 +2691,7 @@ function Receipt({
         </div>
         <button
           className="primary"
-          onClick={() => void window.desktopPOS?.print()}
+          onClick={() => void printReceipt(catalog.branchId).then(result=>window.alert(result.message)).catch(()=>window.alert("Printing failed. Your sale remains saved."))}
         >
           <Printer />
           Print again
@@ -2847,6 +3014,8 @@ function SettingsView({
 }) {
   return (
     <div className="settings-panel">
+      <HardwareSettings branchId={catalog.branchId}/>
+      <DeviceSettings branchId={catalog.branchId}/>
       <h2>Offline-first connection</h2>
       <p>
         Products, images, payment methods and branding update whenever internet

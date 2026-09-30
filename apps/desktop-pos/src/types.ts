@@ -46,6 +46,7 @@ export type CatalogSnapshot = {
   branchId: string;
   businessId: string;
   catalogVersionId: string;
+  taxRateBps?:number;
   branchName: string;
   city: string;
   businessAddress?: string | null;
@@ -143,9 +144,15 @@ export type LocalOrder = {
   operationalStatus?:
     "CONFIRMED" | "PREPARING" | "READY" | "DELIVERED" | "CANCELLED";
   subtotal: number;
+  tax?:number;
   total: number;
   items: CartLine[];
   syncState: "PENDING" | "SYNCING" | "SYNCED" | "FAILED";
+  syncAttempts?: number;
+  syncStartedAt?: string | null;
+  syncRetryAt?: string | null;
+  syncNeedsAttention?: boolean;
+  revision?: number;
   syncError: string | null;
   serverOrderId: string | null;
   serverOrderNumber: string | null;
@@ -159,6 +166,9 @@ export type LocalOrder = {
 };
 export type HeldOrder = {
   id: string;
+  // Legacy unscoped holds remain stored, but are never guessed into a branch.
+  branchId?: string;
+  userId?: string;
   label: string;
   createdAt: string;
   customerName: string;
@@ -167,6 +177,11 @@ export type HeldOrder = {
   orderType: "TAKEAWAY" | "DINE_IN";
   tableReference: string;
   items: CartLine[];
+};
+export type DesktopDraft = {
+  key:string;branchId:string;userId:string;intentId:string;items:CartLine[];
+  customerName:string;customerPhone:string;notes:string;orderType:"TAKEAWAY"|"DINE_IN";tableReference:string;
+  heldId:string|null;updatedAt:string;
 };
 
 export type WebsiteOrderStatus =

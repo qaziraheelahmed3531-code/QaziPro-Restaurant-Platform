@@ -11,13 +11,66 @@ const {
 const path = require("node:path")
 const fs = require("node:fs")
 const crypto = require("node:crypto")
+const { pathToFileURL } = require("node:url")
+const { createSecureStore } = require("./secure-store.cjs")
+const { createPrinterAdapter } = require("./printer-adapter.cjs")
+const { createUpdateAdapter } = require("./update-adapter.cjs")
+const runtime=JSON.parse(fs.readFileSync(path.join(__dirname,"../dist/desktop-runtime.json"),"utf8"))
+let updater
+const updates=()=>{
+ if(updater)return updater
+ const configured=app.isPackaged&&process.platform==='win32'&&runtime.updatePublisher&&runtime.updateUrl&&new URL(runtime.updateUrl).protocol==='https:'
+ let driver
+ if(configured){
+  const {NsisUpdater}=require('electron-updater')
+  const {verifySignature}=require('electron-updater/out/windowsExecutableCodeSignatureVerifier')
+  const logger={info:()=>{},warn:()=>{},error:()=>{},debug:()=>{}}
+  // electron-updater 6 silently skips Authenticode if app-update.yml has no
+  // publisherName. Pin the packaged publisher and fail closed instead.
+  class SignedUpdater extends NsisUpdater {verifySignature(file){return verifySignature([runtime.updatePublisher],file,logger)}}
+  driver=new SignedUpdater({provider:'generic',url:runtime.updateUrl});driver.logger=logger
+ }
+ updater=createUpdateAdapter({driver,configured:Boolean(configured)});return updater
+}
+const printerAdapters=new WeakMap()
+const printerFor=contents=>{
+  if(!printerAdapters.has(contents))printerAdapters.set(contents,createPrinterAdapter(contents))
+  return printerAdapters.get(contents)
+}
 
 const baseName = "QaziPRO POS Desktop"
 const baseAppId = "pk.qazipro.desktoppos"
 app.setName(baseName)
 app.setAppUserModelId(baseAppId)
 
+// Native smoke tests use a disposable profile and never register OS protocols.
+const smokeMode=(!app.isPackaged || runtime.channel === "staging") && process.argv.includes("--desktop-smoke")
+if (smokeMode) {
+  const isolated = path.resolve(app.commandLine.getSwitchValue("user-data-dir"))
+  const temporary = path.resolve(require("node:os").tmpdir()) + path.sep
+  if (!isolated.toLowerCase().startsWith(temporary.toLowerCase()) || !path.basename(isolated).startsWith("qazipro-native-test-"))
+    throw new Error("Native verification requires an isolated temporary profile")
+  app.setPath("userData", isolated)
+}
+
 const userDataPath = app.getPath("userData")
+const credentials = createSecureStore(path.join(userDataPath, "credentials"), safeStorage)
+const rendererUrl = !app.isPackaged && process.env.ELECTRON_RENDERER_URL
+  ? new URL(process.env.ELECTRON_RENDERER_URL).href
+  : pathToFileURL(path.join(__dirname, "../dist/index.html")).href
+if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL &&
+    !/^http:\/\/(127\.0\.0\.1|localhost):\d+\/$/.test(rendererUrl))
+  throw new Error("Development renderer must use localhost")
+const trustedRenderer = (url) => {
+  try { const parsed = new URL(url); parsed.hash = ""; parsed.search = ""; return parsed.href === rendererUrl }
+  catch { return false }
+}
+const handle = (channel, listener) => ipcMain.handle(channel, (event, ...args) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents ||
+      event.senderFrame !== mainWindow.webContents.mainFrame || !trustedRenderer(event.senderFrame.url))
+    throw new Error("Untrusted desktop request")
+  return listener(event, ...args)
+})
 const brandFile = () => path.join(userDataPath, "restaurant-brand.json")
 const restaurantPng = () => path.join(userDataPath, "restaurant-icon.png")
 const restaurantIco = () => path.join(userDataPath, "restaurant-icon.ico")
@@ -58,7 +111,7 @@ const ensureQaziProIcon = () => {
 }
 
 const protocols = ["qazipro-pos", "italianpizza-pos"]
-for (const protocol of protocols) {
+for (const protocol of (smokeMode ? [] : protocols)) {
   if (process.defaultApp && process.argv[1])
     app.setAsDefaultProtocolClient(protocol, process.execPath, [
       path.resolve(process.argv[1]),
@@ -75,8 +128,9 @@ let activeBrand = {
   iconPath: null,
 }
 
-const isOAuthUrl = (url) =>
-  protocols.some((protocol) => url?.startsWith(`${protocol}://`))
+const isOAuthUrl = (value) => {
+ try{const url=new URL(value);return protocols.includes(url.protocol.slice(0,-1))&&url.hostname==='auth'&&url.pathname==='/callback'&&!url.username&&!url.password&&String(value).length<24000}catch{return false}
+}
 const oauthArgument = (argv) => argv.find(isOAuthUrl)
 const deliverOAuth = (url) => {
   if (!isOAuthUrl(url)) return
@@ -158,7 +212,7 @@ const createWindow = (options = {}) => {
   applyWindowsTaskbarIdentity(window, title, iconPath)
   window.on("page-title-updated", (event) => {
     event.preventDefault()
-    window.setTitle(title)
+    window.setTitle(windowTitle())
   })
   window.once("ready-to-show", () => {
     if (shouldMaximize) window.maximize()
@@ -172,56 +226,65 @@ const createWindow = (options = {}) => {
       pendingOAuthUrl = null
     }
   })
-  const renderer = process.env.ELECTRON_RENDERER_URL
-  if (renderer) void window.loadURL(renderer)
-  else void window.loadFile(path.join(__dirname, "../dist/index.html"))
-}
-
-const replaceMainWindow = () => {
-  const previous = mainWindow
-  if (!previous || previous.isDestroyed()) {
-    createWindow()
-    return
-  }
-  createWindow({
-    bounds: previous.getBounds(),
-    maximized: previous.isMaximized(),
-    replaceWindow: previous,
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
+  window.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || input.isAutoRepeat) return
+    if (input.key === "F11") {
+      event.preventDefault()
+      window.setFullScreen(!window.isFullScreen())
+    } else if (input.key === "Escape" && window.isFullScreen()) {
+      window.setFullScreen(false)
+    }
   })
+  window.webContents.on("will-navigate", (event, url) => {
+    if (!trustedRenderer(url)) event.preventDefault()
+  })
+  void window.loadURL(rendererUrl)
 }
 
-ipcMain.handle("desktop:meta", () => ({
+handle("desktop:meta", () => ({
   version: app.getVersion(),
   platform: process.platform,
   deviceName: require("node:os").hostname(),
 }))
-ipcMain.handle("desktop:protect", (_event, value) =>
+handle("desktop:protect", (_event, value) =>
   safeStorage.isEncryptionAvailable()
     ? safeStorage.encryptString(String(value)).toString("base64")
     : null,
 )
-ipcMain.handle(
+handle("desktop:credentials-get", (_event, key) => credentials.get(key))
+handle("desktop:credentials-set", (_event, key, value) => credentials.set(key, value))
+handle("desktop:credentials-remove", (_event, key) => credentials.remove(key))
+handle("desktop:update-status",()=>updates().status())
+handle("desktop:update-safety",(_event,safe)=>{updates().setSafety(safe);return true})
+handle("desktop:update-action",(_event,action)=>updates().run(action))
+handle("desktop:fullscreen",()=>{mainWindow.setFullScreen(!mainWindow.isFullScreen());return mainWindow.isFullScreen()})
+handle("desktop:printers", async (event) =>
+  printerFor(event.sender).list())
+handle("desktop:print-receipt", (event,options)=>printerFor(event.sender).print(options))
+handle(
   "desktop:print",
   (event) =>
-    new Promise((resolve) =>
-      BrowserWindow.fromWebContents(event.sender)?.webContents.print(
+    new Promise((resolve) => {
+      if (event.sender.isDestroyed()) return resolve(false)
+      event.sender.print(
         { silent: false, printBackground: true },
         (success) => resolve(success),
-      ),
-    ),
+      )
+    }),
 )
-ipcMain.handle("desktop:oauth-open", async (_event, value) => {
+handle("desktop:oauth-open", async (_event, value) => {
   const url = new URL(String(value))
   const safeLocal =
     url.protocol === "http:" &&
     (url.hostname === "localhost" || url.hostname === "127.0.0.1")
-  if (url.protocol !== "https:" && !safeLocal)
+  if ((url.protocol !== "https:" && !safeLocal)||url.origin!==new URL(runtime.customerUrl).origin||url.pathname!=="/desktop-pos-auth"||url.username||url.password)
     throw new Error("Invalid sign-in URL")
   await shell.openExternal(url.toString())
   return true
 })
 
-ipcMain.handle("desktop:set-branding", (_event, value, name, businessId) => {
+handle("desktop:set-branding", (_event, value, name, businessId) => {
   const data = String(value ?? "")
   if (!/^data:image\/png;base64,/.test(data) || data.length > 3_000_000)
     return false
@@ -272,12 +335,10 @@ ipcMain.handle("desktop:set-branding", (_event, value, name, businessId) => {
     }
   }
 
-  const identityChanged = activeBrand.key !== nextBrand.key
   activeBrand = nextBrand
-  app.setName(activeBrand.name)
   app.setAppUserModelId(activeBrand.appId)
-  if (identityChanged) setImmediate(replaceMainWindow)
-  else if (mainWindow && !mainWindow.isDestroyed()) {
+  // Branding must never recreate the renderer: an in-progress cart is valuable.
+  if (mainWindow && !mainWindow.isDestroyed()) {
     const activeIcon = nativeImage.createFromPath(activeBrand.iconPath)
     if (!activeIcon.isEmpty()) mainWindow.setIcon(activeIcon)
     const title = windowTitle()
@@ -287,7 +348,7 @@ ipcMain.handle("desktop:set-branding", (_event, value, name, businessId) => {
   return true
 })
 
-ipcMain.handle("desktop:notify", (_event, value) => {
+handle("desktop:notify", (_event, value) => {
   if (!Notification.isSupported()) return false
   const title = String(value?.title ?? "New website order").slice(0, 100)
   const body = String(value?.body ?? "").slice(0, 240)
