@@ -179,7 +179,7 @@ try {
   pass('Admin catalog availability reaches POS via realtime');
   const performance=await page.evaluate(()=>{
     const nav=performance.getEntriesByType('navigation')[0];
-    return {...window.posPerf,ttfb:Math.round(nav.responseStart),domContentLoaded:Math.round(nav.domContentLoadedEventEnd)};
+    return {...window.posPerf,ttfb:Math.round(nav.responseStart),responseEnd:Math.round(nav.responseEnd),domContentLoaded:Math.round(nav.domContentLoadedEventEnd),resources:performance.getEntriesByType('resource').filter(r=>r.startTime<6000).sort((a,b)=>b.duration-a.duration).slice(0,12).map(r=>({path:new URL(r.name).pathname,duration:Math.round(r.duration),start:Math.round(r.startTime),bytes:r.transferSize}))};
   });
   console.log(JSON.stringify({publicPerformance:performance}));
   const {profile}=await devtools.send('Profiler.stop');

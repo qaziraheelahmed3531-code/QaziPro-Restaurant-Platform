@@ -51,10 +51,7 @@ export default async function Page({
   // branch. Do not repeat network auth + membership resolution on POS bootstrap.
   const selectedBranchId = context.activeBranchId;
   const branch = selectedBranchId && context.allowedBranchIds.includes(selectedBranchId)
-    ? (await supabase.from("branches")
-        .select("id,name,restaurant_name,city,timezone,location_revision,address,formatted_address,phone,pickup_enabled,delivery_enabled")
-        .eq("business_id", context.businessId)
-        .eq("id", selectedBranchId).eq("is_active", true).maybeSingle()).data
+    ? context.activeBranch
     : null;
   if (!branch)
     return (

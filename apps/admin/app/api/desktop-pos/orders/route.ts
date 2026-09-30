@@ -89,21 +89,33 @@ export function OPTIONS() {
 }
 
 export async function GET(request: Request) {
-  const branchId = new URL(request.url).searchParams.get("branch") ?? "";
+  const params=new URL(request.url).searchParams;
+  const branchId = params.get("branch") ?? "";
+  const incremental=params.get("sync")==="1";
+  const after=params.get("after"), afterId=params.get("afterId");
+  // Strict syntax before interpolation into a PostgREST filter. Preserve DB
+  // microseconds; normalizing a cursor through Date would lose precision.
+  const timestamp=(value:string|null)=>Boolean(value&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/.test(value)&&Number.isFinite(Date.parse(value)));
+  if(incremental && ((after&&!timestamp(after))||(afterId&&!uuid(afterId))||Boolean(after)!==Boolean(afterId)))
+    return json({error:"Invalid order sync cursor."},400);
   const access = await authorized(request, branchId);
   if (!access) return json({ error: "Desktop POS order access denied." }, 403);
-  const { data, error } = await access.db
+  let query = access.db
     .from("orders")
     .select(
       "id,order_number,token_number,service_mode,operational_order_type,status,payment_method,payment_status,payment_reference,customer_name,customer_phone,customer_email,delivery_area_name,delivery_address,delivery_instructions,subtotal,discount,tax,delivery_fee,total,created_at,updated_at,order_notes,table_reference,order_items(id,product_name,variant_id,variant_name,quantity,unit_base_price,unit_modifier_price,unit_price,line_total,order_item_modifiers(group_name,option_name,price_adjustment))",
     )
     .eq("business_id", access.businessId)
     .eq("branch_id", branchId)
-    .eq("channel", "WEBSITE")
-    .order("created_at", { ascending: false })
-    .limit(60);
+    .eq("channel", "WEBSITE");
+  if(incremental){
+    query=query.order("updated_at",{ascending:true}).order("id",{ascending:true}).limit(200);
+    if(after&&afterId)query=query.or(`updated_at.gt.${after},and(updated_at.eq.${after},id.gt.${afterId})`);
+  }else query=query.order("created_at", { ascending: false }).limit(60);
+  const { data, error } = await query;
   if (error) return json({ error: "Website orders could not be loaded." }, 502);
-  return json({ orders: data ?? [] });
+  const last=data?.at(-1);
+  return json({ orders: data ?? [],...(incremental?{hasMore:data?.length===200,cursor:last?{updatedAt:last.updated_at,id:last.id}:null}:{}) });
 }
 
 export async function POST(request: Request) {

@@ -17,6 +17,7 @@ export type AdminContext = {
   role: "OWNER" | "MANAGER" | "CASHIER" | "KITCHEN" | "WAITER" | "RIDER" | "STAFF"
   permissions: string[]
   capabilities: Record<string,boolean>
+  activeBranch?: {id:string;name:string;restaurant_name:string|null;city:string;timezone:string;location_revision:number;address:string|null;formatted_address:string|null;phone:string|null;pickup_enabled:boolean;delivery_enabled:boolean}|null
 }
 
 export type AdminAccessReason =
@@ -95,7 +96,7 @@ export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
     .select("business_id,branch_id,role,businesses!inner(name),staff_membership_branches(branch_id)")
     .eq("id", access.membershipId).eq("user_id", userId).eq("is_active", true).maybeSingle(),
     access.role === "OWNER" ? Promise.resolve({ data: [], error: null }) : supabase.rpc("effective_permissions", { p_business_id: access.businessId }),
-    supabase.from("branches").select("id,restaurant_name,name,city").eq("business_id",access.businessId).eq("is_active",true).order("sort_order"),
+    supabase.from("branches").select("id,restaurant_name,name,city,timezone,location_revision,address,formatted_address,phone,pickup_enabled,delivery_enabled").eq("business_id",access.businessId).eq("is_active",true).order("sort_order"),
   ])
   const data = membershipResult.data
   if (!data) return null
@@ -127,6 +128,7 @@ export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
     role: data.role as AdminContext["role"],
     permissions: data.role === "OWNER" ? ["*"] : (permissionRows ?? []).map(String),
     capabilities,
+    activeBranch:selectedBranch??null,
   }
 })
 

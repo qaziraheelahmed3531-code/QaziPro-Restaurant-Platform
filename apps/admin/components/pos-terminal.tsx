@@ -2206,18 +2206,20 @@ export function PosTerminal({
           {checkoutOpen && (
             <motion.div
               className="drawer-backdrop no-print pos-checkout-backdrop"
-              initial={{ opacity: 0 }}
+              initial={{ opacity: 0.96 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{duration:0.12}}
             >
               <motion.section
                 className="pos-checkout-modal"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="pos-checkout-title"
-                initial={{ scale: 0.97, y: 14 }}
+                initial={{ y: 6 }}
                 animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.97, y: 14 }}
+                exit={{ y: 6 }}
+                transition={{duration:0.12}}
               >
                 <header>
                   <div>
