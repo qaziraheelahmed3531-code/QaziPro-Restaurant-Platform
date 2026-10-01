@@ -103,23 +103,27 @@ try {
     .getByRole("columnheader", { name: "Restaurant" })
     .waitFor({ timeout: 20_000 });
   await page.getByRole("button", { name: "Add staff" }).click();
-  const restaurant = page.getByLabel("Restaurant");
-  const selectedBranchId = await restaurant.inputValue();
+  const restaurant = page.getByLabel("Allowed branches");
+  const selectedBranchIds = await restaurant.evaluate((select) =>
+    Array.from(select.selectedOptions, (option) => option.value),
+  );
+  const selectedBranchId = selectedBranchIds[0];
   assert.ok(selectedBranchId, "Add staff must require a restaurant selection");
-  assert.match(
-    (await restaurant.locator("option:checked").textContent()) ?? "",
-    /KING'S CAFE — Islamabad/,
+  assert.ok(
+    ((await restaurant.locator("option:checked").textContent()) ?? "").trim(),
     "Invite editor must show the selected restaurant",
   );
   let submitted;
   await page.route("**/api/staff", async (route) => {
     submitted = route.request().postDataJSON();
     await route.fulfill({
-      status: 200,
+      status: 202,
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        message: "Invitation intercepted by browser QA; no email sent.",
+        saved: true,
+        pending: true,
+        message: "Staff access saved; invitation delivery is pending.",
       }),
     });
   });
@@ -128,12 +132,17 @@ try {
     .fill(`qa-browser-payload-${randomUUID()}@example.test`);
   await page.getByRole("button", { name: "Save changes" }).click();
   await page
-    .getByText("Invitation intercepted by browser QA; no email sent.")
+    .getByText("Staff access saved; invitation delivery is pending.")
     .waitFor({ timeout: 20_000 });
+  assert.deepEqual(
+    submitted?.branchIds,
+    selectedBranchIds,
+    "Invite request must retain every selected restaurant",
+  );
   assert.equal(
-    submitted?.branchId,
-    selectedBranchId,
-    "Invite request must retain the selected restaurant",
+    await page.getByRole("dialog").count(),
+    0,
+    "A saved invitation must close the editor even when email delivery is pending",
   );
   assert.equal(
     submitted?.sendInvite,

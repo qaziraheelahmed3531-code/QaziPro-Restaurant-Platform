@@ -83,14 +83,16 @@ export function StaffManager({
       client.rpc("waiter_performance", { p_business_id: context.businessId }),
       client.rpc("rider_performance", { p_business_id: context.businessId }),
     ]);
-    if (directory.error || performance.error || riderPerformance.error)
+    if (directory.error)
       setMessage(
         "Could not load staff. Check access and database migrations, then retry.",
       );
     else {
       setMembers([...directory.data.members, ...directory.data.invitations]);
-      setWaiters((performance.data ?? []) as WaiterPerformance[]);
-      setRiders((riderPerformance.data ?? []) as RiderPerformance[]);
+      if (!performance.error)
+        setWaiters((performance.data ?? []) as WaiterPerformance[]);
+      if (!riderPerformance.error)
+        setRiders((riderPerformance.data ?? []) as RiderPerformance[]);
     }
   }, [context.businessId]);
   useEffect(() => {
@@ -149,8 +151,12 @@ export function StaffManager({
         }),
       });
       const result = await response.json();
-      setMessage(result.error ?? result.message);
-      if (response.ok) {
+      setMessage(
+        result.error ??
+          result.message ??
+          (response.ok ? "Staff access saved." : "Staff access could not be saved."),
+      );
+      if (response.ok || result.saved === true) {
         setDraft(null);
         setDesktopProfile(false);
         await load();

@@ -172,12 +172,14 @@ export async function POST(request: Request) {
   if (!isPendingInvitation && !body.sendInvite)
     return NextResponse.json({
       ok: true,
+      saved: true,
       message:
         "Staff permissions updated. They apply on the next protected request.",
     });
   if (!body.active)
     return NextResponse.json({
       ok: true,
+      saved: true,
       message: "Invitation saved as inactive. No email was sent.",
     });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -187,12 +189,14 @@ export async function POST(request: Request) {
   if (!url || !serviceKey)
     return NextResponse.json(
       {
-        ok: false,
+        ok: true,
+        saved: true,
         pending: true,
-        error:
-          "Staff invitation was saved, but secure server invitation access is not configured. Add the Supabase service key and resend.",
+        deliveryStatus: "NOT_CONFIGURED",
+        message:
+          "Staff role and branch access were saved. The invitation email is pending because secure email delivery is not configured; use Resend invite after configuration.",
       },
-      { status: 503 },
+      { status: 202 },
     );
   const admin = createSupabaseClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -262,15 +266,18 @@ export async function POST(request: Request) {
     if (delivery.status !== "SENT" && delivery.status !== "SUPPRESSED")
       return NextResponse.json(
         {
-          ok: false,
+          ok: true,
+          saved: true,
           pending: true,
-          error:
-            "Staff access was saved, but the invitation email could not be sent. Check SMTP settings and use Resend invite.",
+          deliveryStatus: delivery.status,
+          message:
+            "Staff role and branch access were saved. The invitation email could not be sent; check SMTP settings and use Resend invite.",
         },
-        { status: 502 },
+        { status: 202 },
       );
     return NextResponse.json({
       ok: true,
+      saved: true,
       pending: isPendingInvitation,
       message: delivery.status === "SUPPRESSED"
         ? "Synthetic QA invitation saved without external email delivery."
@@ -284,14 +291,16 @@ export async function POST(request: Request) {
       });
     return NextResponse.json(
       {
-        ok: false,
+        ok: true,
+        saved: true,
         pending: true,
-        error:
+        deliveryStatus: "FAILED",
+        message:
           error instanceof Error && error.message.includes("active restaurant")
-            ? error.message
-            : "Staff access was saved, but its secure email link could not be delivered. Check SMTP and resend.",
+            ? `Staff role and branch access were saved. ${error.message}`
+            : "Staff role and branch access were saved, but its secure email link could not be delivered. Check SMTP and use Resend invite.",
       },
-      { status: 502 },
+      { status: 202 },
     );
   }
 }
