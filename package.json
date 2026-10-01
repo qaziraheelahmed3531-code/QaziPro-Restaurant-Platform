@@ -26,6 +26,7 @@
     "build:customer": "npm --workspace apps/customer run build",
     "build:admin": "npm --workspace apps/admin run build",
     "build:super-admin": "npm --workspace apps/super-admin run build",
+    "deploy:super-admin:preview": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-super-admin-preview.ps1",
     "build:backend": "npm --workspace apps/backend run build",
     "build:desktop": "npm --workspace apps/desktop-pos run build",
     "build:mobile": "npm --workspace apps/mobile run build",
