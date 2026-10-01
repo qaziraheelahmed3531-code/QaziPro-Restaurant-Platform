@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveReleaseProfile } from "./release-profile";
+import { createExpoConfig, resolveReleaseProfile } from "./release-profile";
 
 describe("mobile release profile", () => {
   it("uses the approved shared-code staging identity", () => {
@@ -24,6 +24,28 @@ describe("mobile release profile", () => {
     });
     expect(profile.name).toBe("Restaurant One");
     expect(profile.androidPackage).toBe("com.qazipro.restaurantone");
+  });
+
+  it("uses a separate universal operations identity", () => {
+    const profile = resolveReleaseProfile({ EXPO_PUBLIC_APP_ENV: "staging", MOBILE_APP_VARIANT: "operations" });
+    expect(profile).toMatchObject({
+      variant: "operations",
+      name: "QaziPro Operations Staging",
+      slug: "qazipro-operations",
+      scheme: "qazipro-ops",
+      androidPackage: "com.qazipro.operations.staging",
+      iosBundleIdentifier: "com.qazipro.operations.staging",
+    });
+  });
+
+  it("uses delivery-specific permission copy for the operations app", () => {
+    const config = createExpoConfig({
+      EXPO_PUBLIC_APP_ENV: "staging",
+      MOBILE_APP_VARIANT: "operations",
+    });
+    expect(config.ios?.infoPlist?.NSLocationWhenInUseUsageDescription).toMatch(
+      /assigned delivery/i,
+    );
   });
 
   it("fails closed when production identifiers are absent", () =>

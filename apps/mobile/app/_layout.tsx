@@ -1,10 +1,12 @@
 import { useEffect } from "react";
-import { AppState, Text, View } from "react-native";
+import { AppState, Platform, Text, View } from "react-native";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AppProvider, useApp } from "@/state/AppProvider";
+import { OperationsProvider } from "@/operations/OperationsProvider";
+import { OpsButton, OpsScreen } from "@/operations/ui";
 import { parseDeepLink } from "@/domain/deep-links";
 import { supabase } from "@/lib/supabase";
 import { env } from "@/config/env";
@@ -44,21 +46,23 @@ function LinkHandler() {
       "url",
       (event) => void handle(event.url),
     );
-    const notification = Notifications.addNotificationResponseReceivedListener(
-      (event) => {
-        const orderNumber =
-          event.notification.request.content.data?.orderNumber;
-        if (typeof orderNumber === "string") {
-          const link = parseDeepLink(
-            `qazipro-restaurant://orders/${orderNumber}`,
-          );
-          if (link.kind === "order") router.push(`/order/${link.orderNumber}`);
-        }
-      },
-    );
+    const notification =
+      Platform.OS === "web"
+        ? null
+        : Notifications.addNotificationResponseReceivedListener((event) => {
+            const orderNumber =
+              event.notification.request.content.data?.orderNumber;
+            if (typeof orderNumber === "string") {
+              const link = parseDeepLink(
+                `qazipro-restaurant://orders/${orderNumber}`,
+              );
+              if (link.kind === "order")
+                router.push(`/order/${link.orderNumber}`);
+            }
+          });
     return () => {
       linking.remove();
-      notification.remove();
+      notification?.remove();
     };
   }, [router]);
   useEffect(() => {
@@ -110,7 +114,55 @@ function AppStack() {
     </>
   );
 }
+function OperationsStack() {
+  return (
+    <OperationsProvider>
+      <StatusBar style="dark" />
+      <OperationsLinkHandler />
+      <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="ops/index" />
+        <Stack.Screen name="ops/login" />
+        <Stack.Screen name="ops/admin" />
+        <Stack.Screen name="ops/waiter" />
+        <Stack.Screen name="ops/rider" />
+      </Stack>
+    </OperationsProvider>
+  );
+}
+function OperationsLinkHandler() {
+  const router = useRouter();
+  useEffect(() => {
+    const open = (screen: unknown) => {
+      if (screen === "admin") router.replace("/ops/admin" as never);
+      else if (screen === "waiter") router.replace("/ops/waiter" as never);
+      else if (screen === "rider") router.replace("/ops/rider" as never);
+      else router.replace("/ops" as never);
+    };
+    const handleUrl = (raw: string | null) => {
+      if (!raw) return;
+      const parsed = Linking.parse(raw);
+      const segment = parsed.path?.split("/").filter(Boolean)[0];
+      open(segment);
+    };
+    void Linking.getInitialURL().then(handleUrl);
+    if (Platform.OS !== "web")
+      void Notifications.getLastNotificationResponseAsync().then((response) => {
+        if (response) open(response.notification.request.content.data?.screen);
+      });
+    const link = Linking.addEventListener("url", (event) => handleUrl(event.url));
+    const notification =
+      Platform.OS === "web"
+        ? null
+        : Notifications.addNotificationResponseReceivedListener((event) =>
+            open(event.notification.request.content.data?.screen),
+          );
+    return () => { link.remove(); notification?.remove(); };
+  }, [router]);
+  return null;
+}
 export default function Layout() {
+  if (env.surface === "operations") return <OperationsStack />;
   return (
     <AppProvider>
       <AppStack />
@@ -125,6 +177,13 @@ export function ErrorBoundary({
   error: Error;
   retry: () => void;
 }) {
+  if (env.surface === "operations") {
+    return (
+      <OperationsProvider>
+        <OpsScreen scroll={false}><View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 16 }}><Text accessibilityRole="header" style={{ fontSize: 24, fontWeight: "800" }}>Operations could not open</Text><Text>Your saved local work has not been cleared.</Text><OpsButton title="Try again" onPress={retry} />{env.debug ? <Text selectable>{error.message}</Text> : null}</View></OpsScreen>
+      </OperationsProvider>
+    );
+  }
   return (
     <AppProvider>
       <Screen>

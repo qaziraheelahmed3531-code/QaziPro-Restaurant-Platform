@@ -7,7 +7,8 @@ import { parseBrowserSubscription, safeNotificationPath } from "@italian-pizza/s
 type Outbox = {
   id: string;
   business_id: string;
-  customer_id: string;
+  customer_id?: string;
+  staff_id?: string;
   title: string;
   message: string;
   payload: Record<string, unknown>;
@@ -15,8 +16,9 @@ type Outbox = {
   branch_id: string;
   broadcast_id?: string | null;
   delivered_device_ids?: string[];
+  source?: "customer" | "staff";
 };
-type Device = { id: string; platform: "android" | "ios" | "web"; push_token: string; web_subscription?: unknown; storefront_origin?: string; branch_id?: string; marketing_opt_in?: boolean };
+type Device = { id: string; platform: "android" | "ios" | "web"; push_token: string; web_subscription?: unknown; storefront_origin?: string; branch_id?: string; marketing_opt_in?: boolean; source?: "customer" | "staff" };
 type Delivery = { ok: boolean; permanent: boolean; detail: string };
 export const pushRetryDelaySeconds = (attempts: number) =>
   Math.min(3600, 30 * 2 ** Math.max(attempts, 0));
@@ -50,14 +52,14 @@ async function rest<T>(path: string, init: RequestInit = {}) {
   if (!response.ok) throw new Error(`Supabase REST ${response.status}`);
   return response.status === 204 ? (null as T) : ((await response.json()) as T);
 }
-async function claim(): Promise<Outbox | null> {
+async function claimFrom(table: "customer_notification_outbox" | "staff_notification_outbox", source: "customer" | "staff"): Promise<Outbox | null> {
   const rows = await rest<Outbox[]>(
-    "customer_notification_outbox?status=in.(PENDING,FAILED)&available_at=lte.now()&attempts=lt.5&order=created_at.asc&limit=1",
+    `${table}?status=in.(PENDING,FAILED)&available_at=lte.now()&attempts=lt.5&order=created_at.asc&limit=1`,
   );
   const row = rows[0];
   if (!row) return null;
   const claimed = await rest<Outbox[]>(
-    `customer_notification_outbox?id=eq.${row.id}&status=in.(PENDING,FAILED)`,
+    `${table}?id=eq.${row.id}&status=in.(PENDING,FAILED)`,
     {
       method: "PATCH",
       headers: { prefer: "return=representation" },
@@ -68,13 +70,15 @@ async function claim(): Promise<Outbox | null> {
       }),
     },
   );
-  return claimed[0] ?? null;
+  return claimed[0] ? { ...claimed[0], source } : null;
+}
+async function claim(): Promise<Outbox | null> {
+  return (await claimFrom("customer_notification_outbox", "customer")) ?? claimFrom("staff_notification_outbox", "staff");
 }
 async function recoverStaleClaims() {
   const stale = new Date(Date.now() - 5 * 60_000).toISOString();
-  await rest(
-    `customer_notification_outbox?status=eq.PROCESSING&updated_at=lt.${encodeURIComponent(stale)}`,
-    {
+  for (const table of ["customer_notification_outbox", "staff_notification_outbox"] as const) await rest(
+    `${table}?status=eq.PROCESSING&updated_at=lt.${encodeURIComponent(stale)}`, {
       method: "PATCH",
       headers: { prefer: "return=minimal" },
       body: JSON.stringify({
@@ -86,9 +90,12 @@ async function recoverStaleClaims() {
   );
 }
 async function devices(row: Outbox) {
-  return rest<Device[]>(
+  if (row.source === "staff") return (await rest<Device[]>(
+    `staff_device_tokens?business_id=eq.${row.business_id}&staff_id=eq.${row.staff_id}&branch_id=eq.${row.branch_id}&is_enabled=eq.true&select=id,platform,push_token,branch_id`,
+  )).map(device => ({ ...device, source: "staff" as const }));
+  return (await rest<Device[]>(
     `customer_device_tokens?business_id=eq.${row.business_id}&customer_id=eq.${row.customer_id}&is_enabled=eq.true&select=id,platform,push_token,web_subscription,storefront_origin,branch_id,marketing_opt_in`,
-  );
+  )).map(device => ({ ...device, source: "customer" as const }));
 }
 async function updateOutbox(
   row: Outbox,
@@ -96,7 +103,8 @@ async function updateOutbox(
   error?: string,
 ) {
   const delay = pushRetryDelaySeconds(row.attempts);
-  await rest(`customer_notification_outbox?id=eq.${row.id}`, {
+  const table = row.source === "staff" ? "staff_notification_outbox" : "customer_notification_outbox";
+  await rest(`${table}?id=eq.${row.id}`, {
     method: "PATCH",
     headers: { prefer: "return=minimal" },
     body: JSON.stringify({
@@ -112,7 +120,7 @@ async function updateOutbox(
       last_error: error?.slice(0, 500) ?? null,
     }),
   });
-  if (row.broadcast_id) {
+  if (row.source !== "staff" && row.broadcast_id) {
     const outcomes=await rest<Array<{status:string}>>(`customer_notification_outbox?broadcast_id=eq.${row.broadcast_id}&business_id=eq.${row.business_id}&select=status`);
     const sent=outcomes.filter(item=>item.status==="SENT").length;
     const failed=outcomes.filter(item=>item.status==="FAILED"||item.status==="CANCELLED").length;
@@ -121,7 +129,8 @@ async function updateOutbox(
   }
 }
 async function disable(device: Device) {
-  await rest(`customer_device_tokens?id=eq.${device.id}`, {
+  const table = device.source === "staff" ? "staff_device_tokens" : "customer_device_tokens";
+  await rest(`${table}?id=eq.${device.id}`, {
     method: "PATCH",
     headers: { prefer: "return=minimal" },
     body: JSON.stringify({ is_enabled: false }),
@@ -321,7 +330,7 @@ export async function runPushWorker(limit = 25) {
         if(delivered.has(device.id)){results.push({ok:true,permanent:false,detail:"Already delivered"});continue;}
         const result = await deliver(row, device);
         if (result.permanent) await disable(device);
-        if(result.ok){delivered.add(device.id);await rest(`customer_notification_outbox?id=eq.${row.id}&status=eq.PROCESSING`,{method:"PATCH",body:JSON.stringify({delivered_device_ids:[...delivered]})});}
+        if(result.ok){delivered.add(device.id);const table=row.source==="staff"?"staff_notification_outbox":"customer_notification_outbox";await rest(`${table}?id=eq.${row.id}&status=eq.PROCESSING`,{method:"PATCH",body:JSON.stringify({delivered_device_ids:[...delivered]})});}
         results.push(result);
     }
     const successes = results.filter((result) => result.ok).length;

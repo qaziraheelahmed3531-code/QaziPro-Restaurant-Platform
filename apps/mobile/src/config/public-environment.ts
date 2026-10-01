@@ -1,7 +1,11 @@
 export type AppEnvironment = "development" | "staging" | "production";
+export type MobileSurface = "customer" | "operations";
+export type MobileRoleHint = "auto" | "admin" | "waiter" | "rider";
 
 export type PublicEnvironmentInput = {
   environment?: string;
+  surface?: string;
+  roleHint?: string;
   apiBaseUrl?: string;
   supabaseUrl?: string;
   supabasePublishableKey?: string;
@@ -43,22 +47,30 @@ export function validatePublicEnvironment(input: PublicEnvironmentInput) {
   )
     throw new Error("EXPO_PUBLIC_APP_ENV is invalid");
   const environment = rawEnvironment as AppEnvironment;
+  const rawSurface = clean(input.surface) || "customer";
+  if (!(rawSurface === "customer" || rawSurface === "operations"))
+    throw new Error("EXPO_PUBLIC_MOBILE_SURFACE is invalid");
+  const surface = rawSurface as MobileSurface;
+  const rawRoleHint = clean(input.roleHint) || "auto";
+  if (!(rawRoleHint === "auto" || rawRoleHint === "admin" || rawRoleHint === "waiter" || rawRoleHint === "rider"))
+    throw new Error("EXPO_PUBLIC_MOBILE_ROLE_HINT is invalid");
+  const roleHint = rawRoleHint as MobileRoleHint;
   const apiBaseUrl = clean(input.apiBaseUrl);
   const supabaseUrl = clean(input.supabaseUrl);
   const supabasePublishableKey = clean(input.supabasePublishableKey);
   const restaurantKey = clean(input.restaurantKey);
   const linkDomain = clean(input.linkDomain);
-  if (!apiBaseUrl || !supabaseUrl || !supabasePublishableKey || !restaurantKey)
+  if (!supabaseUrl || !supabasePublishableKey || (surface === "customer" && (!apiBaseUrl || !restaurantKey)))
     throw new Error("Mobile public environment is incomplete");
   if (/service.role|sb_secret_/i.test(supabasePublishableKey))
     throw new Error("A server credential cannot be used in the mobile app");
 
-  const apiUrl = safeUrl(apiBaseUrl, "EXPO_PUBLIC_API_BASE_URL");
+  const apiUrl = apiBaseUrl ? safeUrl(apiBaseUrl, "EXPO_PUBLIC_API_BASE_URL") : null;
   const authUrl = safeUrl(supabaseUrl, "EXPO_PUBLIC_SUPABASE_URL");
   if (environment !== "development") {
-    if (apiUrl.protocol !== "https:" || authUrl.protocol !== "https:")
+    if ((apiUrl && apiUrl.protocol !== "https:") || authUrl.protocol !== "https:")
       throw new Error("Staging and production mobile services must use HTTPS");
-    if (localHostname(apiUrl.hostname) || localHostname(authUrl.hostname))
+    if ((apiUrl && localHostname(apiUrl.hostname)) || localHostname(authUrl.hostname))
       throw new Error("A release build cannot use a local service URL");
     if (!linkDomain || /[:/\s]/.test(linkDomain))
       throw new Error(
@@ -67,7 +79,7 @@ export function validatePublicEnvironment(input: PublicEnvironmentInput) {
   }
   if (
     environment === "production" &&
-    (apiUrl.hostname.includes("staging") ||
+    ((apiUrl?.hostname.includes("staging") ?? false) ||
       authUrl.hostname.includes("staging") ||
       linkDomain.includes(".staging."))
   )
@@ -75,7 +87,9 @@ export function validatePublicEnvironment(input: PublicEnvironmentInput) {
 
   return {
     environment,
-    apiBaseUrl: apiBaseUrl.replace(/\/$/, ""),
+    surface,
+    roleHint,
+    apiBaseUrl: apiBaseUrl?.replace(/\/$/, "") ?? "",
     supabaseUrl: supabaseUrl.replace(/\/$/, ""),
     supabasePublishableKey,
     restaurantKey,

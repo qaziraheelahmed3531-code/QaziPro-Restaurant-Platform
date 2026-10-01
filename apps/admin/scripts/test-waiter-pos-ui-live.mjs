@@ -46,9 +46,12 @@ try{
   if(otherBranch){const crossTenant=await waiter.client.rpc("waiter_table_dashboard",{p_branch_id:otherBranch.id});assert.ok(crossTenant.error,"Waiter must not read another restaurant's tables")}
   const item=await firstProductPayload(branch.business_id)
   const concurrentPayload={tableId:concurrentTableId,guestName:"Concurrency QA",notes:"Automated concurrency check",items:[item]}
-  const concurrent=await Promise.all([waiter.client.rpc("create_waiter_table_order",{p_payload:concurrentPayload}),waiter.client.rpc("create_waiter_table_order",{p_payload:concurrentPayload})])
+  const mobileOperationId=randomUUID()
+  const concurrent=await Promise.all([waiter.client.rpc("mobile_waiter_order",{p_operation_id:mobileOperationId,p_payload:concurrentPayload}),waiter.client.rpc("mobile_waiter_order",{p_operation_id:mobileOperationId,p_payload:concurrentPayload})])
   concurrent.forEach((result,index)=>checked(result,`Concurrent table request ${index+1}`))
   assert.equal(concurrent[0].data.id,concurrent[1].data.id,"Concurrent requests must converge on one bill")
+  assert.equal(concurrent.filter(result=>result.data.idempotent===false).length,1,"Exactly one mobile waiter mutation must execute")
+  assert.equal(concurrent.filter(result=>result.data.idempotent===true).length,1,"The retry must replay the saved result")
   concurrentOrderId=concurrent[0].data.id
   assert.equal(checked(await db.from("restaurant_table_sessions").select("id").eq("table_id",concurrentTableId).eq("status","OPEN"),"Concurrent sessions").length,1)
 
@@ -94,7 +97,19 @@ try{
   assert.equal(checked(await db.from("orders").select("status").eq("id",orderId).single(),"KDS-ready order").status,"READY")
   await waiterPage.getByText(tabletOrder.order_number).first().waitFor({timeout:30000})
 
-  const queueOrder=posPage.getByRole("button").filter({hasText:"QA Table 19"}).first();await queueOrder.waitFor({timeout:30000});await queueOrder.click()
+  // Bring the cashier surface back to the foreground, matching the real
+  // handoff from kitchen/waiter activity to payment. Background Chromium
+  // pages throttle recovery timers by design.
+  await posPage.bringToFront()
+  const tableQueue=posPage.locator("details.waiter-pos-queue")
+  if(!await tableQueue.evaluate(element=>element.hasAttribute("open")))await tableQueue.locator("summary").click()
+  const queueOrder=posPage.getByRole("button").filter({hasText:"QA Table 19"}).first()
+  try{await queueOrder.waitFor({timeout:30000})}catch(error){
+    const visible=await cashier.client.from("orders").select("id,business_id,branch_id,table_reference,service_mode,payment_status,status,order_items(id,product_name,quantity,line_total,order_item_modifiers(group_name,option_name))").eq("business_id",branch.business_id).eq("branch_id",branch.id).eq("service_mode","DINE_IN").eq("payment_status","UNPAID").neq("status","CANCELLED").eq("id",orderId).maybeSingle()
+    const queueText=await posPage.locator(".waiter-pos-queue").innerText().catch(()=>"queue not rendered")
+    throw new Error(`POS table queue did not refresh. Cashier query: ${visible.error?.message??JSON.stringify(visible.data)}. UI: ${queueText.slice(0,240)}. ${error instanceof Error?error.message:"timeout"}`)
+  }
+  await queueOrder.click()
   const finalTotal=Number(merged.total)
   const waiterPaymentCard=queueOrder.locator("xpath=ancestor::article")
   await waiterPaymentCard.getByLabel("Cash received").fill(String(finalTotal))

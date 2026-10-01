@@ -3,8 +3,21 @@ import { Text } from "react-native";
 import { useRouter } from "expo-router";
 import { Button, Loading, Notice, Screen } from "@/ui/components";
 import { useApp } from "@/state/AppProvider";
+import { env } from "@/config/env";
+import { OpsLoading, OpsScreen } from "@/operations/ui";
 
 export default function Bootstrap() {
+  if (env.surface === "operations") return <OperationsBootstrap />;
+  return <CustomerBootstrap />;
+}
+
+function OperationsBootstrap() {
+  const router = useRouter();
+  useEffect(() => { router.replace("/ops" as never); }, [router]);
+  return <OpsScreen><OpsLoading label="Opening QaziPro Operations…" /></OpsScreen>;
+}
+
+function CustomerBootstrap() {
   const app = useApp(),
     router = useRouter();
   useEffect(() => {

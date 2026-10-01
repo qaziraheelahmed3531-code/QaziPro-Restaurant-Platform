@@ -1,9 +1,11 @@
 import type { ExpoConfig } from "expo/config";
 
 export type MobileReleaseEnvironment = "development" | "staging" | "production";
+export type MobileAppVariant = "customer" | "operations";
 
 type ReleaseProfile = {
   environment: MobileReleaseEnvironment;
+  variant: MobileAppVariant;
   name: string;
   slug: string;
   scheme: string;
@@ -43,8 +45,12 @@ export function resolveReleaseProfile(
       "EXPO_PUBLIC_APP_ENV must be development, staging or production",
     );
   const environment = rawEnvironment as MobileReleaseEnvironment;
+  const rawVariant = value(source, "MOBILE_APP_VARIANT") || value(source, "EXPO_PUBLIC_MOBILE_SURFACE") || "customer";
+  if (!(rawVariant === "customer" || rawVariant === "operations"))
+    throw new Error("MOBILE_APP_VARIANT must be customer or operations");
+  const variant = rawVariant as MobileAppVariant;
   const isProduction = environment === "production";
-  const fallbackId = "com.qazipro.restaurant.staging";
+  const fallbackId = variant === "operations" ? "com.qazipro.operations.staging" : "com.qazipro.restaurant.staging";
   const androidPackage =
     value(source, "MOBILE_ANDROID_APPLICATION_ID") ||
     value(source, "EXPO_PUBLIC_ANDROID_APPLICATION_ID") ||
@@ -76,7 +82,7 @@ export function resolveReleaseProfile(
   if (!/^\d+$/.test(buildNumber) || Number(buildNumber) < 1)
     throw new Error("MOBILE_IOS_BUILD_NUMBER must be a positive integer");
 
-  const scheme = value(source, "MOBILE_APP_SCHEME") || "qazipro-restaurant";
+  const scheme = value(source, "MOBILE_APP_SCHEME") || (variant === "operations" ? "qazipro-ops" : "qazipro-restaurant");
   if (!validScheme.test(scheme))
     throw new Error("MOBILE_APP_SCHEME is invalid");
   const linkDomain =
@@ -97,15 +103,18 @@ export function resolveReleaseProfile(
 
   return {
     environment,
+    variant,
     name:
       value(source, "MOBILE_APP_NAME") ||
-      (environment === "production"
+      (variant === "operations"
+        ? environment === "production" ? "QaziPro Operations" : environment === "staging" ? "QaziPro Operations Staging" : "QaziPro Operations Dev"
+        : environment === "production"
         ? "QaziPro Restaurant"
         : environment === "staging"
           ? "QaziPro Restaurant Staging"
           : "QaziPro Restaurant Dev"),
     slug:
-      value(source, "MOBILE_APP_SLUG") || "qazipro-restaurant-customer",
+      value(source, "MOBILE_APP_SLUG") || (variant === "operations" ? "qazipro-operations" : "qazipro-restaurant-customer"),
     scheme,
     version,
     androidPackage,
@@ -146,6 +155,7 @@ export function createExpoConfig(
     plugins: [
       "expo-router",
       "expo-secure-store",
+      "expo-web-browser",
       [
         "expo-notifications",
         { color: profile.primaryColor, defaultChannel: "orders" },
@@ -154,7 +164,9 @@ export function createExpoConfig(
         "expo-location",
         {
           locationWhenInUsePermission:
-            "Allow this restaurant app to use your location for delivery validation.",
+            profile.variant === "operations"
+              ? "Allow QaziPro Operations to use your location while handling an assigned delivery."
+              : "Allow this restaurant app to use your location for delivery validation.",
         },
       ],
       [
@@ -209,11 +221,14 @@ export function createExpoConfig(
       associatedDomains: [`applinks:${profile.linkDomain}`],
       infoPlist: {
         NSLocationWhenInUseUsageDescription:
-          "Your location is used only when you ask us to validate restaurant delivery availability.",
+          profile.variant === "operations"
+            ? "Your location is used only while you handle an assigned delivery."
+            : "Your location is used only when you ask us to validate restaurant delivery availability.",
       },
     },
     extra: {
       environment: profile.environment,
+      surface: profile.variant,
       release: {
         androidPackage: profile.androidPackage,
         iosBundleIdentifier: profile.iosBundleIdentifier,

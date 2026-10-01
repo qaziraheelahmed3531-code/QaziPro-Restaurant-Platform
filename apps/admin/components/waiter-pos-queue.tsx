@@ -72,7 +72,18 @@ export function WaiterPosQueue({
           .neq("status", "CANCELLED")
           .order("created_at")
           .abortSignal(AbortSignal.timeout(12000));
-        if (!disposed && !error) setOrders((data ?? []) as WaiterPosOrder[]);
+        if (!disposed) {
+          if (error)
+            setMessage(
+              "Table bills could not refresh. Existing bills remain visible; retry when the connection improves.",
+            );
+          else setOrders((data ?? []) as WaiterPosOrder[]);
+        }
+      } catch {
+        if (!disposed)
+          setMessage(
+            "Table bills could not refresh. Existing bills remain visible; retry when the connection improves.",
+          );
       } finally {
         fetching = false;
       }
@@ -101,14 +112,19 @@ export function WaiterPosQueue({
     const recover = () => {
       if (document.visibilityState === "visible") schedule();
     };
-    const fallback = setInterval(recover, 60000);
+    // Realtime is primary. This low-frequency targeted recovery closes the
+    // gap after a laptop resumes or a websocket event is missed without
+    // remounting or polling the whole POS.
+    const fallback = setInterval(schedule, 10000);
     window.addEventListener("online", recover);
+    window.addEventListener("focus", schedule);
     document.addEventListener("visibilitychange", recover);
     return () => {
       disposed = true;
       clearTimeout(timer);
       clearInterval(fallback);
       window.removeEventListener("online", recover);
+      window.removeEventListener("focus", schedule);
       document.removeEventListener("visibilitychange", recover);
       void client.removeChannel(channel);
     };

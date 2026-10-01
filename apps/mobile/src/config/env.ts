@@ -4,6 +4,8 @@ import { validatePublicEnvironment } from "./public-environment";
 // EXPO_PUBLIC_* reads. Keep these reads explicit and validation centralized.
 export const env = validatePublicEnvironment({
   environment: process.env.EXPO_PUBLIC_APP_ENV,
+  surface: process.env.EXPO_PUBLIC_MOBILE_SURFACE,
+  roleHint: process.env.EXPO_PUBLIC_MOBILE_ROLE_HINT,
   apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
   supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
   supabasePublishableKey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
