@@ -29,3 +29,5 @@ coverage/
 google-services.json
 GoogleService-Info.plist
 apps/mobile/credentials.json
+artifacts/mobile/*.apk
+artifacts/mobile/*.aab
