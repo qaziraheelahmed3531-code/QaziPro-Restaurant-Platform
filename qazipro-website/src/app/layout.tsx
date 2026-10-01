@@ -7,6 +7,11 @@ import { MotionSystem } from "@/components/motion-system"
 import { site } from "@/lib/site"
 import { getPublishedDocument } from "@/lib/platform-cms"
 import "./globals.css"
+import "./deep-recovery.css"
+
+// Signed revalidation is immediate; bounded ISR also keeps CMS content fresh
+// when a deployment has not configured its revalidation webhook yet.
+export const revalidate = 60
 
 export async function generateMetadata():Promise<Metadata>{
   const seo=await getPublishedDocument("seo",{defaultTitle:"QaziPro — Restaurant Technology & Custom Software",defaultDescription:"Connected restaurant systems for ordering, POS, kitchen, delivery and staff operations."})

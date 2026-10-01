@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const config: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   poweredByHeader: false,
   allowedDevOrigins: ["127.0.0.1"],
   async redirects() {
@@ -8,6 +9,7 @@ const config: NextConfig = {
       { source: "/restaurant-apps", destination: "/restaurant-mobile-apps", permanent: true },
       { source: "/custom-shopify-themes", destination: "/shopify-custom-themes", permanent: true },
       { source: "/work", destination: "/portfolio", permanent: true },
+      { source: "/our-work", destination: "/portfolio", permanent: true },
     ];
   },
   async headers() {

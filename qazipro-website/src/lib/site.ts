@@ -4,7 +4,8 @@ export const site = {
   email: "qazipro3531@gmail.com",
   phone: "+923075008055",
   whatsapp: "https://wa.me/923075008055",
-  clientPortal: process.env.NEXT_PUBLIC_CLIENT_PORTAL_URL || "/client-portal",
+  // Client applications and restaurant staff are separate auth audiences.
+  clientPortal: "/client-portal",
   superAdmin: process.env.NEXT_PUBLIC_SUPER_ADMIN_URL || "https://admin.qazipro.com",
   demoPortal: process.env.NEXT_PUBLIC_DEMO_PORTAL_URL || "",
 };

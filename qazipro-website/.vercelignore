@@ -1,0 +1,10 @@
+.git
+.vercel
+.next
+.next-*
+node_modules
+.env*
+artifacts
+test-results
+*.log
+*.tsbuildinfo

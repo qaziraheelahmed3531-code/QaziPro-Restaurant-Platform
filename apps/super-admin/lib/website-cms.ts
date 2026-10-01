@@ -13,6 +13,17 @@ export const formDefinitionSchema=z.object({
 })
 export type FormDefinition=z.infer<typeof formDefinitionSchema>
 
+export const aboutContentSchema = z.object({
+  eyebrow: z.string().trim().min(2).max(100),
+  title: z.string().trim().min(2).max(180),
+  story: z.string().trim().min(2).max(5000),
+  mission: z.string().trim().min(2).max(2000),
+  vision: z.string().trim().max(2000).optional().default(""),
+  teamHeading: z.string().trim().min(2).max(180).optional().default("People responsible for the platform."),
+  ctaLabel: z.string().trim().min(2).max(80).optional().default("Talk to QaziPro"),
+  ctaHref: z.enum(["/contact", "/book-a-demo", "/client-onboarding", "/restaurant-platform"]).optional().default("/contact"),
+}).passthrough()
+
 export function safeObject(value:string) {
   const parsed=JSON.parse(value) as unknown
   if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw new Error("Content must be a JSON object.")

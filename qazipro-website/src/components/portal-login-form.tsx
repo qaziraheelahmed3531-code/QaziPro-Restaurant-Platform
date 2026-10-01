@@ -2,13 +2,19 @@
 
 import { useActionState, useEffect, useRef, useState } from "react"
 import { ArrowRight, KeyRound, LoaderCircle, Mail, RotateCcw, ShieldCheck } from "lucide-react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { AnimatePresence, motion } from "motion/react"
+import { useReducedMotion } from "@/lib/use-reduced-motion"
 import { requestPortalCodeAction, verifyPortalCodeAction, type PortalActionState } from "@/app/client-portal/actions"
 
 const emptyState: PortalActionState = {}
 const OTP_LENGTH = 8
 
 export function PortalLoginForm({ defaultReference = "", defaultEmail = "" }: { defaultReference?: string; defaultEmail?: string }) {
+  const [attempt, setAttempt] = useState(0)
+  return <PortalLoginAttempt key={attempt} defaultReference={defaultReference} defaultEmail={defaultEmail} onReset={() => setAttempt(value => value + 1)}/>
+}
+
+function PortalLoginAttempt({ defaultReference, defaultEmail, onReset }: { defaultReference: string; defaultEmail: string; onReset: () => void }) {
   const [requestState, requestAction, requesting] = useActionState(requestPortalCodeAction, emptyState)
   const [verifyState, verifyAction, verifying] = useActionState(verifyPortalCodeAction, emptyState)
   const [digits, setDigits] = useState(() => Array<string>(OTP_LENGTH).fill(""))
@@ -19,7 +25,6 @@ export function PortalLoginForm({ defaultReference = "", defaultEmail = "" }: { 
 
   useEffect(() => {
     if (!sent) return
-    setRemaining(60)
     inputs.current[0]?.focus()
   }, [sent, requestState.message])
 
@@ -48,7 +53,7 @@ export function PortalLoginForm({ defaultReference = "", defaultEmail = "" }: { 
     <h1>{sent ? "Check your inbox." : "Your QaziPro application."}</h1>
     <p>{sent ? <>Enter the 8-digit code sent to <strong>{requestState.email}</strong>.</> : "Use the email and reference from your signed application. No password is required."}</p>
     <AnimatePresence mode="wait" initial={false}>
-      {!sent ? <motion.form key="request" action={requestAction} className="portal-auth-form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      {!sent ? <motion.form key="request" action={requestAction} onSubmit={() => setRemaining(60)} className="portal-auth-form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
         <label><span>Application reference</span><div className="portal-input"><KeyRound size={18}/><input name="reference" defaultValue={defaultReference} placeholder="QP-20261001-ABC123" autoCapitalize="characters" required/></div></label>
         <label><span>Email address</span><div className="portal-input"><Mail size={18}/><input name="email" type="email" defaultValue={defaultEmail} placeholder="you@restaurant.com" autoComplete="email" required/></div></label>
         {requestState.error ? <p className="portal-form-error" role="alert">{requestState.error}</p> : null}
@@ -60,8 +65,8 @@ export function PortalLoginForm({ defaultReference = "", defaultEmail = "" }: { 
           {verifyState.error ? <p className="portal-form-error" role="alert">{verifyState.error}</p> : null}
           <button className="button button-primary" disabled={verifying || digits.some((digit) => !digit)}>{verifying ? <><LoaderCircle className="spinner"/> Verifying…</> : <>Open Client Portal <ArrowRight/></>}</button>
         </form>
-        <form action={requestAction} className="portal-resend"><input type="hidden" name="email" value={requestState.email}/><input type="hidden" name="reference" value={requestState.reference}/><button type="submit" disabled={requesting || remaining > 0}><RotateCcw size={15}/> {remaining ? `Resend in ${remaining}s` : "Resend code"}</button></form>
-        <button className="portal-change-login" type="button" onClick={() => window.location.assign(`/client-portal?reference=${encodeURIComponent(requestState.reference || "")}`)}>Use different details</button>
+        <form action={requestAction} onSubmit={() => setRemaining(60)} className="portal-resend"><input type="hidden" name="email" value={requestState.email}/><input type="hidden" name="reference" value={requestState.reference}/><button type="submit" disabled={requesting || remaining > 0}><RotateCcw size={15}/> {remaining ? `Resend in ${remaining}s` : "Resend code"}</button></form>
+        <button className="portal-change-login" type="button" onClick={onReset}>Use different details</button>
       </motion.div>}
     </AnimatePresence>
     <small>Only the verified email on the application can open its records. QaziPro never asks for a portal password.</small>

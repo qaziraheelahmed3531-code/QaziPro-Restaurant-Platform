@@ -1,0 +1,193 @@
+{
+  "base": "http://localhost:3103",
+  "results": [
+    {
+      "width": 360,
+      "home": {
+        "title": "QaziPro — Restaurant Technology & Custom Software",
+        "h1": "Restaurant operations, connected.More room to grow.",
+        "overflow": 0,
+        "header": true,
+        "footer": true
+      },
+      "onboarding": {
+        "form": true,
+        "canvas": true,
+        "overflow": 0,
+        "sections": 5
+      },
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "width": 390,
+      "home": {
+        "title": "QaziPro — Restaurant Technology & Custom Software",
+        "h1": "Restaurant operations, connected.More room to grow.",
+        "overflow": 0,
+        "header": true,
+        "footer": true
+      },
+      "onboarding": {
+        "form": true,
+        "canvas": true,
+        "overflow": 0,
+        "sections": 5
+      },
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "width": 430,
+      "home": {
+        "title": "QaziPro — Restaurant Technology & Custom Software",
+        "h1": "Restaurant operations, connected.More room to grow.",
+        "overflow": 0,
+        "header": true,
+        "footer": true
+      },
+      "onboarding": {
+        "form": true,
+        "canvas": true,
+        "overflow": 0,
+        "sections": 5
+      },
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "width": 768,
+      "home": {
+        "title": "QaziPro — Restaurant Technology & Custom Software",
+        "h1": "Restaurant operations, connected.More room to grow.",
+        "overflow": 0,
+        "header": true,
+        "footer": true
+      },
+      "onboarding": {
+        "form": true,
+        "canvas": true,
+        "overflow": 0,
+        "sections": 5
+      },
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "width": 1024,
+      "home": {
+        "title": "QaziPro — Restaurant Technology & Custom Software",
+        "h1": "Restaurant operations, connected.More room to grow.",
+        "overflow": 0,
+        "header": true,
+        "footer": true
+      },
+      "onboarding": {
+        "form": true,
+        "canvas": true,
+        "overflow": 0,
+        "sections": 5
+      },
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "width": 1440,
+      "home": {
+        "title": "QaziPro — Restaurant Technology & Custom Software",
+        "h1": "Restaurant operations, connected.More room to grow.",
+        "overflow": 0,
+        "header": true,
+        "footer": true
+      },
+      "onboarding": {
+        "form": true,
+        "canvas": true,
+        "overflow": 0,
+        "sections": 5
+      },
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "width": 1920,
+      "home": {
+        "title": "QaziPro — Restaurant Technology & Custom Software",
+        "h1": "Restaurant operations, connected.More room to grow.",
+        "overflow": 0,
+        "header": true,
+        "footer": true
+      },
+      "onboarding": {
+        "form": true,
+        "canvas": true,
+        "overflow": 0,
+        "sections": 5
+      },
+      "consoleErrors": [],
+      "networkErrors": []
+    }
+  ],
+  "performance": {
+    "vitals": {
+      "lcp": 1980,
+      "cls": 0,
+      "inp": 56
+    },
+    "navigation": {
+      "name": "http://localhost:3103/",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 2373.0999999940395,
+      "navigationId": 8708,
+      "initiatorType": "navigation",
+      "deliveryType": "",
+      "nextHopProtocol": "http/1.1",
+      "renderBlockingStatus": "non-blocking",
+      "contentType": "text/html",
+      "contentEncoding": "gzip",
+      "workerStart": 0,
+      "workerRouterEvaluationStart": 0,
+      "workerCacheLookupStart": 0,
+      "workerMatchedSourceType": "",
+      "workerFinalSourceType": "",
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": 1,
+      "domainLookupStart": 1,
+      "domainLookupEnd": 1,
+      "connectStart": 1,
+      "secureConnectionStart": 0,
+      "connectEnd": 1,
+      "requestStart": 2.4000000059604645,
+      "responseStart": 1378.5,
+      "firstInterimResponseStart": 0,
+      "finalResponseHeadersStart": 1378.5,
+      "responseEnd": 1387.800000011921,
+      "transferSize": 43979,
+      "encodedBodySize": 43679,
+      "decodedBodySize": 202305,
+      "responseStatus": 200,
+      "serverTiming": [],
+      "unloadEventStart": 0,
+      "unloadEventEnd": 0,
+      "domInteractive": 1776.5,
+      "domContentLoadedEventStart": 1776.5999999940395,
+      "domContentLoadedEventEnd": 1777,
+      "domComplete": 2372.699999988079,
+      "loadEventStart": 2372.800000011921,
+      "loadEventEnd": 2373.0999999940395,
+      "type": "navigate",
+      "redirectCount": 0,
+      "activationStart": 0,
+      "criticalCHRestart": 0,
+      "notRestoredReasons": null,
+      "confidence": {
+        "randomizedTriggerRate": 0.4994798,
+        "value": "low"
+      }
+    },
+    "resources": 26
+  },
+  "passed": true
+}

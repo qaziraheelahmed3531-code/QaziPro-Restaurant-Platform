@@ -6,7 +6,7 @@ import { requirePlatformPermission } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 import { createPlatformAdminClient } from "@/lib/supabase/admin"
 import { normalizeBrandingImage } from "@/lib/branding-image"
-import { formDefinitionSchema,safeObject } from "@/lib/website-cms"
+import { aboutContentSchema,formDefinitionSchema,safeObject } from "@/lib/website-cms"
 
 async function audit(actor:string,action:string,targetType:string,targetId:string,reason:string,before?:unknown,after?:unknown) {
   const client=await createClient()
@@ -27,6 +27,11 @@ export async function saveSiteDocumentAction(form:FormData) {
   if(!/^[a-z][a-z0-9_-]{1,63}$/.test(key)||!Number.isSafeInteger(expected))return{error:"Invalid content revision."}
   let content:Record<string,unknown>
   try{content=safeObject(String(form.get("content")??""))}catch{return{error:"Content must be valid structured JSON."}}
+  if(key==="about"){
+    const validated=aboutContentSchema.safeParse(content)
+    if(!validated.success)return{error:"Check the About fields and choose a supported CTA destination."}
+    content=validated.data
+  }
   const client=await createClient()
   const current=await client.from("platform_site_documents").select("draft_data,draft_revision").eq("key",key).single()
   if(current.error)return{error:"Website content is unavailable."}
@@ -41,10 +46,14 @@ export async function saveSiteDocumentAction(form:FormData) {
 export async function publishSiteDocumentAction(form:FormData) {
   const context=await requirePlatformPermission("website.manage")
   const key=String(form.get("key")??"")
+  const expected=Number(form.get("revision"))
+  if(!form.has("revision")||!Number.isSafeInteger(expected))return{error:"Reload this editor before publishing."}
   const client=await createClient()
-  const current=await client.from("platform_site_documents").select("draft_data,published_data,published_version").eq("key",key).single()
+  const current=await client.from("platform_site_documents").select("draft_data,draft_revision,published_data,published_version").eq("key",key).single()
   if(current.error)return{error:"Website content is unavailable."}
-  const result=await client.from("platform_site_documents").update({published_data:current.data.draft_data,published_version:Number(current.data.published_version)+1,published_at:new Date().toISOString(),published_by:context.userId}).eq("key",key)
+  if(Number(current.data.draft_revision)!==expected)return{error:"This draft changed in another session. Reload and review before publishing."}
+  if(key==="about"&&!aboutContentSchema.safeParse(current.data.draft_data).success)return{error:"Check and save the About fields before publishing."}
+  const result=await client.from("platform_site_documents").update({published_data:current.data.draft_data,published_version:Number(current.data.published_version)+1,published_at:new Date().toISOString(),published_by:context.userId}).eq("key",key).eq("draft_revision",expected).eq("published_version",current.data.published_version).select("key").single()
   if(result.error)return{error:"Couldn't publish this change."}
   await audit(context.userId,"WEBSITE_CONTENT_PUBLISHED","platform_site_document",key,"Approved public website publish",current.data.published_data,current.data.draft_data)
   revalidatePath("/website");await refreshWebsite()

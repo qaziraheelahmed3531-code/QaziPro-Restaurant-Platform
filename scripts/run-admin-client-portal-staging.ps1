@@ -1,9 +1,10 @@
 # Requires an authenticated Supabase CLI. Does not write credentials to the repo.
 param(
-  [ValidateSet('admin', 'super-admin', 'super-admin-browser', 'website-cms-browser', 'website-public', 'website-client-portal', 'ensure-package', 'serve-admin', 'serve-super-admin', 'serve-website')][string]$Suite = 'admin',
+  [ValidateSet('staff-save', 'admin', 'super-admin', 'super-admin-browser', 'website-cms-browser', 'website-public', 'website-client-portal', 'ensure-package', 'serve-admin', 'serve-super-admin', 'serve-website')][string]$Suite = 'admin',
   [ValidateRange(0, 65535)][int]$Port = 0,
   [string]$TargetUrl = '',
-  [switch]$WithFixtures
+  [switch]$WithFixtures,
+  [switch]$OptimizedBuild
 )
 $ErrorActionPreference = 'Stop'
 $expectedRef = 'jzisqjvroxodvmqxzsob'
@@ -55,7 +56,7 @@ $knownStagingDeployment = $targetHost -in @('qazi-pro-restaurant-platform-super.
 if ($target -and $targetHost -notin @('localhost','127.0.0.1') -and $targetHost -notmatch 'staging' -and -not $knownStagingDeployment) {
   throw 'Acceptance may only target localhost or an explicitly named staging host.'
 }
-$env:STAGING_ADMIN_URL = if ($Suite -eq 'admin' -and $target) { $target } else { 'http://localhost:3101' }
+$env:STAGING_ADMIN_URL = if ($Suite -in @('admin', 'staff-save') -and $target) { $target } else { 'http://localhost:3101' }
 $env:STAGING_SUPER_ADMIN_URL = if (($Suite -like 'super-admin*' -or $Suite -eq 'website-cms-browser') -and $target) { $target } else { 'http://localhost:3102' }
 $env:STAGING_WEBSITE_URL = if (($Suite -eq 'website-client-portal' -or $Suite -eq 'serve-website') -and $target) { $target } else { 'http://localhost:3103' }
 
@@ -92,10 +93,18 @@ try {
       $appDirectory = Join-Path $PSScriptRoot '../qazipro-website'
     }
     Push-Location -LiteralPath $appDirectory
-    try { & npx --yes --offline next dev -p $servePort } finally { Pop-Location }
+    try {
+      if ($OptimizedBuild) {
+        $env:NEXT_DIST_DIR = '.next-acceptance'
+        & npx --yes --offline next build
+        if ($LASTEXITCODE -ne 0) { throw 'Optimized staging build failed.' }
+        & npx --yes --offline next start -p $servePort
+      } else { & npx --yes --offline next dev -p $servePort }
+    } finally { Pop-Location }
     exit $LASTEXITCODE
   }
   $acceptanceScript = if ($Suite -eq 'super-admin') { 'super-admin-staging-acceptance.mjs' } elseif ($Suite -eq 'super-admin-browser') { 'super-admin-browser-staging-acceptance.mjs' } elseif ($Suite -eq 'website-cms-browser') { 'website-cms-browser-staging-acceptance.mjs' } elseif ($Suite -eq 'website-public') { 'website-onboarding-live-acceptance.mjs' } elseif ($Suite -eq 'website-client-portal') { 'website-client-portal-staging-acceptance.mjs' } elseif ($Suite -eq 'ensure-package') { 'ensure-super-admin-staging-package.mjs' } else { 'admin-client-portal-staging-acceptance.mjs' }
+  if ($Suite -eq 'staff-save') { $acceptanceScript = 'staff-save-staging-acceptance.mjs' }
   node (Join-Path $PSScriptRoot $acceptanceScript)
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {

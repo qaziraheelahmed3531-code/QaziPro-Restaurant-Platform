@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, MonitorDown, UserRoundX, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { permissionCatalog } from "@/lib/permissions";
@@ -70,6 +70,7 @@ export function StaffManager({
   const [draft, setDraft] = useState<Staff | null>(null);
   const [desktopProfile, setDesktopProfile] = useState(false);
   const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const allowed = permissionCatalog.filter(
@@ -122,6 +123,8 @@ export function StaffManager({
     });
   }
   async function save(person: Staff) {
+    if (saving.current) return;
+    saving.current = true;
     setBusy(true);
     setMessage("");
     try {
@@ -138,7 +141,7 @@ export function StaffManager({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: normalized.email,
+          email: normalized.email.trim(),
           branchIds:
             normalized.role === "OWNER"
               ? []
@@ -166,6 +169,7 @@ export function StaffManager({
         "Could not reach the server. Refresh before retrying; saving was not confirmed.",
       );
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
@@ -220,6 +224,7 @@ export function StaffManager({
       person.permissions.includes("desktop_pos.use") || person.role === "OWNER",
   );
   const openGeneral = () => {
+    setMessage("");
     setDesktopProfile(false);
     setDraft({
       email: "",
@@ -235,6 +240,7 @@ export function StaffManager({
     });
   };
   const openDesktop = () => {
+    setMessage("");
     setDesktopProfile(true);
     setDraft({
       email: "",
@@ -250,6 +256,7 @@ export function StaffManager({
     });
   };
   const editPerson = (person: Staff) => {
+    setMessage("");
     const isDesktop =
       person.role === "CASHIER" &&
       person.permissions.includes("desktop_pos.use");
@@ -439,7 +446,7 @@ export function StaffManager({
           </tbody>
         </table>
       </div>
-      <p role="status">{message}</p>
+      {!draft && <p role="status">{message}</p>}
       <section className="panel section-gap">
         <div className="panel-header">
           <div>
@@ -758,7 +765,8 @@ export function StaffManager({
                   })}
                 </div>
               </div>
-              <footer className="editor-footer">
+              <footer className="editor-footer" style={{ flexWrap: "wrap" }}>
+                {message && <p role="alert" style={{ flexBasis: "100%", margin: 0 }}>{message}</p>}
                 <button
                   type="button"
                   className="button button--outline"
@@ -767,7 +775,7 @@ export function StaffManager({
                 >
                   Cancel
                 </button>
-                <button className="button" disabled={busy}>
+                <button type="submit" className="button" disabled={busy}>
                   {busy ? "Saving…" : "Save changes"}
                 </button>
               </footer>

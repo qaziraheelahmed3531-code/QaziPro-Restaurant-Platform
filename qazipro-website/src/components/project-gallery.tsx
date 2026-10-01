@@ -13,7 +13,7 @@ export function ProjectGallery({ projects }: { projects: PortfolioProject[] }) {
 
   return <>
     <div className="project-filters" role="group" aria-label="Filter projects">
-      {filters.map((item) => <button type="button" key={item} className={filter === item ? "is-active" : ""} onClick={() => setFilter(item)}>{item}</button>)}
+      {filters.map((item) => <button type="button" key={item} aria-pressed={filter === item} className={filter === item ? "is-active" : ""} onClick={() => setFilter(item)}>{item}</button>)}
     </div>
     <div className="project-grid">
       {visible.map((project, index) => <a className={`project-card ${index === 0 ? "project-card-featured" : ""}`} href={project.url} target="_blank" rel="noopener noreferrer" key={project.domain} data-cursor="VIEW">

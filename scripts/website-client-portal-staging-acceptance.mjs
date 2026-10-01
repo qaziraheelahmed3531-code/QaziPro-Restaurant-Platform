@@ -3,12 +3,15 @@ import { randomUUID } from "node:crypto"
 import { createClient } from "@supabase/supabase-js"
 import { chromium, expect } from "playwright/test"
 import sharp from "sharp"
+import { mkdir, writeFile } from "node:fs/promises"
 
 const ref=process.env.STAGING_SUPABASE_PROJECT_REF
 const url=process.env.STAGING_SUPABASE_URL
 const publicKey=process.env.STAGING_SUPABASE_PUBLISHABLE_KEY
 const serviceKey=process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY
 const base=(process.env.STAGING_WEBSITE_URL||"http://localhost:3103").replace(/\/$/,"")
+const adminBase=process.env.STAGING_SUPER_ADMIN_URL||"http://localhost:3102"
+assert.ok(['localhost','127.0.0.1'].includes(new URL(adminBase).hostname),"Super Admin acceptance must run locally against staging")
 if(process.env.ALLOW_STAGING_ACCEPTANCE!=="1"||process.env.STAGING_ENVIRONMENT!=="staging"||ref!=="jzisqjvroxodvmqxzsob"||!url||!publicKey||!serviceKey||!['localhost','127.0.0.1'].includes(new URL(base).hostname))throw new Error("Refusing client portal acceptance outside the verified local/staging boundary.")
 
 const service=createClient(url,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}})
@@ -28,7 +31,7 @@ async function submit(targetEmail,suffix){
 }
 
 try{
-  await service.from("platform_onboarding_submissions").delete().like("portal_email","portal-%@staging.qazipro.invalid")
+  // Only this run's uniquely identified fixtures are removed in finally.
   const own=await submit(email,"41")
   const other=await submit(otherEmail,"42")
   checked(await service.from("platform_onboarding_submissions").update({internal_notes:"PRIVATE-PORTAL-ACCEPTANCE-MARKER"}).eq("id",own.id),"set private marker")
@@ -41,11 +44,37 @@ try{
   await page.locator('.portal-otp input').first().fill(token);await page.getByRole("button",{name:"Open Client Portal"}).click();await page.waitForURL(new RegExp(`/client-portal/${own.reference}$`));await expect(page.getByRole("heading",{name:"Selected scope"})).toBeVisible();pass(true,"verified OTP created a restored SSR portal session and opened the requested application")
   pass(!(await page.locator("body").innerText()).includes("PRIVATE-PORTAL-ACCEPTANCE-MARKER"),"internal platform notes are excluded from the client DTO")
   await page.goto(`${base}/client-portal/${other.reference}`,{waitUntil:"networkidle"});pass((await page.getByText(/not found|could not be found/i).count())>0||page.url().includes("_not-found"),"verified client cannot open another application")
-  checked(await service.from("platform_onboarding_portal_messages").insert({submission_id:own.id,sender_kind:"SYSTEM",message_type:"REQUEST_INFO",body:"Please confirm the preferred launch date.",is_client_visible:true}),"request information")
-  checked(await service.from("platform_onboarding_submissions").update({status:"NEEDS_INFO"}).eq("id",own.id),"set needs info")
+  const adminEmail=`portal-admin-${runId}@staging.qazipro.invalid`,password=`Qa!${randomUUID()}a9`
+  const adminUser=checked(await service.auth.admin.createUser({email:adminEmail,password,email_confirm:true}),"create scoped platform QA user").user
+  userIds.push(adminUser.id)
+  const role=checked(await service.from("platform_roles").select("id").eq("key","PLATFORM_OWNER").single(),"platform owner role")
+  checked(await service.from("platform_staff").insert({user_id:adminUser.id,email:adminEmail,display_name:"Portal acceptance POC",status:"ACTIVE"}),"platform fixture staff")
+  checked(await service.from("platform_staff_roles").insert({staff_user_id:adminUser.id,role_id:role.id}),"platform fixture role")
+  const publicAuth=createClient(url,publicKey,{auth:{persistSession:false,autoRefreshToken:false}})
+  const adminSession=checked(await publicAuth.auth.signInWithPassword({email:adminEmail,password}),"platform QA login").session
+  const adminContext=await browser.newContext({viewport:{width:1440,height:900}})
+  const cookie=`base64-${Buffer.from(JSON.stringify(adminSession)).toString("base64url")}`,parts=cookie.match(/.{1,3000}/g)
+  await adminContext.addCookies(parts.map((value,index)=>({name:parts.length===1?"qazipro-platform-auth":`qazipro-platform-auth.${index}`,value,url:adminBase,sameSite:"Lax"})))
+  const adminPage=await adminContext.newPage()
+  await adminPage.goto(`${adminBase}/website/submissions/${own.id}`,{waitUntil:"domcontentloaded",timeout:90000})
+  await expect(adminPage.getByRole("heading",{name:own.reference})).toBeVisible()
+  await adminPage.locator('select[name="status"]').selectOption("REVIEWING")
+  await adminPage.locator('select[name="assigned"]').selectOption(adminUser.id)
+  await adminPage.getByRole("button",{name:"Save internal update"}).click()
+  await expect.poll(async()=>{const row=(await service.from("platform_onboarding_submissions").select("status,assigned_staff_user_id").eq("id",own.id).single()).data;return row?.status==="REVIEWING"&&row.assigned_staff_user_id===adminUser.id}).toBe(true)
+  pass(true,"Super Admin submission detail, status update and POC assignment persisted through UI")
+  const agreement=await adminPage.request.get(`${adminBase}/website/submissions/${own.id}/pdf`)
+  const agreementBytes=await agreement.body()
+  pass(agreement.ok()&&agreementBytes.subarray(0,5).toString()==="%PDF-","Super Admin can download actual generated signed agreement PDF")
+  await mkdir("artifacts/website-deep-recovery",{recursive:true})
+  await writeFile("artifacts/website-deep-recovery/agreement-acceptance.pdf",agreementBytes)
+  await adminPage.getByRole("textbox",{name:"Client-visible request",exact:true}).fill("Please confirm the preferred launch date.")
+  await adminPage.getByRole("button",{name:"Request information",exact:true}).click()
+  await expect.poll(async()=>Number((await service.from("platform_onboarding_portal_messages").select("id",{count:"exact",head:true}).eq("submission_id",own.id).eq("message_type","REQUEST_INFO")).count)).toBe(1)
   await page.goto(`${base}/client-portal/${own.reference}`,{waitUntil:"networkidle"});await expect(page.getByText("Please confirm the preferred launch date.")).toBeVisible();pass(true,"platform information request is visible to the correct client")
-  await page.locator('.portal-message-form textarea').fill("Preferred launch date is 15 November.");await page.getByRole("button",{name:"Send response"}).click();await expect(page.getByText("Preferred launch date is 15 November.")).toBeVisible();const responseRow=checked(await service.from("platform_onboarding_portal_messages").select("sender_kind,message_type").eq("submission_id",own.id).eq("body","Preferred launch date is 15 November.").single(),"read client response");pass(responseRow.sender_kind==="CLIENT"&&responseRow.message_type==="CLIENT_RESPONSE","client response reached the canonical Super Admin conversation")
-  const pdf=Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF")
+  await page.locator('.portal-message-form textarea').fill("Preferred launch date is 15 November.");await page.getByRole("button",{name:"Send response"}).click();await expect(page.getByText("Preferred launch date is 15 November.")).toBeVisible({timeout:20000});const responseRow=checked(await service.from("platform_onboarding_portal_messages").select("sender_kind,message_type").eq("submission_id",own.id).eq("body","Preferred launch date is 15 November.").single(),"read client response");pass(responseRow.sender_kind==="CLIENT"&&responseRow.message_type==="CLIENT_RESPONSE","client response reached the canonical Super Admin conversation")
+  await adminPage.reload({waitUntil:"networkidle"});await expect(adminPage.getByText("Preferred launch date is 15 November.")).toBeVisible();pass(true,"client reply appears in actual Super Admin detail after reload")
+  const pdf=agreementBytes
   await page.locator('.portal-upload-form input[type="file"]').setInputFiles({name:"launch-details.pdf",mimeType:"application/pdf",buffer:pdf});await page.getByRole("button",{name:"Upload document"}).click();await expect(page.getByText("Document uploaded securely.")).toBeVisible({timeout:20000});await page.reload({waitUntil:"networkidle"});await expect(page.getByText("launch-details.pdf")).toBeVisible({timeout:20000});const link=page.getByRole("link",{name:/launch-details\.pdf/});const href=await link.getAttribute("href");const download=await page.request.get(new URL(href,base).toString());pass(download.ok()&&(await download.body()).subarray(0,5).toString()==="%PDF-","authenticated client upload and protected download both work")
   await page.getByRole("button",{name:"Sign out"}).click();await page.waitForURL(/\/client-portal$/);pass(true,"portal logout clears the secure session")
   pass(errors.length===0,`browser console errors: ${errors.join("; ")}`)
