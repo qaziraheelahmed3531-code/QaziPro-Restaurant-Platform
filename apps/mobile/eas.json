@@ -32,7 +32,6 @@
     },
     "operations-staging": {
       "distribution": "internal",
-      "channel": "operations-staging",
       "environment": "preview",
       "android": { "buildType": "apk" },
       "env": {
@@ -45,7 +44,8 @@
         "EXPO_PUBLIC_ENABLE_PUSH": "false",
         "MOBILE_APP_VARIANT": "operations",
         "MOBILE_APP_NAME": "QaziPro Operations Staging",
-        "MOBILE_APP_SLUG": "qazipro-operations",
+        "MOBILE_APP_SLUG": "italian-pizza-platform",
+        "EAS_PROJECT_ID": "4a23a47a-09f1-4794-9d40-8024e55214ce",
         "MOBILE_APP_SCHEME": "qazipro-ops",
         "MOBILE_ANDROID_APPLICATION_ID": "com.qazipro.operations.staging",
         "MOBILE_IOS_BUNDLE_ID": "com.qazipro.operations.staging",
@@ -57,7 +57,6 @@
     },
     "operations-staging-aab": {
       "distribution": "store",
-      "channel": "operations-staging",
       "environment": "preview",
       "android": { "buildType": "app-bundle" },
       "env": {
@@ -70,7 +69,8 @@
         "EXPO_PUBLIC_ENABLE_PUSH": "false",
         "MOBILE_APP_VARIANT": "operations",
         "MOBILE_APP_NAME": "QaziPro Operations Staging",
-        "MOBILE_APP_SLUG": "qazipro-operations",
+        "MOBILE_APP_SLUG": "italian-pizza-platform",
+        "EAS_PROJECT_ID": "4a23a47a-09f1-4794-9d40-8024e55214ce",
         "MOBILE_APP_SCHEME": "qazipro-ops",
         "MOBILE_ANDROID_APPLICATION_ID": "com.qazipro.operations.staging",
         "MOBILE_IOS_BUNDLE_ID": "com.qazipro.operations.staging",
@@ -82,7 +82,6 @@
     },
     "operations-ios-simulator": {
       "distribution": "internal",
-      "channel": "operations-staging",
       "environment": "preview",
       "ios": { "simulator": true },
       "env": {
@@ -95,7 +94,8 @@
         "EXPO_PUBLIC_ENABLE_PUSH": "false",
         "MOBILE_APP_VARIANT": "operations",
         "MOBILE_APP_NAME": "QaziPro Operations Staging",
-        "MOBILE_APP_SLUG": "qazipro-operations",
+        "MOBILE_APP_SLUG": "italian-pizza-platform",
+        "EAS_PROJECT_ID": "4a23a47a-09f1-4794-9d40-8024e55214ce",
         "MOBILE_APP_SCHEME": "qazipro-ops",
         "MOBILE_ANDROID_APPLICATION_ID": "com.qazipro.operations.staging",
         "MOBILE_IOS_BUNDLE_ID": "com.qazipro.operations.staging",
@@ -107,7 +107,6 @@
     },
     "operations-ios-internal": {
       "distribution": "internal",
-      "channel": "operations-staging",
       "environment": "preview",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "staging",
@@ -119,7 +118,8 @@
         "EXPO_PUBLIC_ENABLE_PUSH": "false",
         "MOBILE_APP_VARIANT": "operations",
         "MOBILE_APP_NAME": "QaziPro Operations Staging",
-        "MOBILE_APP_SLUG": "qazipro-operations",
+        "MOBILE_APP_SLUG": "italian-pizza-platform",
+        "EAS_PROJECT_ID": "4a23a47a-09f1-4794-9d40-8024e55214ce",
         "MOBILE_APP_SCHEME": "qazipro-ops",
         "MOBILE_ANDROID_APPLICATION_ID": "com.qazipro.operations.staging",
         "MOBILE_IOS_BUNDLE_ID": "com.qazipro.operations.staging",
@@ -131,7 +131,6 @@
     },
     "operations-ios-testflight": {
       "distribution": "store",
-      "channel": "operations-staging",
       "environment": "preview",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "staging",
@@ -143,7 +142,8 @@
         "EXPO_PUBLIC_ENABLE_PUSH": "false",
         "MOBILE_APP_VARIANT": "operations",
         "MOBILE_APP_NAME": "QaziPro Operations Staging",
-        "MOBILE_APP_SLUG": "qazipro-operations",
+        "MOBILE_APP_SLUG": "italian-pizza-platform",
+        "EAS_PROJECT_ID": "4a23a47a-09f1-4794-9d40-8024e55214ce",
         "MOBILE_APP_SCHEME": "qazipro-ops",
         "MOBILE_ANDROID_APPLICATION_ID": "com.qazipro.operations.staging",
         "MOBILE_IOS_BUNDLE_ID": "com.qazipro.operations.staging",

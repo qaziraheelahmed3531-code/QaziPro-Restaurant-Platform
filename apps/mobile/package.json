@@ -30,10 +30,13 @@
     "test:operations:web": "node scripts/test-operations-web.mjs",
     "test:operations:access-realtime": "node ../../scripts/mobile-access-realtime-staging-acceptance.mjs",
     "eas:whoami": "npx eas-cli@latest whoami",
-    "eas:operations:apk": "npx eas-cli@latest build --platform android --profile operations-staging",
-    "eas:operations:aab": "npx eas-cli@latest build --platform android --profile operations-staging-aab",
-    "eas:operations:ios:internal": "npx eas-cli@latest build --platform ios --profile operations-ios-internal",
-    "eas:operations:ios:testflight": "npx eas-cli@latest build --platform ios --profile operations-ios-testflight",
+    "eas:operations:project": "node scripts/eas-operations.mjs project",
+    "eas:operations:apk": "node scripts/eas-operations.mjs apk",
+    "eas:operations:aab": "node scripts/eas-operations.mjs aab",
+    "eas:operations:ios:internal": "node scripts/eas-operations.mjs ios-internal",
+    "eas:operations:ios:testflight": "node scripts/eas-operations.mjs ios-testflight",
+    "eas:operations:submit:android": "node scripts/eas-operations.mjs submit-android",
+    "eas:operations:submit:ios": "node scripts/eas-operations.mjs submit-ios",
     "build": "npm run typecheck && npm run build:android && npm run build:ios"
   },
   "dependencies": {

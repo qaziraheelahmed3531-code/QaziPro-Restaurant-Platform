@@ -21,18 +21,23 @@ different binary does not grant another role.
 
 ## One-time EAS setup
 
-Run from `apps/mobile`:
+Run from the repository root:
 
 ```powershell
 npx eas-cli@latest login
 npx eas-cli@latest whoami
-npx eas-cli@latest init
+npm run eas:operations:project
 ```
 
-`eas init` links the existing Expo project and supplies `EAS_PROJECT_ID`. Do
-not create a second Expo project if QaziPro Operations already exists—select
-the existing project. Store the project id as an EAS environment variable for
-the preview environment if CI supplies the config dynamically.
+The scripts always run from `apps/mobile` internally and link the existing EAS
+project with `EAS_PROJECT_ID`. Do not run raw `eas build`/`eas submit` from the
+repository root and do not create another Expo project.
+
+If browser login returns to `localhost` with HTTP 431, close that browser tab
+and run `npx eas-cli@latest whoami`. When it shows the correct account, login
+already succeeded and the build command can be run. Only log in again if
+`whoami` reports that no account is active; an incognito window avoids stale
+localhost cookies.
 
 ## Android tablet
 
@@ -48,7 +53,7 @@ the AAB and submit it through the existing Play Console app:
 
 ```powershell
 npm run eas:operations:aab
-npx eas-cli@latest submit --platform android --profile operations-android-play
+npm run eas:operations:submit:android
 ```
 
 An AAB cannot be installed directly. After a verified APK or Play testing URL
@@ -70,8 +75,12 @@ For TestFlight, create a store-signed build and submit it:
 
 ```powershell
 npm run eas:operations:ios:testflight
-npx eas-cli@latest submit --platform ios --profile operations-ios-testflight
+npm run eas:operations:submit:ios
 ```
+
+The first command creates the signed `.ipa`; the second submits the completed
+build. Apple Developer membership, signing credentials and interactive 2FA are
+required. Do not run submit before a successful iOS build exists.
 
 Set `QAZIPRO_OPERATIONS_IOS_TESTFLIGHT_URL` (or the final App Store URL) in
 Restaurant Admin after Apple makes it real. iOS has no safe public APK-style

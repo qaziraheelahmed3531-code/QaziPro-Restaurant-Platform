@@ -152,7 +152,6 @@ export function createExpoConfig(
     icon: profile.icon,
     scheme: profile.scheme,
     userInterfaceStyle: "light",
-    runtimeVersion: { policy: "appVersion" },
     experiments: { typedRoutes: true },
     plugins: [
       "expo-router",
