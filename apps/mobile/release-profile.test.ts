@@ -46,6 +46,7 @@ describe("mobile release profile", () => {
     expect(config.ios?.infoPlist?.NSLocationWhenInUseUsageDescription).toMatch(
       /assigned delivery/i,
     );
+    expect(config.web?.favicon).toBe("../customer/public/qazipro-logo.png");
   });
 
   it("links EAS only when an explicit project id is configured", () => {

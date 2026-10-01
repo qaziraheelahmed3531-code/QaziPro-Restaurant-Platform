@@ -228,6 +228,9 @@ export function createExpoConfig(
             : "Your location is used only when you ask us to validate restaurant delivery availability.",
       },
     },
+    web: {
+      favicon: profile.icon,
+    },
     extra: {
       environment: profile.environment,
       surface: profile.variant,

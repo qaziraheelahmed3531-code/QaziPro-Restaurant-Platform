@@ -18,6 +18,10 @@ import { supabase, startAuthRefresh } from "@/lib/supabase";
 import { secureStorage } from "@/lib/storage";
 import { flushSafeOutbox } from "./outbox";
 import { resolveOperationsAccess } from "./access";
+import {
+  readValidCachedAccess,
+  type CachedOperationsAccess,
+} from "./access-cache";
 import type {
   ConnectionState,
   OperationsAccess,
@@ -26,23 +30,6 @@ import type {
 
 const BRANCH_KEY = "qazipro:operations:branch:v1";
 const ACCESS_KEY = "qazipro:operations:last-authorized:v1";
-const ACCESS_TTL_MS = 24 * 60 * 60 * 1000;
-type CachedAccess = { userId: string; verifiedAt: string; access: OperationsAccess };
-
-function validCachedAccess(raw: string | null, userId: string) {
-  if (!raw) return null;
-  try {
-    const cached = JSON.parse(raw) as CachedAccess;
-    if (
-      cached.userId !== userId ||
-      !cached.access?.businessId ||
-      Date.now() - Date.parse(cached.verifiedAt) > ACCESS_TTL_MS
-    ) return null;
-    return cached.access;
-  } catch {
-    return null;
-  }
-}
 type State = {
   ready: boolean;
   busy: boolean;
@@ -58,7 +45,7 @@ type State = {
   verifyOtp: (email: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
   selectBranch: (branch: OperationsBranch) => Promise<void>;
-  refreshAccess: () => Promise<void>;
+  refreshAccess: () => Promise<boolean>;
   syncNow: () => Promise<void>;
 };
 const Context = createContext<State | null>(null);
@@ -88,7 +75,7 @@ export function OperationsProvider({ children }: PropsWithChildren) {
   const syncRef = useRef<() => Promise<void>>(async () => undefined);
 
   const refreshAccess = useCallback(async () => {
-    if (loading.current) return;
+    if (loading.current) return false;
     loading.current = true;
     setBusy(true);
     setError(null);
@@ -98,7 +85,7 @@ export function OperationsProvider({ children }: PropsWithChildren) {
       if (!current) {
         setAccess(null);
         setBranch(null);
-        return;
+        return false;
       }
       const resolved = await resolveOperationsAccess(supabase, current);
       await secureStorage.setItem(
@@ -107,7 +94,7 @@ export function OperationsProvider({ children }: PropsWithChildren) {
           userId: current.user.id,
           verifiedAt: new Date().toISOString(),
           access: resolved,
-        } satisfies CachedAccess),
+        } satisfies CachedOperationsAccess),
       );
       const saved = await secureStorage.getItem(BRANCH_KEY);
       const selected =
@@ -118,13 +105,14 @@ export function OperationsProvider({ children }: PropsWithChildren) {
       setAccess(resolved);
       setBranch(selected);
       setConnection("ONLINE");
+      return true;
     } catch (reason) {
       const current = (await supabase.auth.getSession()).data.session;
       const network = await Network.getNetworkStateAsync().catch(() => null);
       const disconnected =
         network?.isConnected === false || network?.isInternetReachable === false;
       const cached = current && disconnected
-        ? validCachedAccess(await secureStorage.getItem(ACCESS_KEY), current.user.id)
+        ? readValidCachedAccess(await secureStorage.getItem(ACCESS_KEY), current.user.id)
         : null;
       if (cached) {
         const saved = await secureStorage.getItem(BRANCH_KEY);
@@ -132,10 +120,14 @@ export function OperationsProvider({ children }: PropsWithChildren) {
         setBranch(cached.branches.find((item) => item.id === saved) ?? cached.branches[0]);
         setConnection("OFFLINE");
         setError("You're offline. Using access verified within the last 24 hours; server-only actions remain unavailable.");
+        return true;
       } else {
+        if (current && !disconnected)
+          await secureStorage.removeItem(ACCESS_KEY);
         setAccess(null);
         setBranch(null);
         setError(friendly(reason, "Restaurant access could not be loaded."));
+        return false;
       }
     } finally {
       loading.current = false;
@@ -186,7 +178,9 @@ export function OperationsProvider({ children }: PropsWithChildren) {
       );
       if (online) {
         setConnection("RECONNECTING");
-        void refreshAccess().then(() => syncRef.current());
+        void refreshAccess().then((authorized) => {
+          if (authorized) void syncRef.current();
+        });
       }
     });
     return () => {
@@ -197,8 +191,9 @@ export function OperationsProvider({ children }: PropsWithChildren) {
     };
   }, [refreshAccess]);
 
+  const offline = connection === "OFFLINE";
   useEffect(() => {
-    if (!access || !branch || connection === "OFFLINE") return;
+    if (!access || !branch || offline) return;
     const channel = supabase
       .channel(`mobile-ops:${access.businessId}:${branch.id}:${access.userId}`)
       .on(
@@ -259,7 +254,7 @@ export function OperationsProvider({ children }: PropsWithChildren) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [access, branch, connection, refreshAccess]);
+  }, [access, branch, offline, refreshAccess]);
 
   useEffect(() => {
     const foreground = AppState.addEventListener("change", (state) => {

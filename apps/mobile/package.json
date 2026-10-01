@@ -28,6 +28,7 @@
     "build:operations:web": "node scripts/export-operations.mjs web",
     "build:operations": "npm run build:operations:android && npm run build:operations:ios && npm run build:operations:web",
     "test:operations:web": "node scripts/test-operations-web.mjs",
+    "test:operations:access-realtime": "node ../../scripts/mobile-access-realtime-staging-acceptance.mjs",
     "eas:whoami": "npx eas-cli@latest whoami",
     "eas:operations:apk": "npx eas-cli@latest build --platform android --profile operations-staging",
     "eas:operations:aab": "npx eas-cli@latest build --platform android --profile operations-staging-aab",

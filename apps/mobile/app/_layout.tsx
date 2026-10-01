@@ -7,6 +7,11 @@ import { StatusBar } from "expo-status-bar";
 import { AppProvider, useApp } from "@/state/AppProvider";
 import { OperationsProvider } from "@/operations/OperationsProvider";
 import { OpsButton, OpsScreen } from "@/operations/ui";
+import {
+  parseOperationsDeepLink,
+  parseOperationsNotificationScreen,
+  type OperationsDestination,
+} from "@/operations/deep-links";
 import { parseDeepLink } from "@/domain/deep-links";
 import { supabase } from "@/lib/supabase";
 import { env } from "@/config/env";
@@ -133,29 +138,36 @@ function OperationsStack() {
 function OperationsLinkHandler() {
   const router = useRouter();
   useEffect(() => {
-    const open = (screen: unknown) => {
+    const open = (screen: OperationsDestination | null) => {
       if (screen === "admin") router.replace("/ops/admin" as never);
       else if (screen === "waiter") router.replace("/ops/waiter" as never);
       else if (screen === "rider") router.replace("/ops/rider" as never);
-      else router.replace("/ops" as never);
+      else if (screen === "home") router.replace("/ops" as never);
     };
     const handleUrl = (raw: string | null) => {
       if (!raw) return;
-      const parsed = Linking.parse(raw);
-      const segment = parsed.path?.split("/").filter(Boolean)[0];
-      open(segment);
+      open(parseOperationsDeepLink(raw, env.linkDomain || undefined));
     };
     void Linking.getInitialURL().then(handleUrl);
     if (Platform.OS !== "web")
       void Notifications.getLastNotificationResponseAsync().then((response) => {
-        if (response) open(response.notification.request.content.data?.screen);
+        if (response)
+          open(
+            parseOperationsNotificationScreen(
+              response.notification.request.content.data?.screen,
+            ),
+          );
       });
     const link = Linking.addEventListener("url", (event) => handleUrl(event.url));
     const notification =
       Platform.OS === "web"
         ? null
         : Notifications.addNotificationResponseReceivedListener((event) =>
-            open(event.notification.request.content.data?.screen),
+            open(
+              parseOperationsNotificationScreen(
+                event.notification.request.content.data?.screen,
+              ),
+            ),
           );
     return () => { link.remove(); notification?.remove(); };
   }, [router]);
