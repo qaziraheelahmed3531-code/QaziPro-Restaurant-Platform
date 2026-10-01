@@ -33,6 +33,7 @@
     "eas:operations:project": "node scripts/eas-operations.mjs project",
     "eas:operations:apk": "node scripts/eas-operations.mjs apk",
     "eas:operations:aab": "node scripts/eas-operations.mjs aab",
+    "eas:operations:device:register": "node scripts/eas-operations.mjs device",
     "eas:operations:ios:internal": "node scripts/eas-operations.mjs ios-internal",
     "eas:operations:ios:testflight": "node scripts/eas-operations.mjs ios-testflight",
     "eas:operations:submit:android": "node scripts/eas-operations.mjs submit-android",

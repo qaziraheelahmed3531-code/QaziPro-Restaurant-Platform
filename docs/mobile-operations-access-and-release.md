@@ -67,7 +67,7 @@ For registered QA devices, create an ad-hoc internal build. Apple Developer
 membership and the device UDID are required:
 
 ```powershell
-npx eas-cli@latest device:create
+npm run eas:operations:device:register
 npm run eas:operations:ios:internal
 ```
 

@@ -7,6 +7,7 @@ const commands = {
   project: ["project:info"],
   apk: ["build", "--platform", "android", "--profile", "operations-staging"],
   aab: ["build", "--platform", "android", "--profile", "operations-staging-aab"],
+  device: ["device:create"],
   "ios-internal": ["build", "--platform", "ios", "--profile", "operations-ios-internal"],
   "ios-testflight": ["build", "--platform", "ios", "--profile", "operations-ios-testflight"],
   "submit-android": ["submit", "--platform", "android", "--profile", "operations-android-play"],

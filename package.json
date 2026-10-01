@@ -18,6 +18,7 @@
     "eas:operations:project": "npm --workspace apps/mobile run eas:operations:project",
     "eas:operations:apk": "npm --workspace apps/mobile run eas:operations:apk",
     "eas:operations:aab": "npm --workspace apps/mobile run eas:operations:aab",
+    "eas:operations:device:register": "npm --workspace apps/mobile run eas:operations:device:register",
     "eas:operations:ios:internal": "npm --workspace apps/mobile run eas:operations:ios:internal",
     "eas:operations:ios:testflight": "npm --workspace apps/mobile run eas:operations:ios:testflight",
     "eas:operations:submit:android": "npm --workspace apps/mobile run eas:operations:submit:android",
