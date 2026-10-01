@@ -7,7 +7,10 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 
 const origin = process.argv[2] ?? "http://localhost:3001";
-assert.equal(new URL(origin).hostname, "localhost");
+assert.ok(
+  ["localhost", "admin.staging.qazipro.com"].includes(new URL(origin).hostname),
+  "Staff UI QA target must be loopback or the canonical Admin staging host",
+);
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.local", import.meta.url), "utf8")
     .split(/\r?\n/)
