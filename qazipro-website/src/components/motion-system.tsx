@@ -23,17 +23,29 @@ export function MotionSystem() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const lenis = new Lenis({ duration: 1.32, smoothWheel: true, wheelMultiplier: 0.86, touchMultiplier: 1.08 });
-    let frame = 0;
-    const animate = (time: number) => {
-      lenis.raf(time);
-      frame = requestAnimationFrame(animate);
-    };
-    frame = requestAnimationFrame(animate);
+    let active = true;
+    let cleanupTicker = () => {};
+    void Promise.all([import("gsap"),import("gsap/ScrollTrigger")]).then(([gsapModule,triggerModule]) => {
+      if (!active) return;
+      const gsap = gsapModule.default;
+      const ScrollTrigger = triggerModule.ScrollTrigger;
+      gsap.registerPlugin(ScrollTrigger);
+      const tick = (seconds:number) => lenis.raf(seconds * 1000);
+      lenis.on("scroll",ScrollTrigger.update);
+      gsap.ticker.add(tick);
+      gsap.ticker.lagSmoothing(0);
+      const context=gsap.context(() => {
+        gsap.fromTo(".hero-copy .eyebrow,.hero-copy .hero-line>*,.hero-copy>p,.hero-actions,.hero-proof",{opacity:0,y:18},{opacity:1,y:0,duration:.62,stagger:.075,ease:"power3.out",clearProps:"transform,opacity"});
+        gsap.fromTo(".hero .product-visual",{opacity:0,scale:.975,x:18},{opacity:1,scale:1,x:0,duration:.8,delay:.16,ease:"power3.out",clearProps:"transform,opacity"});
+      });
+      cleanupTicker=()=>{context.revert();gsap.ticker.remove(tick);lenis.off("scroll",ScrollTrigger.update)};
+    });
     return () => {
-      cancelAnimationFrame(frame);
+      active=false;
+      cleanupTicker();
       lenis.destroy();
     };
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;

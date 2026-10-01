@@ -21,6 +21,7 @@ import { signOutAction } from "@/app/actions"
 const icons: Record<PlatformModule, typeof Store> = {
   overview: LayoutDashboard, restaurants: Building2, onboarding: ClipboardCheck,
   leads: Inbox,
+  website: Globe2,
   branches: Network, apps: AppWindow, domains: Globe2, deployments: CloudCog,
   health: Activity, support: Headphones, billing: CircleDollarSign,
   tasks: ListTodo,

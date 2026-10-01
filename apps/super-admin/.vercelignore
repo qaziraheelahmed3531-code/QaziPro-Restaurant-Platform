@@ -1,0 +1,6 @@
+.next
+.next-stage-platform
+node_modules
+.env*
+*.log
+*.tsbuildinfo

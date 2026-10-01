@@ -20,6 +20,7 @@ export const platformPermissions = [
   "tasks.manage",
   "onboarding.manage",
   "audit.view",
+  "website.manage",
 ] as const
 
 export type PlatformPermission = (typeof platformPermissions)[number]
@@ -82,6 +83,7 @@ export const modules = {
   restaurants: { title: "Restaurants", detail: "Master restaurant directory", permission: "restaurants.view" },
   onboarding: { title: "Onboarding", detail: "Guided client provisioning", permission: "onboarding.manage" },
   leads: { title: "Website Leads", detail: "Public website and demo inquiries", permission: "onboarding.manage" },
+  website: { title: "QaziPro Website", detail: "Public content, team and signed client onboarding", permission: "website.manage" },
   branches: { title: "Branches", detail: "Cross-restaurant branch operations", permission: "branches.manage" },
   apps: { title: "Apps", detail: "Android and iOS release registry", permission: "apps.manage" },
   domains: { title: "Domains", detail: "DNS, SSL and tenant resolution", permission: "domains.manage" },
