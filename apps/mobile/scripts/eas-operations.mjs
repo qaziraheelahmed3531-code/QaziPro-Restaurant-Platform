@@ -14,11 +14,12 @@ const commands = {
   "submit-ios": ["submit", "--platform", "ios", "--profile", "operations-ios-testflight"],
 };
 
-const command = commands[process.argv[2]];
-if (!command) {
+const baseCommand = commands[process.argv[2]];
+if (!baseCommand) {
   console.error(`Unknown Operations EAS action: ${process.argv[2] ?? "missing"}`);
   process.exit(2);
 }
+const command = [...baseCommand, ...process.argv.slice(3)];
 
 const executable = process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "npx";
 const args = process.platform === "win32"
