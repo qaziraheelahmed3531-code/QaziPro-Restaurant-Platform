@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import {
   Bell,
   Boxes,
+  ChefHat,
   ClipboardList,
   LogOut,
   RefreshCw,
@@ -29,7 +30,7 @@ import {
   opsStyles,
 } from "@/operations/ui";
 
-type Tab = "dashboard" | "orders" | "menu" | "inventory" | "tables" | "alerts";
+type Tab = "dashboard" | "orders" | "kds" | "menu" | "inventory" | "tables" | "alerts";
 type Order = {
   id: string;
   order_number: string;
@@ -122,8 +123,8 @@ export default function AdminMobile() {
         if (result.error) throw result.error;
         setReport((result.data ?? {}) as Report);
       }
-      if (tab === "orders") {
-        const result = await supabase
+      if (tab === "orders" || tab === "kds") {
+        let query = supabase
           .from("orders")
           .select(
             "id,order_number,customer_name,status,operational_order_type,total,created_at",
@@ -132,6 +133,8 @@ export default function AdminMobile() {
           .eq("branch_id", app.branch.id)
           .order("created_at", { ascending: false })
           .limit(50);
+        if (tab === "kds") query = query.in("status", ["CONFIRMED", "PREPARING"]);
+        const result = await query;
         if (result.error) throw result.error;
         setOrders((result.data ?? []) as Order[]);
       }
@@ -305,6 +308,7 @@ export default function AdminMobile() {
           [
             ["dashboard", "Overview", Store],
             ["orders", "Orders", ClipboardList],
+            ["kds", "Kitchen", ChefHat],
             ["menu", "Menu", Utensils],
             ["inventory", "Inventory", Boxes],
             ["tables", "Tables", Store],
@@ -317,6 +321,7 @@ export default function AdminMobile() {
               value === "tables" ||
               value === "alerts" ||
               (value === "orders" && can(app.access!, "orders.read")) ||
+              (value === "kds" && can(app.access!, "kds.use")) ||
               (value === "menu" && can(app.access!, "products.manage")) ||
               (value === "inventory" && can(app.access!, "inventory.read")),
           )
@@ -366,9 +371,12 @@ export default function AdminMobile() {
             />
           </View>
         </>
-      ) : tab === "orders" ? (
+      ) : tab === "orders" || tab === "kds" ? (
         <>
-          <OpsSection title="Recent orders" detail="Realtime branch queue" />
+          <OpsSection
+            title={tab === "kds" ? "Kitchen queue" : "Recent orders"}
+            detail={tab === "kds" ? "Confirmed and preparing orders" : "Realtime branch queue"}
+          />
           {orders.length ? (
             orders.map((order) => (
               <OpsCard key={order.id}>

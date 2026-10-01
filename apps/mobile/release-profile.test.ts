@@ -48,6 +48,22 @@ describe("mobile release profile", () => {
     );
   });
 
+  it("links EAS only when an explicit project id is configured", () => {
+    const withoutProject = createExpoConfig({
+      EXPO_PUBLIC_APP_ENV: "staging",
+      MOBILE_APP_VARIANT: "operations",
+    });
+    expect(withoutProject.extra?.eas).toBeUndefined();
+    const withProject = createExpoConfig({
+      EXPO_PUBLIC_APP_ENV: "staging",
+      MOBILE_APP_VARIANT: "operations",
+      EAS_PROJECT_ID: "11111111-2222-3333-4444-555555555555",
+    });
+    expect(withProject.extra?.eas).toEqual({
+      projectId: "11111111-2222-3333-4444-555555555555",
+    });
+  });
+
   it("fails closed when production identifiers are absent", () =>
     expect(() =>
       resolveReleaseProfile({ EXPO_PUBLIC_APP_ENV: "production" }),

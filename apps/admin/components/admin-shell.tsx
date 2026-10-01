@@ -30,6 +30,7 @@ import {
   LayoutDashboard,
   MapPinned,
   MonitorDown,
+  PackageCheck,
   PanelLeftClose,
   PanelLeftOpen,
   PackageOpen,
@@ -321,6 +322,12 @@ const groups: Array<{ label: string; items: NavItem[] }> = [
         label: "Staff & Roles",
         href: "/users",
         icon: Users,
+        permission: "staff.manage",
+      },
+      {
+        label: "Apps & Access",
+        href: "/apps",
+        icon: PackageCheck,
         permission: "staff.manage",
       },
       {

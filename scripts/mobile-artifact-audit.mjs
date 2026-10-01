@@ -1,7 +1,12 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const roots = ["apps/mobile/dist/android", "apps/mobile/dist/ios"];
+const roots = [
+  "apps/mobile/dist/android",
+  "apps/mobile/dist/ios",
+  "apps/mobile/dist/operations-android",
+  "apps/mobile/dist/operations-ios",
+];
 const forbidden = [
   /http:\/\/(?:localhost|127\.0\.0\.1|10\.0\.2\.2):(?:3000\/api\/v1|54321)(?:\/|\x00|$)/i,
   /eyJ[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/,

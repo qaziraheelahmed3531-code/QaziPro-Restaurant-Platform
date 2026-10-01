@@ -21,6 +21,7 @@ type ReleaseProfile = {
   backgroundColor: string;
   primaryColor: string;
   googleServicesFile?: string;
+  easProjectId?: string;
 };
 
 type EnvironmentValues = Record<string, string | undefined>;
@@ -135,6 +136,7 @@ export function resolveReleaseProfile(
     primaryColor,
     googleServicesFile:
       value(source, "MOBILE_GOOGLE_SERVICES_FILE") || undefined,
+    easProjectId: value(source, "EAS_PROJECT_ID") || undefined,
   };
 }
 
@@ -235,6 +237,9 @@ export function createExpoConfig(
         version: profile.version,
       },
       router: { origin: false },
+      ...(profile.easProjectId
+        ? { eas: { projectId: profile.easProjectId } }
+        : {}),
     },
   };
 }

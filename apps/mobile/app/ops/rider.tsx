@@ -60,6 +60,13 @@ export default function RiderMobile() {
   }, [app.access, app.ready, app.session, router]);
   const load = useCallback(async () => {
     if (!app.branch) return;
+    if (app.connection === "OFFLINE") {
+      setLoading(false);
+      setMessage(
+        "You're offline. Showing the last synced assignments; status confirmation is paused.",
+      );
+      return;
+    }
     setLoading(true);
     const result = await supabase.rpc("rider_dashboard", {
       p_branch_id: app.branch.id,
@@ -77,7 +84,7 @@ export default function RiderMobile() {
       );
     }
     setLoading(false);
-  }, [app.branch]);
+  }, [app.branch, app.connection]);
   useEffect(() => {
     if (!app.branch) return;
     void AsyncStorage.getItem(`qazipro:rider-dashboard:${app.branch.id}`).then(
@@ -252,6 +259,7 @@ export default function RiderMobile() {
                 key={order.id}
                 order={order}
                 active
+                offline={app.connection === "OFFLINE"}
                 onNavigate={() => void navigate(order)}
                 onCall={() =>
                   void Linking.openURL(
@@ -284,6 +292,7 @@ export default function RiderMobile() {
               <DeliveryCard
                 key={order.id}
                 order={order}
+                offline={app.connection === "OFFLINE"}
                 onNavigate={() => void navigate(order)}
                 onCall={() => undefined}
                 onLocation={() => undefined}
@@ -357,6 +366,7 @@ export default function RiderMobile() {
 function DeliveryCard({
   order,
   active,
+  offline,
   onNavigate,
   onCall,
   onLocation,
@@ -365,6 +375,7 @@ function DeliveryCard({
 }: {
   order: RiderOrder;
   active?: boolean;
+  offline?: boolean;
   onNavigate: () => void;
   onCall: () => void;
   onLocation: () => void;
@@ -434,11 +445,8 @@ function DeliveryCard({
             />
             <OpsButton
               compact
-              title={
-                cod
-                  ? `Collected ${money(order.total)} · Deliver`
-                  : "Mark delivered"
-              }
+              title={offline ? "Reconnect to update" : cod ? `Collected ${money(order.total)} · Deliver` : "Mark delivered"}
+              disabled={offline}
               onPress={onComplete}
             />
             <OpsButton
@@ -449,7 +457,11 @@ function DeliveryCard({
             />
           </>
         ) : (
-          <OpsButton title="Accept & pick up" onPress={onComplete} />
+          <OpsButton
+            title={offline ? "Reconnect to accept" : "Accept delivery & confirm pickup"}
+            disabled={offline}
+            onPress={onComplete}
+          />
         )}
       </View>
     </OpsCard>

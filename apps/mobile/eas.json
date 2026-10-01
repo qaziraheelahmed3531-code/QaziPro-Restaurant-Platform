@@ -105,6 +105,54 @@
         "MOBILE_IOS_BUILD_NUMBER": "1"
       }
     },
+    "operations-ios-internal": {
+      "distribution": "internal",
+      "channel": "operations-staging",
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_MOBILE_SURFACE": "operations",
+        "EXPO_PUBLIC_MOBILE_ROLE_HINT": "auto",
+        "EXPO_PUBLIC_API_BASE_URL": "https://qazipro-restaurant-customer-staging.vercel.app/api/v1",
+        "EXPO_PUBLIC_RESTAURANT_KEY": "qa-restaurant-a",
+        "EXPO_PUBLIC_LINK_DOMAIN": "restaurant-a.staging.qazipro.com",
+        "EXPO_PUBLIC_ENABLE_PUSH": "false",
+        "MOBILE_APP_VARIANT": "operations",
+        "MOBILE_APP_NAME": "QaziPro Operations Staging",
+        "MOBILE_APP_SLUG": "qazipro-operations",
+        "MOBILE_APP_SCHEME": "qazipro-ops",
+        "MOBILE_ANDROID_APPLICATION_ID": "com.qazipro.operations.staging",
+        "MOBILE_IOS_BUNDLE_ID": "com.qazipro.operations.staging",
+        "MOBILE_LINK_DOMAIN": "restaurant-a.staging.qazipro.com",
+        "MOBILE_APP_VERSION": "0.1.0",
+        "MOBILE_ANDROID_VERSION_CODE": "1",
+        "MOBILE_IOS_BUILD_NUMBER": "1"
+      }
+    },
+    "operations-ios-testflight": {
+      "distribution": "store",
+      "channel": "operations-staging",
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_MOBILE_SURFACE": "operations",
+        "EXPO_PUBLIC_MOBILE_ROLE_HINT": "auto",
+        "EXPO_PUBLIC_API_BASE_URL": "https://qazipro-restaurant-customer-staging.vercel.app/api/v1",
+        "EXPO_PUBLIC_RESTAURANT_KEY": "qa-restaurant-a",
+        "EXPO_PUBLIC_LINK_DOMAIN": "restaurant-a.staging.qazipro.com",
+        "EXPO_PUBLIC_ENABLE_PUSH": "false",
+        "MOBILE_APP_VARIANT": "operations",
+        "MOBILE_APP_NAME": "QaziPro Operations Staging",
+        "MOBILE_APP_SLUG": "qazipro-operations",
+        "MOBILE_APP_SCHEME": "qazipro-ops",
+        "MOBILE_ANDROID_APPLICATION_ID": "com.qazipro.operations.staging",
+        "MOBILE_IOS_BUNDLE_ID": "com.qazipro.operations.staging",
+        "MOBILE_LINK_DOMAIN": "restaurant-a.staging.qazipro.com",
+        "MOBILE_APP_VERSION": "0.1.0",
+        "MOBILE_ANDROID_VERSION_CODE": "1",
+        "MOBILE_IOS_BUILD_NUMBER": "1"
+      }
+    },
     "ios-simulator": {
       "distribution": "internal",
       "channel": "staging",
@@ -123,5 +171,9 @@
       "autoIncrement": false,
       "env": { "EXPO_PUBLIC_APP_ENV": "production" }
     }
+  },
+  "submit": {
+    "operations-android-play": {},
+    "operations-ios-testflight": {}
   }
 }

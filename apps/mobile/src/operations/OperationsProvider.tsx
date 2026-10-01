@@ -13,7 +13,7 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { supabase, startAuthRefresh } from "@/lib/supabase";
 import { secureStorage } from "@/lib/storage";
 import { flushSafeOutbox } from "./outbox";
@@ -25,6 +25,24 @@ import type {
 } from "./types";
 
 const BRANCH_KEY = "qazipro:operations:branch:v1";
+const ACCESS_KEY = "qazipro:operations:last-authorized:v1";
+const ACCESS_TTL_MS = 24 * 60 * 60 * 1000;
+type CachedAccess = { userId: string; verifiedAt: string; access: OperationsAccess };
+
+function validCachedAccess(raw: string | null, userId: string) {
+  if (!raw) return null;
+  try {
+    const cached = JSON.parse(raw) as CachedAccess;
+    if (
+      cached.userId !== userId ||
+      !cached.access?.businessId ||
+      Date.now() - Date.parse(cached.verifiedAt) > ACCESS_TTL_MS
+    ) return null;
+    return cached.access;
+  } catch {
+    return null;
+  }
+}
 type State = {
   ready: boolean;
   busy: boolean;
@@ -83,6 +101,14 @@ export function OperationsProvider({ children }: PropsWithChildren) {
         return;
       }
       const resolved = await resolveOperationsAccess(supabase, current);
+      await secureStorage.setItem(
+        ACCESS_KEY,
+        JSON.stringify({
+          userId: current.user.id,
+          verifiedAt: new Date().toISOString(),
+          access: resolved,
+        } satisfies CachedAccess),
+      );
       const saved = await secureStorage.getItem(BRANCH_KEY);
       const selected =
         resolved.branches.find((item) => item.id === saved) ??
@@ -93,9 +119,24 @@ export function OperationsProvider({ children }: PropsWithChildren) {
       setBranch(selected);
       setConnection("ONLINE");
     } catch (reason) {
-      setAccess(null);
-      setBranch(null);
-      setError(friendly(reason, "Restaurant access could not be loaded."));
+      const current = (await supabase.auth.getSession()).data.session;
+      const network = await Network.getNetworkStateAsync().catch(() => null);
+      const disconnected =
+        network?.isConnected === false || network?.isInternetReachable === false;
+      const cached = current && disconnected
+        ? validCachedAccess(await secureStorage.getItem(ACCESS_KEY), current.user.id)
+        : null;
+      if (cached) {
+        const saved = await secureStorage.getItem(BRANCH_KEY);
+        setAccess(cached);
+        setBranch(cached.branches.find((item) => item.id === saved) ?? cached.branches[0]);
+        setConnection("OFFLINE");
+        setError("You're offline. Using access verified within the last 24 hours; server-only actions remain unavailable.");
+      } else {
+        setAccess(null);
+        setBranch(null);
+        setError(friendly(reason, "Restaurant access could not be loaded."));
+      }
     } finally {
       loading.current = false;
       setBusy(false);
@@ -143,7 +184,10 @@ export function OperationsProvider({ children }: PropsWithChildren) {
             : "ONLINE"
           : "OFFLINE",
       );
-      if (online) void syncRef.current();
+      if (online) {
+        setConnection("RECONNECTING");
+        void refreshAccess().then(() => syncRef.current());
+      }
     });
     return () => {
       active = false;
@@ -187,14 +231,42 @@ export function OperationsProvider({ children }: PropsWithChildren) {
         },
         () => setRevision((value) => value + 1),
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "service_entitlements",
+          filter: `business_id=eq.${access.businessId}`,
+        },
+        () => void refreshAccess(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "staff_memberships",
+          filter: `user_id=eq.${access.userId}`,
+        },
+        () => void refreshAccess(),
+      )
       .subscribe((status) => {
+        if (status === "SUBSCRIBED") setConnection("ONLINE");
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT")
           setConnection("DEGRADED");
       });
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [access, branch, connection]);
+  }, [access, branch, connection, refreshAccess]);
+
+  useEffect(() => {
+    const foreground = AppState.addEventListener("change", (state) => {
+      if (state === "active" && connection !== "OFFLINE") void refreshAccess();
+    });
+    return () => foreground.remove();
+  }, [connection, refreshAccess]);
 
   const requestOtp = useCallback(async (email: string) => {
     setBusy(true);
@@ -269,6 +341,7 @@ export function OperationsProvider({ children }: PropsWithChildren) {
   const signOut = useCallback(async () => {
     await supabase.auth.signOut({ scope: "local" });
     await secureStorage.removeItem(BRANCH_KEY);
+    await secureStorage.removeItem(ACCESS_KEY);
     setAccess(null);
     setBranch(null);
   }, []);

@@ -28,6 +28,11 @@
     "build:operations:web": "node scripts/export-operations.mjs web",
     "build:operations": "npm run build:operations:android && npm run build:operations:ios && npm run build:operations:web",
     "test:operations:web": "node scripts/test-operations-web.mjs",
+    "eas:whoami": "npx eas-cli@latest whoami",
+    "eas:operations:apk": "npx eas-cli@latest build --platform android --profile operations-staging",
+    "eas:operations:aab": "npx eas-cli@latest build --platform android --profile operations-staging-aab",
+    "eas:operations:ios:internal": "npx eas-cli@latest build --platform ios --profile operations-ios-internal",
+    "eas:operations:ios:testflight": "npx eas-cli@latest build --platform ios --profile operations-ios-testflight",
     "build": "npm run typecheck && npm run build:android && npm run build:ios"
   },
   "dependencies": {
