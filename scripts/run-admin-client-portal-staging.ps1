@@ -1,6 +1,6 @@
 # Requires an authenticated Supabase CLI. Does not write credentials to the repo.
 param(
-  [ValidateSet('admin', 'super-admin', 'super-admin-browser', 'website-cms-browser', 'website-public', 'ensure-package', 'serve-admin', 'serve-super-admin')][string]$Suite = 'admin',
+  [ValidateSet('admin', 'super-admin', 'super-admin-browser', 'website-cms-browser', 'website-public', 'website-client-portal', 'ensure-package', 'serve-admin', 'serve-super-admin', 'serve-website')][string]$Suite = 'admin',
   [ValidateRange(0, 65535)][int]$Port = 0,
   [string]$TargetUrl = '',
   [switch]$WithFixtures
@@ -57,19 +57,20 @@ if ($target -and $targetHost -notin @('localhost','127.0.0.1') -and $targetHost 
 }
 $env:STAGING_ADMIN_URL = if ($Suite -eq 'admin' -and $target) { $target } else { 'http://localhost:3101' }
 $env:STAGING_SUPER_ADMIN_URL = if (($Suite -like 'super-admin*' -or $Suite -eq 'website-cms-browser') -and $target) { $target } else { 'http://localhost:3102' }
+$env:STAGING_WEBSITE_URL = if (($Suite -eq 'website-client-portal' -or $Suite -eq 'serve-website') -and $target) { $target } else { 'http://localhost:3103' }
 
 try {
   if ($WithFixtures -and $Suite -notlike 'serve-*') {
     node (Join-Path $PSScriptRoot 'staging-fixtures.mjs')
     if ($LASTEXITCODE -ne 0) { throw 'Fixture provisioning failed.' }
   }
-  if ($Suite -eq 'serve-admin' -or $Suite -eq 'serve-super-admin') {
+  if ($Suite -eq 'serve-admin' -or $Suite -eq 'serve-super-admin' -or $Suite -eq 'serve-website') {
     if ($Suite -eq 'serve-admin') {
       $env:DEMO_LEADS_ENABLED = '1'
       $env:NEXT_DIST_DIR = '.next-stage-portal'
       $appDirectory = Join-Path $PSScriptRoot '../apps/admin'
       $servePort = if ($Port) { "$Port" } else { '3101' }
-    } else {
+    } elseif ($Suite -eq 'serve-super-admin') {
       $env:QAZIPRO_PLATFORM_OWNER_EMAILS = 'qaziraheelahmed3531@gmail.com'
       $servePort = if ($Port) { "$Port" } else { '3102' }
       $env:PLATFORM_ALLOWED_ORIGINS = "localhost:$servePort"
@@ -84,12 +85,17 @@ try {
         }
       }
       $appDirectory = Join-Path $PSScriptRoot '../apps/super-admin'
+    } else {
+      $servePort = if ($Port) { "$Port" } else { '3103' }
+      $env:PLATFORM_ALLOWED_ORIGINS = "localhost:$servePort"
+      $env:NEXT_PUBLIC_SITE_URL = "http://localhost:$servePort"
+      $appDirectory = Join-Path $PSScriptRoot '../qazipro-website'
     }
     Push-Location -LiteralPath $appDirectory
     try { & npx --yes --offline next dev -p $servePort } finally { Pop-Location }
     exit $LASTEXITCODE
   }
-  $acceptanceScript = if ($Suite -eq 'super-admin') { 'super-admin-staging-acceptance.mjs' } elseif ($Suite -eq 'super-admin-browser') { 'super-admin-browser-staging-acceptance.mjs' } elseif ($Suite -eq 'website-cms-browser') { 'website-cms-browser-staging-acceptance.mjs' } elseif ($Suite -eq 'website-public') { 'website-onboarding-live-acceptance.mjs' } elseif ($Suite -eq 'ensure-package') { 'ensure-super-admin-staging-package.mjs' } else { 'admin-client-portal-staging-acceptance.mjs' }
+  $acceptanceScript = if ($Suite -eq 'super-admin') { 'super-admin-staging-acceptance.mjs' } elseif ($Suite -eq 'super-admin-browser') { 'super-admin-browser-staging-acceptance.mjs' } elseif ($Suite -eq 'website-cms-browser') { 'website-cms-browser-staging-acceptance.mjs' } elseif ($Suite -eq 'website-public') { 'website-onboarding-live-acceptance.mjs' } elseif ($Suite -eq 'website-client-portal') { 'website-client-portal-staging-acceptance.mjs' } elseif ($Suite -eq 'ensure-package') { 'ensure-super-admin-staging-package.mjs' } else { 'admin-client-portal-staging-acceptance.mjs' }
   node (Join-Path $PSScriptRoot $acceptanceScript)
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {

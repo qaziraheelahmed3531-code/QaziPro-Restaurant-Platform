@@ -1,6 +1,6 @@
 "use server"
 
-import { randomUUID } from "node:crypto"
+import { createHash,randomUUID } from "node:crypto"
 import { revalidatePath } from "next/cache"
 import { requirePlatformPermission } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
@@ -158,7 +158,41 @@ export async function updateSubmissionAction(form:FormData) {
   const client=await createClient();const before=await client.from("platform_onboarding_submissions").select("status,assigned_staff_user_id,internal_notes").eq("id",id).single()
   const result=await client.from("platform_onboarding_submissions").update({status,assigned_staff_user_id:assigned,internal_notes:notes}).eq("id",id)
   if(result.error)return{error:"Submission could not be updated."}
-  await client.from("platform_onboarding_submission_activity").insert({submission_id:id,actor_user_id:context.userId,action:"INTERNAL_UPDATED",detail:`Status changed to ${status}.`})
+  const activities:Array<Record<string,unknown>>=[]
+  if(before.data?.status!==status)activities.push({submission_id:id,actor_user_id:context.userId,action:"STATUS_UPDATED",detail:`Application status changed to ${status.replaceAll("_"," ").toLowerCase()}.`,public_label:"Status updated",is_client_visible:true})
+  if(before.data?.assigned_staff_user_id!==assigned)activities.push({submission_id:id,actor_user_id:context.userId,action:"POC_ASSIGNED",detail:assigned?"A QaziPro onboarding representative was assigned.":"The QaziPro representative assignment was updated.",public_label:"Representative updated",is_client_visible:true})
+  if(before.data?.internal_notes!==notes)activities.push({submission_id:id,actor_user_id:context.userId,action:"INTERNAL_NOTE_UPDATED",detail:"Internal review notes updated.",is_client_visible:false})
+  if(activities.length)await client.from("platform_onboarding_submission_activity").insert(activities)
   await audit(context.userId,"ONBOARDING_SUBMISSION_UPDATED","platform_onboarding_submission",id,"Status, assignment or internal note update",before.data,{status,assigned,notes})
   revalidatePath("/website");revalidatePath(`/website/submissions/${id}`);return{success:"Submission updated."}
+}
+
+export async function sendPortalMessageAction(form:FormData) {
+  const context=await requirePlatformPermission("website.manage"),id=String(form.get("id")??"")
+  const body=String(form.get("message")??"").trim(),kind=String(form.get("kind")??"MESSAGE")
+  if(!/^[0-9a-f-]{36}$/i.test(id)||body.length<2||body.length>4000||!["MESSAGE","REQUEST_INFO"].includes(kind))return{error:"Enter a client-visible message between 2 and 4,000 characters."}
+  const client=await createClient()
+  const submission=await client.from("platform_onboarding_submissions").select("status,reference").eq("id",id).single()
+  if(submission.error)return{error:"Submission is unavailable."}
+  const insert=await client.from("platform_onboarding_portal_messages").insert({submission_id:id,sender_kind:"PLATFORM",message_type:kind,body,actor_user_id:context.userId,is_client_visible:true})
+  if(insert.error)return{error:"Client message could not be sent."}
+  if(kind==="REQUEST_INFO"&&submission.data.status!=="NEEDS_INFO")await client.from("platform_onboarding_submissions").update({status:"NEEDS_INFO"}).eq("id",id)
+  await client.from("platform_onboarding_submission_activity").insert({submission_id:id,actor_user_id:context.userId,action:kind==="REQUEST_INFO"?"INFORMATION_REQUESTED":"CLIENT_MESSAGE_SENT",detail:kind==="REQUEST_INFO"?"QaziPro requested additional information.":"QaziPro sent a client-visible message.",public_label:kind==="REQUEST_INFO"?"Information requested":"Message from QaziPro",is_client_visible:true})
+  await audit(context.userId,"ONBOARDING_CLIENT_MESSAGE_SENT","platform_onboarding_submission",id,kind==="REQUEST_INFO"?"Requested additional client information":"Sent a client-visible portal message",undefined,{kind,bodyLength:body.length})
+  revalidatePath(`/website/submissions/${id}`);return{success:kind==="REQUEST_INFO"?"Information request sent.":"Client message sent."}
+}
+
+export async function uploadPortalDocumentAction(form:FormData) {
+  const context=await requirePlatformPermission("website.manage"),id=String(form.get("id")??"")
+  const file=form.get("document")
+  if(!(file instanceof File)||!file.size||file.size>900000||!["application/pdf","image/png","image/jpeg","image/webp"].includes(file.type))return{error:"Use a PDF, PNG, JPEG or WebP file under 900 KB."}
+  const admin=createPlatformAdminClient();if(!admin)return{error:"Document storage is unavailable."}
+  const exists=await admin.from("platform_onboarding_submissions").select("id").eq("id",id).maybeSingle()
+  if(!exists.data)return{error:"Submission is unavailable."}
+  const bytes=Buffer.from(await file.arrayBuffer()),name=file.name.replace(/[^a-zA-Z0-9._() -]/g,"_").slice(0,180)||"QaziPro-document"
+  const result=await admin.rpc("append_platform_onboarding_document",{p_submission_id:id,p_document_type:"PLATFORM_SHARED",p_content:`\\x${bytes.toString("hex")}`,p_content_sha256:createHash("sha256").update(bytes).digest("hex"),p_file_name:name,p_content_type:file.type,p_client_user_id:null,p_created_by:context.userId,p_is_client_visible:true})
+  if(result.error)return{error:"Client document could not be stored."}
+  const client=await createClient();await client.from("platform_onboarding_submission_activity").insert({submission_id:id,actor_user_id:context.userId,action:"PLATFORM_DOCUMENT_SHARED",detail:"QaziPro shared a document in the Client Portal.",public_label:"Document shared",is_client_visible:true})
+  await audit(context.userId,"ONBOARDING_DOCUMENT_SHARED","platform_onboarding_submission",id,"Shared a client-visible portal document",undefined,{name,contentType:file.type,size:file.size})
+  revalidatePath(`/website/submissions/${id}`);return{success:"Document shared in the Client Portal."}
 }

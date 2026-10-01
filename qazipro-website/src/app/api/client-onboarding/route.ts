@@ -108,12 +108,12 @@ export async function POST(request:NextRequest) {
       }
       return reply(503,{ok:false,message:"We couldn't submit your form. Your information is still here. Please try again."},requestId)
     }
-    const document=await client.from("platform_onboarding_submission_documents").insert({submission_id:submissionId,version:1,document_type:"ORIGINAL_SIGNED",content:`\\x${Buffer.from(pdf).toString("hex")}`,content_sha256:createHash("sha256").update(pdf).digest("hex")})
+    const document=await client.from("platform_onboarding_submission_documents").insert({submission_id:submissionId,version:1,document_type:"ORIGINAL_SIGNED",content:`\\x${Buffer.from(pdf).toString("hex")}`,content_sha256:createHash("sha256").update(pdf).digest("hex"),file_name:`${reference}-QaziPro-onboarding.pdf`,content_type:"application/pdf",is_client_visible:true})
     if (document.error) {
       await client.from("platform_onboarding_submissions").delete().eq("id",submissionId)
       return reply(503,{ok:false,message:"We couldn't generate your signed copy. Your information is still here. Please try again."},requestId)
     }
-    await client.from("platform_onboarding_submission_activity").insert({submission_id:submissionId,action:"PUBLIC_SUBMITTED",detail:"Original signed snapshot and PDF version 1 created."})
+    await client.from("platform_onboarding_submission_activity").insert({submission_id:submissionId,action:"PUBLIC_SUBMITTED",detail:"Original signed snapshot and PDF version 1 created.",public_label:"Application submitted",is_client_visible:true})
     return reply(201,{ok:true,reference,pdfUrl:`/api/client-onboarding/${reference}/pdf?token=${token}`,message:"Application submitted."},requestId)
   } catch {
     return reply(400,{ok:false,message:"Please check the form fields and try again."},requestId)

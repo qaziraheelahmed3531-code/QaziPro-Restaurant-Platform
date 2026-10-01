@@ -7,14 +7,14 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Check, Download, LoaderCircle, RotateCcw } from "lucide-react";
+import { ArrowRight, Check, Download, LoaderCircle, RotateCcw } from "lucide-react";
 import {
   calculatePricing,
   type OnboardingDefinition,
   type OnboardingField,
 } from "@/lib/onboarding";
 
-type Result = { reference: string; pdfUrl: string };
+type Result = { reference: string; pdfUrl: string; email: string };
 
 function InputField({
   field,
@@ -226,7 +226,7 @@ export function ClientOnboardingForm({
           body.message ||
             "We couldn't submit your form. Your information is still here. Please try again.",
         );
-      setResult({ reference: body.reference, pdfUrl: body.pdfUrl });
+      setResult({ reference: body.reference, pdfUrl: body.pdfUrl, email: values.email || "" });
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -253,6 +253,9 @@ export function ClientOnboardingForm({
         <div>
           <a className="button button-primary" href={result.pdfUrl}>
             <Download size={18} /> Download signed PDF
+          </a>
+          <a className="button button-outline" href={`/client-portal?reference=${encodeURIComponent(result.reference)}&email=${encodeURIComponent(result.email)}`}>
+            Open Client Portal <ArrowRight size={18}/>
           </a>
           <button
             className="button button-outline"

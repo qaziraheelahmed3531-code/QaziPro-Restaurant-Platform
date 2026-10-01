@@ -4,12 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, ChevronDown, LogIn, Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { motion,useReducedMotion } from "motion/react";
 import { developmentServices, restaurantServices, site } from "@/lib/site";
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
-  const reduceMotion=useReducedMotion();
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
@@ -26,8 +24,8 @@ export function SiteHeader() {
       <div className="header-actions">{site.demoPortal ? <a className="client-link" href={site.demoPortal}>View demo</a> : null}<a className="client-portal-button" href={site.clientPortal}>Client portal <LogIn size={16}/></a><Link className="button button-primary button-sm" href="/book-a-demo">Book a demo <ArrowRight size={16}/></Link></div>
       <button className="mobile-menu-toggle" type="button" aria-label={open ? "Close menu" : "Open menu"} aria-expanded={open} aria-controls="mobile-navigation" onClick={() => setOpen(!open)}>{open ? <X size={24}/> : <Menu size={24}/>}</button>
     </div>
-    <motion.nav initial={false} animate={{opacity:open?1:0,y:open?0:reduceMotion?0:-10}} transition={{duration:reduceMotion?0:.18,ease:[.22,.8,.28,1]}} className={`mobile-nav ${open ? "mobile-nav-open" : ""}`} id="mobile-navigation" aria-label="Mobile navigation" inert={!open} onClick={(event) => { if ((event.target as HTMLElement).closest("a")) setOpen(false); }}>
+    <nav className={`mobile-nav ${open ? "mobile-nav-open" : ""}`} id="mobile-navigation" aria-label="Mobile navigation" inert={!open} onClick={(event) => { if ((event.target as HTMLElement).closest("a")) setOpen(false); }}>
       <div className="mobile-nav-inner"><Link href="/restaurant-platform">Restaurant platform</Link>{restaurantServices.map((item) => <Link className="mobile-sub-link" href={item.href} key={item.href}>{item.title}</Link>)}<Link href="/services">Development services</Link>{developmentServices.map((item) => <Link className="mobile-sub-link" href={item.href} key={item.href}>{item.title}</Link>)}<Link href="/portfolio">Our work</Link><Link href="/about">About</Link><Link href="/contact">Contact</Link>{site.demoPortal ? <a href={site.demoPortal}>View demo</a> : null}<a className="client-portal-button mobile-client-portal" href={site.clientPortal}>Client portal <LogIn size={17}/></a><Link className="button button-primary" href="/book-a-demo">Book a demo <ArrowRight size={17}/></Link></div>
-    </motion.nav>
+    </nav>
   </header>;
 }

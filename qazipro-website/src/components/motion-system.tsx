@@ -25,7 +25,10 @@ export function MotionSystem() {
     const lenis = new Lenis({ duration: 1.32, smoothWheel: true, wheelMultiplier: 0.86, touchMultiplier: 1.08 });
     let active = true;
     let cleanupTicker = () => {};
-    void Promise.all([import("gsap"),import("gsap/ScrollTrigger")]).then(([gsapModule,triggerModule]) => {
+    // App Router can still be hydrating streamed page segments when a root
+    // client effect fires. Delay DOM-writing animation setup so GSAP never
+    // mutates server markup during hydration.
+    const setupTimer=window.setTimeout(() => { void Promise.all([import("gsap"),import("gsap/ScrollTrigger")]).then(([gsapModule,triggerModule]) => {
       if (!active) return;
       const gsap = gsapModule.default;
       const ScrollTrigger = triggerModule.ScrollTrigger;
@@ -35,13 +38,22 @@ export function MotionSystem() {
       gsap.ticker.add(tick);
       gsap.ticker.lagSmoothing(0);
       const context=gsap.context(() => {
-        gsap.fromTo(".hero-copy .eyebrow,.hero-copy .hero-line>*,.hero-copy>p,.hero-actions,.hero-proof",{opacity:0,y:18},{opacity:1,y:0,duration:.62,stagger:.075,ease:"power3.out",clearProps:"transform,opacity"});
-        gsap.fromTo(".hero .product-visual",{opacity:0,scale:.975,x:18},{opacity:1,scale:1,x:0,duration:.8,delay:.16,ease:"power3.out",clearProps:"transform,opacity"});
+        const heroCopy=document.querySelectorAll(".hero-copy .eyebrow,.hero-copy .hero-line>*,.hero-copy>p,.hero-actions,.hero-proof");
+        const heroVisual=document.querySelector(".hero .product-visual");
+        const platformStory=document.querySelector<HTMLElement>(".platform-section");
+        if(heroCopy.length)gsap.fromTo(heroCopy,{opacity:0,y:18},{opacity:1,y:0,duration:.62,stagger:.075,ease:"power3.out",clearProps:"transform,opacity"});
+        if(heroVisual)gsap.fromTo(heroVisual,{opacity:0,scale:.975,x:18},{opacity:1,scale:1,x:0,duration:.8,delay:.16,ease:"power3.out",clearProps:"transform,opacity"});
+        if(platformStory)gsap.fromTo(platformStory,{"--story-light":0},{"--story-light":1,ease:"none",scrollTrigger:{trigger:platformStory,start:"top bottom",end:"bottom top",scrub:.45}});
       });
-      cleanupTicker=()=>{context.revert();gsap.ticker.remove(tick);lenis.off("scroll",ScrollTrigger.update)};
-    });
+      const refresh=()=>ScrollTrigger.refresh();
+      void document.fonts?.ready.then(refresh);
+      window.addEventListener("load",refresh,{once:true});
+      document.querySelectorAll("img").forEach((image)=>{if(!image.complete)image.addEventListener("load",refresh,{once:true})});
+      cleanupTicker=()=>{context.revert();gsap.ticker.remove(tick);lenis.off("scroll",ScrollTrigger.update);window.removeEventListener("load",refresh)};
+    }); },300);
     return () => {
       active=false;
+      window.clearTimeout(setupTimer);
       cleanupTicker();
       lenis.destroy();
     };
@@ -59,7 +71,6 @@ export function MotionSystem() {
       if (cancelled) return;
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const finePointer = window.matchMedia("(pointer: fine)").matches;
-      const nativeScrollReveal = CSS.supports("animation-timeline: view()");
       const nativeScrollProgress = CSS.supports("animation-timeline: scroll()");
       const revealTargets = Array.from(document.querySelectorAll<HTMLElement>(revealSelector));
       const observer = new IntersectionObserver((entries) => {
@@ -70,10 +81,7 @@ export function MotionSystem() {
         });
       }, { threshold: 0.13, rootMargin: "0px 0px -7%" });
 
-      // Modern Chromium uses the CSS scroll timeline below. Avoid decorating
-      // streamed React nodes before their hydration has completed. The
-      // IntersectionObserver remains a progressive fallback for older engines.
-      if (!nativeScrollReveal && !reduceMotion) {
+      if (!reduceMotion) {
         revealTargets.forEach((element, index) => {
           element.classList.add("reveal-ready");
           element.style.setProperty("--reveal-delay", `${Math.min(index % 4, 3) * 75}ms`);
@@ -83,6 +91,7 @@ export function MotionSystem() {
 
       const parallaxTargets = Array.from(document.querySelectorAll<HTMLElement>(".product-visual,.shopify-hero-visual,.founder-portrait-primary,.feature-art"));
       let scrollFrame = 0;
+      let lastScrollY = window.scrollY;
       const updateScroll = () => {
         if (scrollFrame) return;
         scrollFrame = requestAnimationFrame(() => {
@@ -92,6 +101,10 @@ export function MotionSystem() {
             document.documentElement.style.setProperty("--scroll-progress", String(max > 0 ? window.scrollY / max : 0));
           }
           document.body.toggleAttribute("data-scrolled", window.scrollY > 24);
+          const delta=window.scrollY-lastScrollY;
+          if(window.scrollY<90||delta<-14)document.body.removeAttribute("data-header-hidden");
+          else if(delta>18)document.body.setAttribute("data-header-hidden","");
+          lastScrollY=window.scrollY;
           if (!reduceMotion) {
             parallaxTargets.forEach((element) => {
               const bounds = element.getBoundingClientRect();
